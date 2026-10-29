@@ -25,9 +25,12 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AcceptCourierRouteInput,
   AppUser,
   Courier,
+  CourierDeliveryRoute,
   CourierEarnings,
+  CreateDeliveryRouteInput,
   DashboardSummary,
   Delivery,
   DeliveryInput,
@@ -1345,4 +1348,358 @@ export function useGetCourierEarnings<TData = Awaited<ReturnType<typeof getCouri
 
 
 
+
+export const getCreateDeliveryRouteUrl = () => {
+
+
+
+
+  return `/api/delivery-routes`
+}
+
+/**
+ * @summary Group requested deliveries into a courier route offer
+ */
+export const createDeliveryRoute = async (createDeliveryRouteInput: CreateDeliveryRouteInput, options?: Parameters<typeof customFetch>[1]): Promise<CourierDeliveryRoute> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<CourierDeliveryRoute>(getCreateDeliveryRouteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createDeliveryRouteInput)
+  }
+);}
+
+
+
+
+
+export const getCreateDeliveryRouteMutationKey = () => ['createDeliveryRoute'] as const;
+
+export const getCreateDeliveryRouteMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeliveryRoute>>, TError,CreateDeliveryRouteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDeliveryRoute>>, TError,CreateDeliveryRouteMutationVariables, TContext> => {
+
+const mutationKey = getCreateDeliveryRouteMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDeliveryRoute>>, CreateDeliveryRouteMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDeliveryRoute(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDeliveryRouteMutationResult = NonNullable<Awaited<ReturnType<typeof createDeliveryRoute>>>
+    export type CreateDeliveryRouteMutationBody = BodyType<CreateDeliveryRouteInput>
+    export type CreateDeliveryRouteMutationError = ErrorType<unknown>
+    export type CreateDeliveryRouteMutationVariables = {data: BodyType<CreateDeliveryRouteInput>}
+
+    /**
+ * @summary Group requested deliveries into a courier route offer
+ */
+export const useCreateDeliveryRoute = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeliveryRoute>>, TError,CreateDeliveryRouteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createDeliveryRoute>>,
+        TError,
+        CreateDeliveryRouteMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateDeliveryRouteMutationOptions(options), queryClient);
+    }
+
+export const getListCourierRoutesUrl = () => {
+
+
+
+
+  return `/api/courier/routes`
+}
+
+/**
+ * @summary List route offers and the signed-in courier's active route
+ */
+export const listCourierRoutes = async ( options?: Parameters<typeof customFetch>[1]): Promise<CourierDeliveryRoute[]> => {
+
+  return customFetch<CourierDeliveryRoute[]>(getListCourierRoutesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCourierRoutesQueryKey = () => {
+    return [
+    `/api/courier/routes`
+    ] as const;
+    }
+
+
+export const getListCourierRoutesQueryOptions = <TData = Awaited<ReturnType<typeof listCourierRoutes>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCourierRoutes>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCourierRoutesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCourierRoutes>>> = ({ signal }) => listCourierRoutes({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCourierRoutes>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListCourierRoutesQueryResult = NonNullable<Awaited<ReturnType<typeof listCourierRoutes>>>
+export type ListCourierRoutesQueryError = ErrorType<unknown>
+
+
+export function useListCourierRoutes<TData = Awaited<ReturnType<typeof listCourierRoutes>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCourierRoutes>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listCourierRoutes>>,
+          TError,
+          Awaited<ReturnType<typeof listCourierRoutes>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListCourierRoutes<TData = Awaited<ReturnType<typeof listCourierRoutes>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCourierRoutes>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listCourierRoutes>>,
+          TError,
+          Awaited<ReturnType<typeof listCourierRoutes>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListCourierRoutes<TData = Awaited<ReturnType<typeof listCourierRoutes>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCourierRoutes>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List route offers and the signed-in courier's active route
+ */
+
+export function useListCourierRoutes<TData = Awaited<ReturnType<typeof listCourierRoutes>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCourierRoutes>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListCourierRoutesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAcceptCourierRouteUrl = (routeId: string,) => {
+
+
+
+
+  return `/api/courier/routes/${routeId}/accept`
+}
+
+/**
+ * @summary Accept and optimize a grouped delivery route
+ */
+export const acceptCourierRoute = async (routeId: string,
+    acceptCourierRouteInput: AcceptCourierRouteInput, options?: Parameters<typeof customFetch>[1]): Promise<CourierDeliveryRoute> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<CourierDeliveryRoute>(getAcceptCourierRouteUrl(routeId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(acceptCourierRouteInput)
+  }
+);}
+
+
+
+
+
+export const getAcceptCourierRouteMutationKey = () => ['acceptCourierRoute'] as const;
+
+export const getAcceptCourierRouteMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptCourierRoute>>, TError,AcceptCourierRouteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acceptCourierRoute>>, TError,AcceptCourierRouteMutationVariables, TContext> => {
+
+const mutationKey = getAcceptCourierRouteMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptCourierRoute>>, AcceptCourierRouteMutationVariables> = (props) => {
+          const {routeId,data} = props ?? {};
+
+          return  acceptCourierRoute(routeId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcceptCourierRouteMutationResult = NonNullable<Awaited<ReturnType<typeof acceptCourierRoute>>>
+    export type AcceptCourierRouteMutationBody = BodyType<AcceptCourierRouteInput>
+    export type AcceptCourierRouteMutationError = ErrorType<unknown>
+    export type AcceptCourierRouteMutationVariables = {routeId: string;data: BodyType<AcceptCourierRouteInput>}
+
+    /**
+ * @summary Accept and optimize a grouped delivery route
+ */
+export const useAcceptCourierRoute = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptCourierRoute>>, TError,AcceptCourierRouteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof acceptCourierRoute>>,
+        TError,
+        AcceptCourierRouteMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAcceptCourierRouteMutationOptions(options), queryClient);
+    }
+
+export const getCompleteCourierRouteStopUrl = (routeId: string,
+    stopId: string,) => {
+
+
+
+
+  return `/api/courier/routes/${routeId}/stops/${stopId}/complete`
+}
+
+/**
+ * @summary Complete the next stop on a locked route
+ */
+export const completeCourierRouteStop = async (routeId: string,
+    stopId: string, options?: Parameters<typeof customFetch>[1]): Promise<CourierDeliveryRoute> => {
+
+  return customFetch<CourierDeliveryRoute>(getCompleteCourierRouteStopUrl(routeId,stopId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompleteCourierRouteStopMutationKey = () => ['completeCourierRouteStop'] as const;
+
+export const getCompleteCourierRouteStopMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeCourierRouteStop>>, TError,CompleteCourierRouteStopMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeCourierRouteStop>>, TError,CompleteCourierRouteStopMutationVariables, TContext> => {
+
+const mutationKey = getCompleteCourierRouteStopMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeCourierRouteStop>>, CompleteCourierRouteStopMutationVariables> = (props) => {
+          const {routeId,stopId} = props ?? {};
+
+          return  completeCourierRouteStop(routeId,stopId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteCourierRouteStopMutationResult = NonNullable<Awaited<ReturnType<typeof completeCourierRouteStop>>>
+
+    export type CompleteCourierRouteStopMutationError = ErrorType<unknown>
+    export type CompleteCourierRouteStopMutationVariables = {routeId: string;stopId: string}
+
+    /**
+ * @summary Complete the next stop on a locked route
+ */
+export const useCompleteCourierRouteStop = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeCourierRouteStop>>, TError,CompleteCourierRouteStopMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof completeCourierRouteStop>>,
+        TError,
+        CompleteCourierRouteStopMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCompleteCourierRouteStopMutationOptions(options), queryClient);
+    }
 

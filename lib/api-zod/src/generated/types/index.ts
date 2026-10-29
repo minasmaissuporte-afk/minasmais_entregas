@@ -6,17 +6,24 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './acceptCourierRouteInput';
 export * from './appUser';
 export * from './appUserRole';
 export * from './courier';
+export * from './courierDeliveryRoute';
+export * from './courierDeliveryRouteStatus';
 export * from './courierEarnings';
 export * from './courierEarningsPeriod';
 export * from './courierStatus';
+export * from './createDeliveryRouteInput';
 export * from './dashboardSummary';
 export * from './delivery';
 export * from './deliveryEvent';
 export * from './deliveryInput';
 export * from './deliveryInputPriority';
+export * from './deliveryRouteStop';
+export * from './deliveryRouteStopKind';
+export * from './deliveryRouteStopStatus';
 export * from './deliveryStatusInput';
 export * from './deliveryStatusInputStatus';
 export * from './dispatchInput';
@@ -25,6 +32,7 @@ export * from './getCourierEarningsParams';
 export * from './getCourierEarningsPeriod';
 export * from './healthStatus';
 export * from './listDeliveriesParams';
+export * from './routeDeliverySummary';
 export * from './store';
 export * from './userRoleInput';
 export * from './userRoleInputRole';

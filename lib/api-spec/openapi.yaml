@@ -20,6 +20,8 @@ tags:
     description: Account access and role management
   - name: courier
     description: Courier-specific operations
+  - name: routes
+    description: Grouped courier routes and optimized stops
 paths:
   /healthz:
     get:
@@ -256,6 +258,85 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CourierEarnings"
+  /delivery-routes:
+    post:
+      operationId: createDeliveryRoute
+      tags: [routes]
+      summary: Group requested deliveries into a courier route offer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDeliveryRouteInput"
+      responses:
+        "201":
+          description: Route offered to available couriers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourierDeliveryRoute"
+  /courier/routes:
+    get:
+      operationId: listCourierRoutes
+      tags: [routes]
+      summary: List route offers and the signed-in courier's active route
+      responses:
+        "200":
+          description: Available route offers and assigned routes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CourierDeliveryRoute"
+  /courier/routes/{routeId}/accept:
+    post:
+      operationId: acceptCourierRoute
+      tags: [routes]
+      summary: Accept and optimize a grouped delivery route
+      parameters:
+        - in: path
+          name: routeId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptCourierRouteInput"
+      responses:
+        "200":
+          description: Route optimized and locked to the courier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourierDeliveryRoute"
+  /courier/routes/{routeId}/stops/{stopId}/complete:
+    post:
+      operationId: completeCourierRouteStop
+      tags: [routes]
+      summary: Complete the next stop on a locked route
+      parameters:
+        - in: path
+          name: routeId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stopId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stop completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourierDeliveryRoute"
 components:
   schemas:
     HealthStatus:
@@ -393,4 +474,67 @@ components:
         period: { type: string, enum: [day, week, month] }
         completedDeliveries: { type: integer }
         amountToReceive: { type: number }
+    CreateDeliveryRouteInput:
+      type: object
+      required: [deliveryIds]
+      properties:
+        deliveryIds:
+          type: array
+          minItems: 2
+          maxItems: 10
+          uniqueItems: true
+          items: { type: string }
+    AcceptCourierRouteInput:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+    RouteDeliverySummary:
+      type: object
+      required: [id, code, customerName, destination, storeName, deliveryAmount, status]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        customerName: { type: string }
+        destination: { type: string }
+        storeName: { type: string }
+        deliveryAmount: { type: number }
+        status: { type: string }
+    DeliveryRouteStop:
+      type: object
+      required: [id, sequence, deliveryId, kind, address, latitude, longitude, status, code, customerName, storeName, deliveryAmount]
+      properties:
+        id: { type: string }
+        sequence: { type: integer }
+        deliveryId: { type: string }
+        kind: { type: string, enum: [pickup, delivery] }
+        address: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        status: { type: string, enum: [PENDING, DONE] }
+        code: { type: string }
+        customerName: { type: string }
+        storeName: { type: string }
+        deliveryAmount: { type: number }
+    CourierDeliveryRoute:
+      type: object
+      required: [id, status, courierId, deliveryCount, amountToReceive, distanceKm, estimatedMinutes, lockedAt, deliveries, stops]
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [OFFERED, ACCEPTED, COMPLETED] }
+        courierId: { type: ["string", "null"] }
+        deliveryCount: { type: integer }
+        amountToReceive: { type: number }
+        distanceKm: { type: ["number", "null"] }
+        estimatedMinutes: { type: ["integer", "null"] }
+        lockedAt: { type: ["string", "null"], format: date-time }
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouteDeliverySummary"
+        stops:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryRouteStop"
 

@@ -208,6 +208,94 @@ export interface CourierEarnings {
   amountToReceive: number;
 }
 
+export interface CreateDeliveryRouteInput {
+  /**
+     * @minItems 2
+     * @maxItems 10
+     */
+  deliveryIds: string[];
+}
+
+export interface AcceptCourierRouteInput {
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude: number;
+}
+
+export interface RouteDeliverySummary {
+  id: string;
+  code: string;
+  customerName: string;
+  destination: string;
+  storeName: string;
+  deliveryAmount: number;
+  status: string;
+}
+
+export type DeliveryRouteStopKind = typeof DeliveryRouteStopKind[keyof typeof DeliveryRouteStopKind];
+
+
+export const DeliveryRouteStopKind = {
+  pickup: 'pickup',
+  delivery: 'delivery',
+} as const;
+
+export type DeliveryRouteStopStatus = typeof DeliveryRouteStopStatus[keyof typeof DeliveryRouteStopStatus];
+
+
+export const DeliveryRouteStopStatus = {
+  PENDING: 'PENDING',
+  DONE: 'DONE',
+} as const;
+
+export interface DeliveryRouteStop {
+  id: string;
+  sequence: number;
+  deliveryId: string;
+  kind: DeliveryRouteStopKind;
+  address: string;
+  latitude: number;
+  longitude: number;
+  status: DeliveryRouteStopStatus;
+  code: string;
+  customerName: string;
+  storeName: string;
+  deliveryAmount: number;
+}
+
+export type CourierDeliveryRouteStatus = typeof CourierDeliveryRouteStatus[keyof typeof CourierDeliveryRouteStatus];
+
+
+export const CourierDeliveryRouteStatus = {
+  OFFERED: 'OFFERED',
+  ACCEPTED: 'ACCEPTED',
+  COMPLETED: 'COMPLETED',
+} as const;
+
+export interface CourierDeliveryRoute {
+  id: string;
+  status: CourierDeliveryRouteStatus;
+  /** @nullable */
+  courierId: string | null;
+  deliveryCount: number;
+  amountToReceive: number;
+  /** @nullable */
+  distanceKm: number | null;
+  /** @nullable */
+  estimatedMinutes: number | null;
+  /** @nullable */
+  lockedAt: string | null;
+  deliveries: RouteDeliverySummary[];
+  stops: DeliveryRouteStop[];
+}
+
 export type ListDeliveriesParams = {
 status?: string;
 search?: string;

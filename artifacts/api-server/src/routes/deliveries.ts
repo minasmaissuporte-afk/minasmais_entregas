@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getAuth } from "@clerk/express";
-import { and, desc, eq, gte, ilike, or } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, or } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   GetCourierEarningsQueryParams,
@@ -32,6 +32,7 @@ import {
   db,
   deliveriesTable,
   deliveryEventsTable,
+  deliveryRoutesTable,
   storesTable,
 } from "@workspace/db";
 import {
@@ -525,6 +526,17 @@ router.post(
         .where(eq(deliveriesTable.id, params.data.deliveryId))
         .for("update");
       if (!delivery) return { error: "not_found" as const };
+      const activeRoutes = await tx
+        .select({
+          deliveryIds: deliveryRoutesTable.deliveryIds,
+        })
+        .from(deliveryRoutesTable)
+        .where(
+          inArray(deliveryRoutesTable.status, ["OFFERED", "ACCEPTED"]),
+        );
+      if (activeRoutes.some((route) => route.deliveryIds.includes(delivery.id))) {
+        return { error: "route_locked" as const };
+      }
       if (!["REQUESTED", "OFFERED"].includes(delivery.status))
         return { error: "not_dispatchable" as const };
 
@@ -578,6 +590,8 @@ router.post(
           ? "Entrega não encontrada."
           : result.error === "no_courier"
             ? "Não há motoboy disponível para receber a oferta."
+            : result.error === "route_locked"
+              ? "Esta entrega já faz parte de uma rota agrupada."
             : "Esta entrega não pode ser redisparada no status atual.";
       res.status(status).json({ error: message });
       return;
@@ -615,6 +629,17 @@ router.patch(
       const profile = res.locals.appUser as AppUserProfile;
       if (!canAccessDelivery(profile, delivery)) {
         return { error: "forbidden" as const };
+      }
+      const activeRoutes = await tx
+        .select({
+          deliveryIds: deliveryRoutesTable.deliveryIds,
+        })
+        .from(deliveryRoutesTable)
+        .where(
+          inArray(deliveryRoutesTable.status, ["OFFERED", "ACCEPTED"]),
+        );
+      if (activeRoutes.some((route) => route.deliveryIds.includes(delivery.id))) {
+        return { error: "route_locked" as const };
       }
       const nextStatus = body.data.status;
       if (
@@ -702,6 +727,8 @@ router.patch(
           ? "Entrega não encontrada."
           : result.error === "forbidden"
             ? "Esta entrega não pertence à sua área de acesso."
+            : result.error === "route_locked"
+              ? "Esta entrega faz parte de uma rota agrupada e só pode ser atualizada pela sequência da rota."
             : result.error === "role_restricted"
               ? "Este perfil só pode confirmar a saída da unidade."
           : result.error === "no_courier"

@@ -12,6 +12,7 @@ import {
   getListDeliveriesQueryKey,
   getListStoresQueryKey,
   useCreateDelivery,
+  useCreateDeliveryRoute,
   useDispatchDelivery,
   useGetDashboardSummary,
   useGetDelivery,
@@ -310,13 +311,12 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
   const qc = useQueryClient();
   const couriersQuery = useListCouriers({ query: { queryKey: getListCouriersQueryKey() } });
   const dispatch = useDispatchDelivery();
-  const [mode, setMode] = useState<'single' | 'group'>('single');
   const [courierId, setCourierId] = useState('');
   const [error, setError] = useState('');
   const available = (couriersQuery.data ?? []).filter(c => c.status === 'AVAILABLE');
   const go = () => {
     setError('');
-    dispatch.mutate({ deliveryId, data: mode === 'single' ? { mode, courierId } : { mode } }, {
+    dispatch.mutate({ deliveryId, data: { mode: 'single', courierId } }, {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
         void qc.invalidateQueries({ queryKey: getGetDeliveryQueryKey(deliveryId) });
@@ -328,18 +328,14 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
   };
   return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
     <section className="modal-card soft-enter" role="dialog" aria-modal="true" aria-labelledby="dispatch-title">
-      <div className="flex items-start justify-between border-b border-border px-6 py-5"><div><div className="eyebrow">DESPACHO</div><h2 id="dispatch-title" className="mt-1 text-xl font-bold">Escolher entregador</h2><p className="mt-1 text-sm text-muted-foreground">Somente entregadores com status disponível aparecem aqui.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={18}/></button></div>
+      <div className="flex items-start justify-between border-b border-border px-6 py-5"><div><div className="eyebrow">DESPACHO INDIVIDUAL</div><h2 id="dispatch-title" className="mt-1 text-xl font-bold">Escolher motoboy</h2><p className="mt-1 text-sm text-muted-foreground">Somente motoboys disponíveis aparecem aqui. Para agrupar entregas, selecione-as na fila.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={18}/></button></div>
       <div className="space-y-4 px-6 py-5">
-        <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => setMode('single')} className={`choice-card ${mode === 'single' ? 'choice-selected' : ''}`}><UserRound size={17}/><span><b>Individual</b><small>Escolher entregador</small></span></button>
-          <button onClick={() => setMode('group')} className={`choice-card ${mode === 'group' ? 'choice-selected' : ''}`}><Bike size={17}/><span><b>Em grupo</b><small>Ofertar ao grupo elegível</small></span></button>
-        </div>
-        {mode === 'single' && <Field label="Entregador disponível"><select value={courierId} onChange={e => setCourierId(e.target.value)} data-testid="select-courier"><option value="">Selecione um entregador</option>{available.map(c => <option key={c.id} value={c.id}>{c.name} · localização {timeAgo(c.lastLocationAt)}</option>)}</select></Field>}
+        <Field label="Motoboy disponível"><select value={courierId} onChange={e => setCourierId(e.target.value)} data-testid="select-courier"><option value="">Selecione um motoboy</option>{available.map(c => <option key={c.id} value={c.id}>{c.name} · localização {timeAgo(c.lastLocationAt)}</option>)}</select></Field>
         {couriersQuery.isLoading && <Skeleton rows={2}/>}
         {couriersQuery.isError && <p className="text-sm text-destructive">Não foi possível consultar os entregadores disponíveis.</p>}
-        {mode === 'single' && !couriersQuery.isLoading && available.length === 0 && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Nenhum entregador disponível no momento.</div>}
+        {!couriersQuery.isLoading && available.length === 0 && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Nenhum motoboy disponível no momento.</div>}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        <div className="flex justify-end gap-2 border-t border-border pt-4"><button className="button-secondary" onClick={onClose}>Cancelar</button><button className="button-primary" disabled={dispatch.isPending || couriersQuery.isLoading || (mode === 'single' && (!courierId || !available.length))} onClick={go}><Truck size={16}/>{dispatch.isPending ? 'Despachando…' : mode === 'single' ? 'Enviar oferta' : 'Ofertar ao grupo'}</button></div>
+        <div className="flex justify-end gap-2 border-t border-border pt-4"><button className="button-secondary" onClick={onClose}>Cancelar</button><button className="button-primary" disabled={dispatch.isPending || couriersQuery.isLoading || !courierId || !available.length} onClick={go}><Truck size={16}/>{dispatch.isPending ? 'Enviando…' : 'Enviar oferta'}</button></div>
       </div>
     </section>
   </div>;
@@ -348,11 +344,14 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
 function Dashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const [dispatchId, setDispatchId] = useState<string | null>(null);
+  const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<string[]>([]);
+  const [routeFeedback, setRouteFeedback] = useState('');
   const [searchText, setSearchText] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [storeId, setStoreId] = useState('');
   const qc = useQueryClient();
+  const createDeliveryRoute = useCreateDeliveryRoute();
   const summary = useGetDashboardSummary({ query: { refetchInterval: 15000, refetchOnWindowFocus: true } });
   const stores = useListStores({ query: { queryKey: getListStoresQueryKey() } });
   const couriers = useListCouriers({ query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000 } });
@@ -365,11 +364,35 @@ function Dashboard() {
     void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
     void qc.invalidateQueries({ queryKey: getListCouriersQueryKey() });
   };
+  const toggleRouteDelivery = (id: string, checked: boolean) => {
+    setRouteFeedback('');
+    setSelectedDeliveryIds(current => {
+      if (!checked) return current.filter(item => item !== id);
+      if (current.length >= 10) return current;
+      return current.includes(id) ? current : [...current, id];
+    });
+  };
+  const offerGroupedRoute = () => {
+    setRouteFeedback('');
+    createDeliveryRoute.mutate({ data: { deliveryIds: selectedDeliveryIds } }, {
+      onSuccess: result => {
+        setSelectedDeliveryIds([]);
+        setRouteFeedback(`Rota ${result.id.slice(0, 8)} criada com ${result.deliveryCount} entregas. O motoboy verá e otimizará a sequência ao aceitar.`);
+        void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
+        void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+      },
+      onError: error => setRouteFeedback(error instanceof Error ? error.message : 'Não foi possível criar a rota. Atualize a fila e tente novamente.'),
+    });
+  };
   const counts = summary.data;
   return <div className="soft-enter">
     <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
        <div><div className="eyebrow">VISÃO GERAL · REDE MINAS MAIS</div><h1 className="mt-2 text-[28px] font-bold tracking-[-.045em] sm:text-[34px]">Central de entregas</h1><p className="mt-1 text-sm text-muted-foreground">Acompanhe pedidos, disponibilidade e despacho em um só lugar.</p><p className="mt-2 text-[11px] font-medium text-amber-800">Dados demonstrativos fictícios · atualização automática a cada 15 segundos</p></div>
-      <button className="button-primary h-10 self-start sm:self-auto" onClick={() => setShowCreate(true)} data-testid="button-new-delivery"><FilePlus2 size={16}/>Nova entrega</button>
+      <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+        {selectedDeliveryIds.length >= 2 && <button className="button-secondary h-10" onClick={offerGroupedRoute} disabled={createDeliveryRoute.isPending} data-testid="button-create-route"><Bike size={16}/>{createDeliveryRoute.isPending ? 'Criando rota…' : `Agrupar ${selectedDeliveryIds.length} entregas`}</button>}
+        {selectedDeliveryIds.length > 0 && <button className="button-quiet h-10" onClick={() => { setSelectedDeliveryIds([]); setRouteFeedback(''); }}>Limpar seleção ({selectedDeliveryIds.length})</button>}
+        <button className="button-primary h-10" onClick={() => setShowCreate(true)} data-testid="button-new-delivery"><FilePlus2 size={16}/>Nova entrega</button>
+      </div>
     </div>
     <section className="metric-grid mb-6">
        <Metric title="Pedidos em operação" value={counts?.requested} hint="solicitações ativas agora" icon={<PackageCheck size={17}/>} loading={summary.isLoading}/>
@@ -418,18 +441,21 @@ function Dashboard() {
           <select value={storeId} onChange={e => setStoreId(e.target.value)} className="filter-select" aria-label="Filtrar por unidade" data-testid="filter-store"><option value="">Todas as unidades</option>{(stores.data ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
         </div>
       </div>
+      {routeFeedback && <p className={`mx-4 mb-3 rounded-lg px-3 py-2 text-sm ${routeFeedback.startsWith('Rota ') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`} role="status">{routeFeedback}</p>}
+      {selectedDeliveryIds.length > 0 && <p className="mx-4 mb-3 text-xs text-muted-foreground">Selecione de 2 a 10 solicitações novas. A melhor sequência será calculada quando o motoboy aceitar a rota.</p>}
       {deliveries.isLoading ? <Skeleton rows={5}/> : deliveries.isError ? <div className="p-8 text-center"><AlertTriangle className="mx-auto mb-2 text-amber-600"/><p className="font-semibold">Falha ao carregar solicitações</p><p className="mb-3 mt-1 text-sm text-muted-foreground">A fila permanece disponível para nova tentativa.</p><button className="button-secondary mx-auto" onClick={() => void deliveries.refetch()}><RefreshCw size={14}/>Tentar novamente</button></div> :
         !deliveries.data?.length ? <EmptyState title="Nenhuma solicitação nesta fila" detail={search || status || storeId ? 'Ajuste os filtros ou registre uma nova entrega.' : 'Quando uma solicitação chegar, ela aparecerá aqui para análise e despacho.'} action={<button className="button-primary" onClick={() => setShowCreate(true)}><Plus size={15}/>Registrar entrega</button>}/> :
-          <div className="overflow-x-auto"><table className="delivery-table w-full min-w-[900px]">
-            <thead><tr><th>Solicitação</th><th>Cliente / destino</th><th>Unidade</th><th>Status</th><th>Entregador</th><th>Atualizada</th><th className="text-right">Ação</th></tr></thead>
+          <div className="overflow-x-auto"><table className="delivery-table w-full min-w-[980px]">
+            <thead><tr><th>Rota</th><th>Solicitação</th><th>Cliente / destino</th><th>Unidade</th><th>Status</th><th>Entregador</th><th>Atualizada</th><th className="text-right">Ação</th></tr></thead>
             <tbody>{deliveries.data.map(d => <tr className="row-hover" key={d.id} data-testid={`row-delivery-${d.id}`}>
+              <td>{d.status === 'REQUESTED' ? <input type="checkbox" aria-label={`Selecionar ${d.code} para uma rota`} checked={selectedDeliveryIds.includes(d.id)} disabled={!selectedDeliveryIds.includes(d.id) && selectedDeliveryIds.length >= 10} onChange={e => toggleRouteDelivery(d.id, e.target.checked)} className="h-4 w-4 accent-[#b91e2c]"/> : <span className="text-xs text-muted-foreground">—</span>}</td>
               <td><Link href={`/deliveries/${d.id}`} className="table-code" data-testid={`link-delivery-${d.id}`}>{d.code}<span>Pedido {d.orderNumber || '—'}</span></Link>{d.priority === 'urgent' && <span className="priority-tag">URGENTE</span>}</td>
               <td><div className="font-semibold">{d.customerName}</div><div className="mt-1 flex max-w-[235px] items-center gap-1 truncate text-xs text-muted-foreground"><MapPin size={12}/>{d.destination}</div></td>
                <td><div className="text-sm font-medium">{d.storeName}</div><div className="mt-1 text-[11px] text-muted-foreground">Filial de origem</div></td>
               <td><StatusBadge status={d.status}/></td>
               <td>{d.courierName ? <div className="flex items-center gap-2"><span className="avatar">{d.courierInitials || d.courierName.slice(0,2).toUpperCase()}</span><div><div className="text-xs font-semibold">{d.courierName}</div><div className="text-[10px] text-muted-foreground">{timeAgo(d.lastLocationAt)}</div></div></div> : <span className="text-xs text-muted-foreground">Não atribuído</span>}</td>
               <td className="text-xs text-muted-foreground">{fmtTime(d.updatedAt || d.createdAt)}</td>
-              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER','OFFERED'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
+              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
             </tr>)}</tbody>
           </table></div>}
     </section>
@@ -477,7 +503,7 @@ function DeliveryDetail() {
       <>
         <div className="mt-5 flex flex-col justify-between gap-4 md:flex-row md:items-start">
           <div><div className="eyebrow">DETALHE DA SOLICITAÇÃO</div><div className="mt-1 flex flex-wrap items-center gap-3"><h1 className="text-[30px] font-bold tracking-[-.05em]">{data.code}</h1><StatusBadge status={data.status}/>{data.priority === 'urgent' && <span className="priority-tag">URGENTE</span>}</div><p className="mt-1 text-sm text-muted-foreground">Pedido {data.orderNumber || '—'} <span className="mx-1.5">·</span> Criado {fmtTime(data.createdAt)}</p></div>
-          <div className="flex flex-wrap gap-2">{['REQUESTED','AWAITING_COURIER','OFFERED'].includes(data.status) && <button className="button-primary" onClick={() => setDispatchOpen(true)}><Truck size={16}/>Despachar</button>}
+          <div className="flex flex-wrap gap-2">{['REQUESTED','AWAITING_COURIER'].includes(data.status) && <button className="button-primary" onClick={() => setDispatchOpen(true)}><Truck size={16}/>Despachar</button>}
             <select className="filter-select" value={nextStatus} onChange={e => setNextStatus(e.target.value)} aria-label="Novo status"><option value="">Atualizar status</option>{(statusOptions[data.status] ?? []).map(s => <option key={s} value={s}>{statusNames[s]}</option>)}</select>
             <button className="button-secondary" disabled={!nextStatus || updateStatus.isPending} onClick={applyStatus}>{updateStatus.isPending ? 'Salvando…' : 'Aplicar'}</button>
           </div>
@@ -505,7 +531,7 @@ function DeliveryDetail() {
             <section className="panel p-5">
               <div className="mb-4"><div className="eyebrow">ENTREGADOR</div><h2 className="mt-1 font-bold">Atribuição atual</h2></div>
               {data.courierName ? <div className="flex items-center gap-3 rounded-lg bg-[#f7f6f4] p-3"><span className="avatar avatar-large">{data.courierInitials || data.courierName.slice(0,2).toUpperCase()}</span><div className="min-w-0 flex-1"><div className="font-semibold">{data.courierName}</div><div className="mt-1 text-xs text-muted-foreground">Última localização: {timeAgo(data.lastLocationAt)}</div></div><Badge tone="blue">Atribuído</Badge></div> : <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center"><Bike size={22} className="mx-auto text-muted-foreground"/><p className="mt-2 text-sm font-semibold">Aguardando entregador</p><p className="mt-1 text-xs text-muted-foreground">Despache para iniciar o atendimento.</p></div>}
-              {['REQUESTED','AWAITING_COURIER','OFFERED'].includes(data.status) && <div className="mt-4"><label className="eyebrow" htmlFor="quick-courier">OFERTA INDIVIDUAL</label><div className="mt-2 flex gap-2"><select id="quick-courier" className="filter-select min-w-0 flex-1" defaultValue=""><option value="">Escolher disponível</option>{(couriers.data ?? []).filter(c => c.status === 'AVAILABLE').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><button className="button-secondary" onClick={e => { const select = e.currentTarget.previousElementSibling as HTMLSelectElement; if (select.value) singleDispatch(select.value); else setActionError('Selecione um entregador disponível.'); }} disabled={dispatch.isPending}>Enviar</button></div></div>}
+              {['REQUESTED','AWAITING_COURIER'].includes(data.status) && <div className="mt-4"><label className="eyebrow" htmlFor="quick-courier">OFERTA INDIVIDUAL</label><div className="mt-2 flex gap-2"><select id="quick-courier" className="filter-select min-w-0 flex-1" defaultValue=""><option value="">Escolher disponível</option>{(couriers.data ?? []).filter(c => c.status === 'AVAILABLE').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><button className="button-secondary" onClick={e => { const select = e.currentTarget.previousElementSibling as HTMLSelectElement; if (select.value) singleDispatch(select.value); else setActionError('Selecione um entregador disponível.'); }} disabled={dispatch.isPending}>Enviar</button></div></div>}
             </section>
             <section className="panel p-5">
               <div className="mb-5 flex items-center gap-2"><History size={16} className="text-primary"/><div><div className="eyebrow">AUDITORIA</div><h2 className="mt-0.5 font-bold">Histórico de eventos</h2></div></div>

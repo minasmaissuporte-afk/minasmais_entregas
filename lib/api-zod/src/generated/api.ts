@@ -370,3 +370,187 @@ export const GetCourierEarningsResponse = zod.object({
 })
 
 
+/**
+ * @summary Group requested deliveries into a courier route offer
+ */
+export const createDeliveryRouteBodyDeliveryIdsMin = 2;
+export const createDeliveryRouteBodyDeliveryIdsMax = 10;
+
+
+
+export const CreateDeliveryRouteBody = zod.object({
+  "deliveryIds": zod.array(zod.string()).min(createDeliveryRouteBodyDeliveryIdsMin).max(createDeliveryRouteBodyDeliveryIdsMax)
+})
+
+export const CreateDeliveryRouteResponse = zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['OFFERED', 'ACCEPTED', 'COMPLETED']),
+  "courierId": zod.string().nullable(),
+  "deliveryCount": zod.number().int(),
+  "amountToReceive": zod.number(),
+  "distanceKm": zod.number().nullable(),
+  "estimatedMinutes": zod.number().int().nullable(),
+  "lockedAt": zod.coerce.date().nullable(),
+  "deliveries": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "destination": zod.string(),
+  "storeName": zod.string(),
+  "deliveryAmount": zod.number(),
+  "status": zod.string()
+})),
+  "stops": zod.array(zod.object({
+  "id": zod.string(),
+  "sequence": zod.number().int(),
+  "deliveryId": zod.string(),
+  "kind": zod.enum(['pickup', 'delivery']),
+  "address": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "status": zod.enum(['PENDING', 'DONE']),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "storeName": zod.string(),
+  "deliveryAmount": zod.number()
+}))
+})
+
+
+/**
+ * @summary List route offers and the signed-in courier's active route
+ */
+export const ListCourierRoutesResponseItem = zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['OFFERED', 'ACCEPTED', 'COMPLETED']),
+  "courierId": zod.string().nullable(),
+  "deliveryCount": zod.number().int(),
+  "amountToReceive": zod.number(),
+  "distanceKm": zod.number().nullable(),
+  "estimatedMinutes": zod.number().int().nullable(),
+  "lockedAt": zod.coerce.date().nullable(),
+  "deliveries": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "destination": zod.string(),
+  "storeName": zod.string(),
+  "deliveryAmount": zod.number(),
+  "status": zod.string()
+})),
+  "stops": zod.array(zod.object({
+  "id": zod.string(),
+  "sequence": zod.number().int(),
+  "deliveryId": zod.string(),
+  "kind": zod.enum(['pickup', 'delivery']),
+  "address": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "status": zod.enum(['PENDING', 'DONE']),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "storeName": zod.string(),
+  "deliveryAmount": zod.number()
+}))
+})
+export const ListCourierRoutesResponse = zod.array(ListCourierRoutesResponseItem)
+
+
+/**
+ * @summary Accept and optimize a grouped delivery route
+ */
+export const AcceptCourierRouteParams = zod.object({
+  "routeId": zod.coerce.string()
+})
+
+export const acceptCourierRouteBodyLatitudeMin = -90;
+export const acceptCourierRouteBodyLatitudeMax = 90;
+
+export const acceptCourierRouteBodyLongitudeMin = -180;
+export const acceptCourierRouteBodyLongitudeMax = 180;
+
+
+
+export const AcceptCourierRouteBody = zod.object({
+  "latitude": zod.number().min(acceptCourierRouteBodyLatitudeMin).max(acceptCourierRouteBodyLatitudeMax),
+  "longitude": zod.number().min(acceptCourierRouteBodyLongitudeMin).max(acceptCourierRouteBodyLongitudeMax)
+})
+
+export const AcceptCourierRouteResponse = zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['OFFERED', 'ACCEPTED', 'COMPLETED']),
+  "courierId": zod.string().nullable(),
+  "deliveryCount": zod.number().int(),
+  "amountToReceive": zod.number(),
+  "distanceKm": zod.number().nullable(),
+  "estimatedMinutes": zod.number().int().nullable(),
+  "lockedAt": zod.coerce.date().nullable(),
+  "deliveries": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "destination": zod.string(),
+  "storeName": zod.string(),
+  "deliveryAmount": zod.number(),
+  "status": zod.string()
+})),
+  "stops": zod.array(zod.object({
+  "id": zod.string(),
+  "sequence": zod.number().int(),
+  "deliveryId": zod.string(),
+  "kind": zod.enum(['pickup', 'delivery']),
+  "address": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "status": zod.enum(['PENDING', 'DONE']),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "storeName": zod.string(),
+  "deliveryAmount": zod.number()
+}))
+})
+
+
+/**
+ * @summary Complete the next stop on a locked route
+ */
+export const CompleteCourierRouteStopParams = zod.object({
+  "routeId": zod.coerce.string(),
+  "stopId": zod.coerce.string()
+})
+
+export const CompleteCourierRouteStopResponse = zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['OFFERED', 'ACCEPTED', 'COMPLETED']),
+  "courierId": zod.string().nullable(),
+  "deliveryCount": zod.number().int(),
+  "amountToReceive": zod.number(),
+  "distanceKm": zod.number().nullable(),
+  "estimatedMinutes": zod.number().int().nullable(),
+  "lockedAt": zod.coerce.date().nullable(),
+  "deliveries": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "destination": zod.string(),
+  "storeName": zod.string(),
+  "deliveryAmount": zod.number(),
+  "status": zod.string()
+})),
+  "stops": zod.array(zod.object({
+  "id": zod.string(),
+  "sequence": zod.number().int(),
+  "deliveryId": zod.string(),
+  "kind": zod.enum(['pickup', 'delivery']),
+  "address": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "status": zod.enum(['PENDING', 'DONE']),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "storeName": zod.string(),
+  "deliveryAmount": zod.number()
+}))
+})
+
+

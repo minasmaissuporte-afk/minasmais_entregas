@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/motoboy/"
+title = "Minas Mais Motoboy"
+description = "Aplicativo iOS e Android para ofertas, rotas agrupadas, entregas e ganhos do motoboy."
+version = "1.0.0"
+id = "artifacts/minas-mais-motoboy"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/motoboy/" ]
+localPort = 18097
+
+[services.development]
+run = "pnpm --filter @workspace/minas-mais-motoboy run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/minas-mais-motoboy", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/minas-mais-motoboy", "run", "serve" ]
+
+[services.env]
+PORT = "18097"
+BASE_PATH = "/motoboy/"

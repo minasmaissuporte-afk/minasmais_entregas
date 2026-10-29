@@ -6,6 +6,7 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -107,6 +108,56 @@ export const deliveryEventsTable = pgTable(
       .defaultNow(),
   },
   (table) => [index("delivery_events_delivery_idx").on(table.deliveryId)],
+);
+
+export const deliveryRoutesTable = pgTable(
+  "delivery_routes",
+  {
+    id: text("id").primaryKey(),
+    deliveryIds: text("delivery_ids").array().notNull(),
+    courierId: text("courier_id").references(() => couriersTable.id),
+    status: text("status").notNull().default("OFFERED"),
+    startLatitude: real("start_latitude"),
+    startLongitude: real("start_longitude"),
+    distanceMeters: integer("distance_meters"),
+    durationSeconds: integer("duration_seconds"),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("delivery_routes_status_idx").on(table.status),
+    index("delivery_routes_courier_idx").on(table.courierId),
+  ],
+);
+
+export const deliveryRouteStopsTable = pgTable(
+  "delivery_route_stops",
+  {
+    id: text("id").primaryKey(),
+    routeId: text("route_id")
+      .notNull()
+      .references(() => deliveryRoutesTable.id, { onDelete: "cascade" }),
+    deliveryId: text("delivery_id")
+      .notNull()
+      .references(() => deliveriesTable.id, { onDelete: "cascade" }),
+    sequence: integer("sequence").notNull(),
+    kind: text("kind").notNull(),
+    address: text("address").notNull(),
+    latitude: real("latitude").notNull(),
+    longitude: real("longitude").notNull(),
+    status: text("status").notNull().default("PENDING"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("delivery_route_stops_route_sequence_idx").on(
+      table.routeId,
+      table.sequence,
+    ),
+    index("delivery_route_stops_delivery_idx").on(table.deliveryId),
+  ],
 );
 
 export const insertDeliverySchema = createInsertSchema(deliveriesTable).omit({
