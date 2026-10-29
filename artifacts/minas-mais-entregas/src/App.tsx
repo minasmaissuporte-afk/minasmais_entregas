@@ -1,6 +1,11 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { ClerkProvider, Show, SignIn, SignUp, useClerk, useUser } from '@clerk/react';
+import { publishableKeyFromHost } from '@clerk/react/internal';
+import { shadcn } from '@clerk/themes';
+import { ptBR } from '@clerk/localizations';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
+  getGetMyProfileQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetDeliveryQueryKey,
   getListCouriersQueryKey,
@@ -10,23 +15,179 @@ import {
   useDispatchDelivery,
   useGetDashboardSummary,
   useGetDelivery,
+  useGetMyProfile,
   useListCouriers,
   useListDeliveries,
   useListStores,
   useUpdateDeliveryStatus,
+  type AppUser,
 } from '@workspace/api-client-react';
 import {
   ArrowLeft, ArrowRight, Bike, Clock3, FilePlus2, Filter,
   History, MapPin, PackageCheck, Phone, Plus, Search, ShieldCheck,
   Truck, UserRound, X, AlertTriangle, RefreshCw,
 } from 'lucide-react';
-import { Link, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
+import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import AccessManagement from '@/pages/access-management';
+import CourierPortal from '@/pages/courier-portal';
+import StorePortal from '@/pages/store-portal';
 
 const queryClient = new QueryClient();
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY');
+
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: 'clerk',
+  options: {
+    logoPlacement: 'inside' as const,
+    logoLinkUrl: basePath || '/',
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: '#b91e2c',
+    colorForeground: '#24272d',
+    colorMutedForeground: '#777a80',
+    colorDanger: '#b42318',
+    colorBackground: '#ffffff',
+    colorInput: '#ffffff',
+    colorInputForeground: '#24272d',
+    colorNeutral: '#e7e6e3',
+    fontFamily: 'DM Sans, sans-serif',
+    borderRadius: '0.75rem',
+  },
+  elements: {
+    rootBox: 'w-full flex justify-center',
+    cardBox: 'bg-white rounded-2xl w-[440px] max-w-full overflow-hidden',
+    card: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    headerTitle: 'text-[#24272d] font-bold',
+    headerSubtitle: 'text-[#777a80]',
+    socialButtonsBlockButtonText: 'text-[#24272d] font-semibold',
+    formFieldLabel: 'text-[#55595f] font-semibold',
+    footerActionLink: 'text-[#a91d2a] font-semibold',
+    footerActionText: 'text-[#777a80]',
+    dividerText: 'text-[#777a80]',
+    identityPreviewEditButton: 'text-[#a91d2a]',
+    formFieldSuccessText: 'text-green-700',
+    alertText: 'text-red-700',
+    logoBox: 'mx-auto',
+    logoImage: 'max-h-10',
+    socialButtonsBlockButton: 'border-[#e7e6e3] rounded-lg',
+    formButtonPrimary: 'bg-[#b91e2c] hover:bg-[#a41926] text-white rounded-lg',
+    formFieldInput: 'border-[#e2e0dd] rounded-lg text-[#24272d]',
+    footerAction: 'text-[#777a80]',
+    dividerLine: 'bg-[#e7e6e3]',
+    alert: 'rounded-lg',
+    otpCodeFieldInput: 'border-[#e2e0dd] text-[#24272d]',
+    formFieldRow: 'gap-1',
+    main: 'text-[#24272d]',
+  },
+};
+
+function ClerkQueryClientCacheInvalidator() {
+  const { addListener } = useClerk();
+  const client = useQueryClient();
+  const previousUserId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const unsubscribe = addListener(({ user }) => {
+      const userId = user?.id ?? null;
+      if (previousUserId.current !== undefined && previousUserId.current !== userId) {
+        client.clear();
+      }
+      previousUserId.current = userId;
+    });
+    return unsubscribe;
+  }, [addListener, client]);
+  return null;
+}
+
+function SignInPage() {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f4f3f1] px-4 py-8">
+      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+    </div>
+  );
+}
+
+function SignUpPage() {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f4f3f1] px-4 py-8">
+      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+    </div>
+  );
+}
+
+function LandingPage() {
+  return (
+    <main className="min-h-[100dvh] bg-[#f4f3f1] px-5 py-6 text-[#24272d] sm:px-8">
+      <div className="mx-auto flex max-w-6xl items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="brand-mark">MM</div>
+          <div className="leading-tight">
+            <div className="text-[13px] font-bold">MINAS MAIS</div>
+            <div className="mt-1 text-[10px] font-semibold uppercase tracking-[.16em] text-muted-foreground">Entregas</div>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/sign-in" className="button-secondary">Entrar</Link>
+          <Link href="/sign-up" className="button-primary">Solicitar acesso</Link>
+        </div>
+      </div>
+      <section className="mx-auto grid max-w-6xl gap-10 py-20 md:grid-cols-[1.1fr_.9fr] md:items-center md:py-28">
+        <div>
+          <div className="eyebrow">REDE MINAS MAIS</div>
+          <h1 className="mt-4 max-w-2xl text-4xl font-bold leading-[1.08] tracking-[-.05em] sm:text-6xl">
+            Entregas organizadas. Acompanhamento em cada etapa.
+          </h1>
+          <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground">
+            Um espaço para a central, as unidades e os motoboys acompanharem os pedidos com informações atualizadas.
+          </p>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <Link href="/sign-in" className="button-primary min-h-11 px-5">Acessar o painel</Link>
+            <Link href="/sign-up" className="button-secondary min-h-11 px-5">Criar uma conta</Link>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            Novas contas precisam ser aprovadas por um administrador antes de acessar os dados.
+          </p>
+        </div>
+        <div className="panel p-5 sm:p-7">
+          <div className="eyebrow">ACOMPANHAMENTO</div>
+          <div className="mt-5 space-y-4">
+            {[
+              ['01', 'Pedido registrado', 'A unidade informa o valor e o destino.'],
+              ['02', 'Motoboy atribuído', 'A central organiza o despacho.'],
+              ['03', 'Entrega concluída', 'O valor concluído entra no resumo a receber.'],
+            ].map(([number, title, description]) => (
+              <div key={number} className="flex gap-3 rounded-lg bg-[#faf9f7] p-4">
+                <span className="font-mono text-xs font-semibold text-[#a91d2a]">{number}</span>
+                <div><div className="text-sm font-bold">{title}</div><p className="mt-1 text-xs text-muted-foreground">{description}</p></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function HomeRedirect() {
+  return (
+    <>
+      <Show when="signed-in"><Redirect to="/user-portal" /></Show>
+      <Show when="signed-out"><LandingPage /></Show>
+    </>
+  );
+}
 const statusNames: Record<string, string> = {
   REQUESTED: 'Solicitada', AWAITING_COURIER: 'Aguardando entregador', OFFERED: 'Oferta enviada',
   ACCEPTED: 'Aceita', TO_STORE: 'A caminho da loja', AT_STORE: 'Na loja',
@@ -65,8 +226,9 @@ function EmptyState({ title, detail, action }: { title: string; detail: string; 
     <h3 className="font-semibold text-[15px]">{title}</h3><p className="mt-1 max-w-sm text-sm text-muted-foreground">{detail}</p>{action && <div className="mt-4">{action}</div>}
   </div>;
 }
-function AppShell({ children }: { children: ReactNode }) {
+function AppShell({ children, profile }: { children: ReactNode; profile: AppUser }) {
   const [location] = useLocation();
+  const { signOut } = useClerk();
   return <div className="ops-shell md:flex">
     <aside className="ops-sidebar flex md:min-h-[100dvh] md:w-[232px] md:flex-col">
       <div className="flex w-full items-center gap-3 border-b border-border px-5 py-5 md:border-b-0">
@@ -78,19 +240,21 @@ function AppShell({ children }: { children: ReactNode }) {
         <Link href="/" className={`nav-link ${location === '/' ? 'nav-active' : ''}`} data-testid="link-operations">
           <Truck size={17} strokeWidth={1.8} /><span>Entregas</span><span className="ml-auto nav-live-dot" />
         </Link>
+        {profile.role === 'ADMIN' && <Link href="/access" className={`nav-link ${location === '/access' ? 'nav-active' : ''}`}>
+          <ShieldCheck size={17} strokeWidth={1.8}/><span>Acessos</span>
+        </Link>}
       </div>
       <div className="mt-auto hidden border-t border-border p-4 md:block">
         <div className="flex items-center gap-3 rounded-lg bg-[#f7f6f4] p-3">
-          <div className="avatar avatar-red">MM</div>
-          <div className="min-w-0"><div className="truncate text-xs font-semibold">Central Minas Mais</div><div className="mt-0.5 text-[10px] text-muted-foreground">Equipe de operações</div></div>
-          <ShieldCheck className="ml-auto shrink-0 text-[#5b8a69]" size={16} />
+          <div className="avatar avatar-red">{profile.name.slice(0, 2).toUpperCase()}</div>
+          <div className="min-w-0"><div className="truncate text-xs font-semibold">{profile.name}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{profile.email}</div></div>
         </div>
       </div>
     </aside>
     <main className="min-w-0 flex-1">
       <header className="topbar">
         <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="hidden sm:inline">Rede Minas Mais</span><span className="hidden sm:inline">/</span><span className="font-semibold text-foreground">{location.startsWith('/deliveries/') ? 'Detalhe da entrega' : 'Central de entregas'}</span></div>
-         <div className="ml-auto flex items-center gap-2"><span className="hidden text-[11px] text-muted-foreground sm:inline">Painel operacional</span><span className="online-indicator"><i /> Ambiente demonstrativo</span></div>
+         <div className="ml-auto flex items-center gap-2"><span className="hidden text-[11px] text-muted-foreground sm:inline">Painel operacional</span><span className="online-indicator"><i /> Ambiente demonstrativo</span><button className="button-quiet" onClick={() => void signOut({ redirectUrl: basePath || '/' })}>Sair</button></div>
       </header>
       <div className="ops-content mx-auto w-full px-4 pb-10 pt-7 sm:px-6 lg:px-9">{children}</div>
     </main>
@@ -102,11 +266,11 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   const storesQuery = useListStores({ query: { queryKey: getListStoresQueryKey() } });
   const create = useCreateDelivery();
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ customerName: '', customerPhone: '', destination: '', orderNumber: '', notes: '', storeId: '', priority: 'normal' });
+  const [form, setForm] = useState({ customerName: '', customerPhone: '', destination: '', orderNumber: '', notes: '', storeId: '', priority: 'normal', deliveryAmount: '' });
   const update = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
   const submit = (e: FormEvent) => {
     e.preventDefault(); setError('');
-    create.mutate({ data: { ...form, priority: form.priority as 'normal' | 'urgent' } }, {
+    create.mutate({ data: { ...form, deliveryAmount: Number(form.deliveryAmount), priority: form.priority as 'normal' | 'urgent' } }, {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
         void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
@@ -128,6 +292,7 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
           <Field label="Número do pedido"><input required value={form.orderNumber} onChange={e => update('orderNumber', e.target.value)} placeholder="Ex.: 48271" data-testid="input-order-number"/></Field>
           <Field label="Unidade"><select required value={form.storeId} onChange={e => update('storeId', e.target.value)} data-testid="select-store"><option value="">Selecione uma unidade</option>{(storesQuery.data ?? []).filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name} · {s.city}</option>)}</select></Field>
         </div>
+        <Field label="Valor do motoboy (R$)"><input required type="number" min="0.01" step="0.01" value={form.deliveryAmount} onChange={e => update('deliveryAmount', e.target.value)} placeholder="Ex.: 12,50" data-testid="input-delivery-amount"/></Field>
         {storesQuery.isLoading && <p className="text-xs text-muted-foreground">Carregando unidades disponíveis…</p>}
         {storesQuery.isError && <p className="text-xs text-destructive">Não foi possível carregar as unidades. Reabra o formulário para tentar novamente.</p>}
         <Field label="Observações"><textarea rows={2} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Referências úteis para a entrega" data-testid="input-notes"/></Field>
@@ -324,6 +489,7 @@ function DeliveryDetail() {
               <div className="mb-4 flex items-center justify-between"><div><div className="eyebrow">PEDIDO E DESTINO</div><h2 className="mt-1 font-bold">Informações da entrega</h2></div><span className="rounded-md bg-[#f6f4f1] p-2 text-primary"><PackageCheck size={18}/></span></div>
               <div className="info-grid">
                 <Info label="Cliente" value={data.customerName}/><Info label="Telefone" value={data.customerPhone || 'Não informado'} icon={data.customerPhone ? <Phone size={13}/> : undefined}/>
+                <Info label="Valor do motoboy" value={data.deliveryAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/>
                 <Info label="Endereço de entrega" value={data.destination} wide icon={<MapPin size={14}/>}/><Info label="Unidade de origem" value={data.storeName}/><Info label="Número do pedido" value={data.orderNumber || '—'}/>
                 <Info label="Distância informada" value={data.distanceKm != null ? `${data.distanceKm} km` : 'Não disponível'}/><Info label="Previsão" value={data.estimatedMinutes != null ? `${data.estimatedMinutes} min` : 'Não informada'}/>
               </div>
@@ -358,10 +524,120 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
 }
-function Router() {
-  return <RoutedErrorBoundary><AppShell><Switch><Route path="/" component={Dashboard}/><Route path="/deliveries/:deliveryId" component={DeliveryDetail}/><Route component={NotFound}/></Switch></AppShell></RoutedErrorBoundary>;
+
+function ProfileLoading() {
+  return <main className="grid min-h-[100dvh] place-items-center bg-[#f4f3f1] p-5"><div className="panel w-full max-w-sm p-6"><div className="skeleton h-5 w-40"/><div className="skeleton mt-4 h-12 w-full"/></div></main>;
 }
+
+function PendingApproval({ profile }: { profile: AppUser }) {
+  const { signOut } = useClerk();
+  return <main className="grid min-h-[100dvh] place-items-center bg-[#f4f3f1] p-5">
+    <section className="panel w-full max-w-md p-7 text-center">
+      <div className="brand-mark mx-auto">MM</div>
+      <h1 className="mt-5 text-xl font-bold">Acesso aguardando aprovação</h1>
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Sua conta foi criada, mas ainda não recebeu um perfil de acesso. Um administrador precisa aprovar e vincular sua conta.</p>
+      <p className="mt-4 rounded-lg bg-[#f7f6f4] px-3 py-2 text-xs text-muted-foreground">{profile.email}</p>
+      <button className="button-secondary mt-5" onClick={() => void signOut({ redirectUrl: basePath || '/' })}>Sair da conta</button>
+    </section>
+  </main>;
+}
+
+function ProfileError({ retry }: { retry: () => void }) {
+  return <main className="grid min-h-[100dvh] place-items-center bg-[#f4f3f1] p-5">
+    <section className="panel w-full max-w-md p-6 text-center">
+      <h1 className="text-lg font-bold">Não foi possível validar sua conta</h1>
+      <p className="mt-2 text-sm text-muted-foreground">Verifique sua conexão e tente novamente.</p>
+      <button className="button-primary mt-5" onClick={retry}>Tentar novamente</button>
+    </section>
+  </main>;
+}
+
+function useSignedInProfile() {
+  const auth = useUser();
+  const profile = useGetMyProfile({
+    query: {
+      queryKey: getGetMyProfileQueryKey(),
+      enabled: auth.isLoaded && Boolean(auth.isSignedIn),
+      retry: false,
+    },
+  });
+  return { auth, profile };
+}
+
+function UserPortalRoute() {
+  const { auth, profile } = useSignedInProfile();
+  if (!auth.isLoaded || (auth.isSignedIn && profile.isLoading)) return <ProfileLoading />;
+  if (!auth.isSignedIn) return <Redirect to="/" />;
+  if (profile.isError || !profile.data) return <ProfileError retry={() => void profile.refetch()} />;
+  if (profile.data.role === 'PENDING') return <PendingApproval profile={profile.data} />;
+  if (profile.data.role === 'COURIER') return <CourierPortal profile={profile.data} />;
+  if (profile.data.role === 'STORE_MANAGER' || profile.data.role === 'STORE_STAFF') {
+    return <StorePortal profile={profile.data} />;
+  }
+  return <RoutedErrorBoundary><AppShell profile={profile.data}><Dashboard /></AppShell></RoutedErrorBoundary>;
+}
+
+function CentralRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
+  const { auth, profile } = useSignedInProfile();
+  if (!auth.isLoaded || (auth.isSignedIn && profile.isLoading)) return <ProfileLoading />;
+  if (!auth.isSignedIn) return <Redirect to="/" />;
+  if (profile.isError || !profile.data) return <ProfileError retry={() => void profile.refetch()} />;
+  if (profile.data.role === 'PENDING') return <PendingApproval profile={profile.data} />;
+  if (profile.data.role !== 'ADMIN' && profile.data.role !== 'CENTRAL') return <Redirect to="/user-portal" />;
+  if (adminOnly && profile.data.role !== 'ADMIN') {
+    return <main className="grid min-h-[100dvh] place-items-center bg-[#f4f3f1] p-5"><section className="panel p-6 text-center"><h1 className="font-bold">Acesso restrito</h1><p className="mt-2 text-sm text-muted-foreground">Somente administradores podem gerenciar perfis.</p><Link className="button-primary mt-4" href="/">Voltar ao painel</Link></section></main>;
+  }
+  return <RoutedErrorBoundary><AppShell profile={profile.data}>{children}</AppShell></RoutedErrorBoundary>;
+}
+
+function HomeRoute() {
+  return <Show when="signed-in"><Redirect to="/user-portal" /></Show>;
+}
+
+function ClerkRoutes() {
+  const [, setLocation] = useLocation();
+  const stripBase = (path: string) =>
+    basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
+
+  return <ClerkProvider
+    publishableKey={clerkPubKey}
+    proxyUrl={clerkProxyUrl}
+    appearance={clerkAppearance}
+    signInUrl={`${basePath}/sign-in`}
+    signUpUrl={`${basePath}/sign-up`}
+    localization={{
+      ...ptBR,
+      signIn: {
+        ...ptBR.signIn,
+        start: { ...ptBR.signIn?.start, title: 'Bem-vindo de volta', subtitle: 'Entre para acompanhar as entregas.' },
+      },
+      signUp: {
+        ...ptBR.signUp,
+        start: { ...ptBR.signUp?.start, title: 'Solicite seu acesso', subtitle: 'Sua conta será liberada por um administrador.' },
+      },
+    }}
+    routerPush={(to) => setLocation(stripBase(to))}
+    routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+  >
+    <QueryClientProvider client={queryClient}>
+      <ClerkQueryClientCacheInvalidator />
+      <TooltipProvider>
+        <Switch>
+          <Route path="/" component={HomeRedirect}/>
+          <Route path="/user-portal" component={UserPortalRoute}/>
+          <Route path="/deliveries/:deliveryId" component={() => <CentralRoute><DeliveryDetail/></CentralRoute>}/>
+          <Route path="/access" component={() => <CentralRoute adminOnly><AccessManagement/></CentralRoute>}/>
+          <Route path="/sign-in/*?" component={SignInPage}/>
+          <Route path="/sign-up/*?" component={SignUpPage}/>
+          <Route component={NotFound}/>
+        </Switch>
+        <Toaster/>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ClerkProvider>;
+}
+
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router/></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
+  return <WouterRouter base={basePath}><ClerkRoutes/></WouterRouter>;
 }
 export default App;

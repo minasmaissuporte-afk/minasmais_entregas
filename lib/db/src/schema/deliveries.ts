@@ -32,6 +32,30 @@ export const couriersTable = pgTable(
   (table) => [index("couriers_status_idx").on(table.status)],
 );
 
+export const appUsersTable = pgTable(
+  "app_users",
+  {
+    id: text("id").primaryKey(),
+    clerkUserId: text("clerk_user_id").unique(),
+    email: text("email").notNull().unique(),
+    name: text("name").notNull(),
+    role: text("role").notNull().default("PENDING"),
+    storeId: text("store_id").references(() => storesTable.id),
+    courierId: text("courier_id").references(() => couriersTable.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("app_users_role_idx").on(table.role),
+    index("app_users_store_idx").on(table.storeId),
+    index("app_users_courier_idx").on(table.courierId),
+  ],
+);
+
 export const deliveriesTable = pgTable(
   "deliveries",
   {
@@ -48,6 +72,9 @@ export const deliveriesTable = pgTable(
     courierId: text("courier_id").references(() => couriersTable.id),
     status: text("status").notNull().default("REQUESTED"),
     priority: text("priority").notNull().default("normal"),
+    deliveryAmountCents: integer("delivery_amount_cents")
+      .notNull()
+      .default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

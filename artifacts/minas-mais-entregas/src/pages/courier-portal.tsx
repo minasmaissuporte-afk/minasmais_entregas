@@ -1,0 +1,211 @@
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getGetCourierEarningsQueryKey,
+  getListDeliveriesQueryKey,
+  useGetCourierEarnings,
+  useListDeliveries,
+  useUpdateDeliveryStatus,
+  type AppUser,
+} from "@workspace/api-client-react";
+import { useClerk } from "@clerk/react";
+import { Bike, CheckCircle2, Clock3, LogOut, PackageCheck } from "lucide-react";
+import { useState } from "react";
+
+type Period = "day" | "week" | "month";
+const periodNames: Record<Period, string> = {
+  day: "Hoje",
+  week: "Esta semana",
+  month: "Este mês",
+};
+const nextCourierStatus: Record<string, string> = {
+  OFFERED: "ACCEPTED",
+  ACCEPTED: "TO_STORE",
+  TO_STORE: "AT_STORE",
+  AT_STORE: "IN_TRANSIT",
+  IN_TRANSIT: "COMPLETED",
+};
+const nextStatusLabel: Record<string, string> = {
+  OFFERED: "Aceitar entrega",
+  ACCEPTED: "Iniciar ida à loja",
+  TO_STORE: "Confirmar chegada à loja",
+  AT_STORE: "Confirmar saída para entrega",
+  IN_TRANSIT: "Confirmar entrega concluída",
+};
+const statusLabel: Record<string, string> = {
+  OFFERED: "Oferta enviada",
+  ACCEPTED: "Aceita",
+  TO_STORE: "A caminho da unidade",
+  AT_STORE: "Na unidade",
+  IN_TRANSIT: "Em entrega",
+  COMPLETED: "Concluída",
+};
+const money = (amount: number) =>
+  amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+export default function CourierPortal({ profile }: { profile: AppUser }) {
+  const { signOut } = useClerk();
+  const queryClient = useQueryClient();
+  const [period, setPeriod] = useState<Period>("day");
+  const [actionError, setActionError] = useState("");
+  const earnings = useGetCourierEarnings(
+    { period },
+    { query: { queryKey: getGetCourierEarningsQueryKey({ period }), refetchInterval: 15000 } },
+  );
+  const deliveries = useListDeliveries(
+    {},
+    { query: { queryKey: getListDeliveriesQueryKey(), refetchInterval: 15000 } },
+  );
+  const updateStatus = useUpdateDeliveryStatus();
+
+  const updateDelivery = (deliveryId: string, status: string) => {
+    setActionError("");
+    updateStatus.mutate(
+      {
+        deliveryId,
+        data: {
+          status: status as "ACCEPTED" | "TO_STORE" | "AT_STORE" | "IN_TRANSIT" | "COMPLETED" | "CANCELLED",
+        },
+      },
+      {
+        onSuccess: async () => {
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
+            queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period }) }),
+          ]);
+        },
+        onError: () => setActionError("Não foi possível atualizar esta entrega. Tente novamente."),
+      },
+    );
+  };
+
+  return (
+    <main className="min-h-[100dvh] bg-[#f4f3f1] px-4 pb-10 pt-4 text-[#24272d] sm:px-6">
+      <div className="mx-auto max-w-2xl">
+        <header className="flex items-center justify-between rounded-xl border border-[#e7e6e3] bg-white px-4 py-3">
+          <div className="flex items-center gap-3">
+            <span className="brand-mark"><Bike size={18} /></span>
+            <div>
+              <div className="text-sm font-bold">Minas Mais</div>
+              <div className="text-[11px] text-muted-foreground">Área do motoboy</div>
+            </div>
+          </div>
+          <button
+            className="button-quiet"
+            onClick={() => void signOut({ redirectUrl: import.meta.env.BASE_URL })}
+          >
+            <LogOut size={15} /> Sair
+          </button>
+        </header>
+
+        <section className="mt-5 rounded-2xl bg-[#a91d2a] p-5 text-white shadow-sm sm:p-6">
+          <div className="text-xs text-white/75">Olá, {profile.name.split(" ")[0]}</div>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight">Seu resumo de entregas</h1>
+          <div className="mt-5 flex flex-wrap gap-2" aria-label="Período do resumo">
+            {(["day", "week", "month"] as const).map((option) => (
+              <button
+                key={option}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  period === option ? "bg-white text-[#a91d2a]" : "bg-white/15 text-white hover:bg-white/25"
+                }`}
+                aria-pressed={period === option}
+                onClick={() => setPeriod(option)}
+              >
+                {periodNames[option]}
+              </button>
+            ))}
+          </div>
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-white/10 p-4">
+              <div className="flex items-center gap-2 text-xs text-white/75"><PackageCheck size={15} /> Entregas concluídas</div>
+              <div className="mt-2 text-3xl font-bold tabular-nums">
+                {earnings.isLoading ? "—" : earnings.data?.completedDeliveries ?? "—"}
+              </div>
+            </div>
+            <div className="rounded-xl bg-white/10 p-4">
+              <div className="flex items-center gap-2 text-xs text-white/75"><CheckCircle2 size={15} /> A receber</div>
+              <div className="mt-2 text-2xl font-bold tabular-nums">
+                {earnings.isLoading ? "—" : money(earnings.data?.amountToReceive ?? 0)}
+              </div>
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] text-white/75">
+            Valores de entregas concluídas em {periodNames[period].toLocaleLowerCase()}.
+          </p>
+        </section>
+
+        {earnings.isError && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            Não foi possível consultar seu resumo financeiro.
+          </div>
+        )}
+        {actionError && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {actionError}
+          </div>
+        )}
+
+        <section className="mt-6">
+          <div className="mb-3 flex items-end justify-between">
+            <div>
+              <div className="eyebrow">SUA OPERAÇÃO</div>
+              <h2 className="mt-1 text-lg font-bold">Entregas atribuídas</h2>
+            </div>
+            <span className="text-xs text-muted-foreground">{deliveries.data?.length ?? 0} registros</span>
+          </div>
+          {deliveries.isLoading ? (
+            <div className="panel p-5 text-sm text-muted-foreground">Carregando suas entregas…</div>
+          ) : deliveries.isError ? (
+            <div className="panel p-5 text-sm text-red-700">Não foi possível carregar as entregas.</div>
+          ) : deliveries.data?.length ? (
+            <div className="space-y-3">
+              {deliveries.data.map((delivery) => {
+                const nextStatus = nextCourierStatus[delivery.status];
+                return (
+                  <article key={delivery.id} className="panel p-4 sm:p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-mono text-xs font-semibold text-[#a91d2a]">{delivery.code}</div>
+                        <h3 className="mt-1 text-sm font-bold">{delivery.storeName}</h3>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{delivery.destination}</p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-[#f6f4f1] px-2.5 py-1 text-[10px] font-semibold">
+                        {statusLabel[delivery.status] ?? delivery.status}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                      <span className="text-sm font-semibold">{money(delivery.deliveryAmount)}</span>
+                      {nextStatus ? (
+                        <button
+                          className="button-primary min-h-9"
+                          disabled={updateStatus.isPending}
+                          onClick={() => updateDelivery(delivery.id, nextStatus)}
+                        >
+                          {updateStatus.isPending ? "Salvando…" : nextStatusLabel[delivery.status]}
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700">
+                          <CheckCircle2 size={14} /> Finalizada
+                        </span>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="panel p-6 text-center">
+              <Clock3 className="mx-auto text-muted-foreground" size={22} />
+              <p className="mt-2 text-sm font-semibold">Nenhuma entrega atribuída</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Quando a central enviar uma oferta para você, ela aparecerá aqui.
+              </p>
+            </div>
+          )}
+        </section>
+        <footer className="mt-6 text-center text-[11px] text-muted-foreground">
+          {profile.email} · valores calculados pelo sistema a partir do valor cadastrado por entrega.
+        </footer>
+      </div>
+    </main>
+  );
+}

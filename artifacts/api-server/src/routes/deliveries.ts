@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { getAuth } from "@clerk/express";
+import { and, desc, eq, gte, ilike, or } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
+  GetCourierEarningsQueryParams,
+  GetCourierEarningsResponse,
   CreateDeliveryBody,
   CreateDeliveryResponse,
   DispatchDeliveryBody,
@@ -10,23 +13,223 @@ import {
   GetDashboardSummaryResponse,
   GetDeliveryParams,
   GetDeliveryResponse,
+  GetMyProfileResponse,
+  ListAccessUsersResponse,
   ListCouriersResponse,
   ListDeliveriesQueryParams,
   ListDeliveriesResponse,
   ListStoresResponse,
+  UpdateAccessUserBody,
+  UpdateAccessUserParams,
+  UpdateAccessUserResponse,
   UpdateDeliveryStatusBody,
   UpdateDeliveryStatusParams,
   UpdateDeliveryStatusResponse,
 } from "@workspace/api-zod";
 import {
+  appUsersTable,
   couriersTable,
   db,
   deliveriesTable,
   deliveryEventsTable,
   storesTable,
 } from "@workspace/db";
+import {
+  requireAuthentication,
+  requireRole,
+  resolveAppUser,
+  type AppRole,
+  type AppUserProfile,
+} from "../middlewares/accessControl";
 
 const router: IRouter = Router();
+
+router.use(requireAuthentication);
+
+function canAccessDelivery(profile: AppUserProfile, delivery: { storeId: string; courierId: string | null }) {
+  if (profile.role === "ADMIN" || profile.role === "CENTRAL") return true;
+  if (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") {
+    return Boolean(profile.storeId && profile.storeId === delivery.storeId);
+  }
+  return profile.role === "COURIER" &&
+    Boolean(profile.courierId && profile.courierId === delivery.courierId);
+}
+
+function startOfSaoPauloPeriod(period: "day" | "week" | "month") {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const getPart = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  const localDate = new Date(Date.UTC(getPart("year"), getPart("month") - 1, getPart("day")));
+  if (period === "month") localDate.setUTCDate(1);
+  if (period === "week") {
+    const daysSinceMonday = (localDate.getUTCDay() + 6) % 7;
+    localDate.setUTCDate(localDate.getUTCDate() - daysSinceMonday);
+  }
+
+  const midnightUtcWall = Date.UTC(
+    localDate.getUTCFullYear(),
+    localDate.getUTCMonth(),
+    localDate.getUTCDate(),
+  );
+  const offset = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    timeZoneName: "longOffset",
+  })
+    .formatToParts(new Date(midnightUtcWall))
+    .find((part) => part.type === "timeZoneName")?.value;
+  const parsedOffset = offset?.match(/^GMT([+-])(\d{2}):(\d{2})$/);
+  const offsetMinutes = parsedOffset
+    ? (parsedOffset[1] === "-" ? -1 : 1) *
+      (Number(parsedOffset[2]) * 60 + Number(parsedOffset[3]))
+    : -180;
+  return new Date(midnightUtcWall - offsetMinutes * 60_000);
+}
+
+router.get("/me", async (req, res): Promise<void> => {
+  const clerkUserId = getAuth(req).userId;
+  if (!clerkUserId) {
+    res.status(401).json({ error: "Autenticação necessária." });
+    return;
+  }
+  const profile = await resolveAppUser(clerkUserId);
+  if (!profile) {
+    res.status(403).json({ error: "Não foi possível identificar o e-mail da conta." });
+    return;
+  }
+  res.json(GetMyProfileResponse.parse(profile));
+});
+
+router.get("/access/users", requireRole("ADMIN"), async (_req, res): Promise<void> => {
+  const users = await db.select().from(appUsersTable).orderBy(appUsersTable.email);
+  res.json(ListAccessUsersResponse.parse(users));
+});
+
+router.patch(
+  "/access/users/:userId",
+  requireRole("ADMIN"),
+  async (req, res): Promise<void> => {
+    const params = UpdateAccessUserParams.safeParse(req.params);
+    const body = UpdateAccessUserBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({ error: "Dados de acesso inválidos." });
+      return;
+    }
+
+    const profile = res.locals.appUser as AppUserProfile;
+    const [target] = await db
+      .select()
+      .from(appUsersTable)
+      .where(eq(appUsersTable.id, params.data.userId))
+      .limit(1);
+    if (!target) {
+      res.status(404).json({ error: "Conta não encontrada." });
+      return;
+    }
+    if (
+      target.clerkUserId === profile.clerkUserId &&
+      body.data.role !== "ADMIN"
+    ) {
+      res.status(400).json({ error: "O administrador não pode remover o próprio acesso." });
+      return;
+    }
+
+    const role = body.data.role as AppRole;
+    const storeId = ["STORE_MANAGER", "STORE_STAFF"].includes(role)
+      ? body.data.storeId ?? null
+      : null;
+    const courierId = role === "COURIER" ? body.data.courierId ?? null : null;
+    if (role === "STORE_MANAGER" || role === "STORE_STAFF") {
+      if (!storeId) {
+        res.status(400).json({ error: "Selecione a unidade desta conta." });
+        return;
+      }
+      const [store] = await db
+        .select({ id: storesTable.id })
+        .from(storesTable)
+        .where(eq(storesTable.id, storeId))
+        .limit(1);
+      if (!store) {
+        res.status(400).json({ error: "Unidade não encontrada." });
+        return;
+      }
+    }
+    if (role === "COURIER") {
+      if (!courierId) {
+        res.status(400).json({ error: "Vincule o motoboy a um cadastro." });
+        return;
+      }
+      const [courier] = await db
+        .select({ id: couriersTable.id })
+        .from(couriersTable)
+        .where(eq(couriersTable.id, courierId))
+        .limit(1);
+      if (!courier) {
+        res.status(400).json({ error: "Cadastro de motoboy não encontrado." });
+        return;
+      }
+    }
+
+    const [updated] = await db
+      .update(appUsersTable)
+      .set({ role, storeId, courierId, updatedAt: new Date() })
+      .where(eq(appUsersTable.id, target.id))
+      .returning();
+    res.json(UpdateAccessUserResponse.parse(updated));
+  },
+);
+
+router.get(
+  "/courier/earnings",
+  requireRole("COURIER"),
+  async (req, res): Promise<void> => {
+    const query = GetCourierEarningsQueryParams.safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: query.error.message });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+    const period = query.data.period ?? "day";
+    const rows = await db
+      .select({
+        id: deliveriesTable.id,
+        deliveryAmountCents: deliveriesTable.deliveryAmountCents,
+        completedAt: deliveryEventsTable.timestamp,
+      })
+      .from(deliveriesTable)
+      .innerJoin(
+        deliveryEventsTable,
+        eq(deliveryEventsTable.deliveryId, deliveriesTable.id),
+      )
+      .where(
+        and(
+          eq(deliveriesTable.courierId, profile.courierId),
+          eq(deliveriesTable.status, "COMPLETED"),
+          eq(deliveryEventsTable.kind, "completed"),
+          gte(deliveryEventsTable.timestamp, startOfSaoPauloPeriod(period)),
+        ),
+      );
+    const uniqueRows = [...new Map(rows.map((row) => [row.id, row])).values()];
+    const totalCents = uniqueRows.reduce(
+      (total, row) => total + row.deliveryAmountCents,
+      0,
+    );
+    res.json(
+      GetCourierEarningsResponse.parse({
+        period,
+        completedDeliveries: uniqueRows.length,
+        amountToReceive: Number((totalCents / 100).toFixed(2)),
+      }),
+    );
+  },
+);
 
 const eventLabels: Record<string, string> = {
   REQUESTED: "Entrega solicitada",
@@ -54,6 +257,7 @@ async function deliveryView(deliveryId: string) {
     .limit(1);
 
   if (!row) return null;
+  const { deliveryAmountCents, ...deliveryData } = row.delivery;
 
   const events = await db
     .select()
@@ -62,7 +266,8 @@ async function deliveryView(deliveryId: string) {
     .orderBy(deliveryEventsTable.timestamp);
 
   return {
-    ...row.delivery,
+    ...deliveryData,
+    deliveryAmount: deliveryAmountCents / 100,
     storeName: row.storeName,
     courierName: row.courierName,
     courierInitials: row.courierInitials,
@@ -85,7 +290,10 @@ async function addEvent(
   });
 }
 
-router.get("/dashboard/summary", async (_req, res): Promise<void> => {
+router.get(
+  "/dashboard/summary",
+  requireRole("ADMIN", "CENTRAL"),
+  async (_req, res): Promise<void> => {
   const deliveries = await db.select().from(deliveriesTable);
   const couriers = await db.select().from(couriersTable);
   const events = await db.select().from(deliveryEventsTable);
@@ -161,9 +369,14 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     averageTotalMinutes: average(completionTimes),
   });
   res.json(parsed);
-});
+  },
+);
 
-router.get("/deliveries", async (req, res): Promise<void> => {
+router.get(
+  "/deliveries",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"),
+  async (req, res): Promise<void> => {
+  const profile = res.locals.appUser as AppUserProfile;
   const query = ListDeliveriesQueryParams.safeParse(req.query);
   if (!query.success) {
     res.status(400).json({ error: query.error.message });
@@ -171,6 +384,19 @@ router.get("/deliveries", async (req, res): Promise<void> => {
   }
 
   const filters = [];
+  if (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") {
+    if (!profile.storeId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a uma unidade." });
+      return;
+    }
+    filters.push(eq(deliveriesTable.storeId, profile.storeId));
+  } else if (profile.role === "COURIER") {
+    if (!profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+    filters.push(eq(deliveriesTable.courierId, profile.courierId));
+  }
   if (query.data.status) filters.push(eq(deliveriesTable.status, query.data.status));
   if (query.data.storeId)
     filters.push(eq(deliveriesTable.storeId, query.data.storeId));
@@ -197,19 +423,31 @@ router.get("/deliveries", async (req, res): Promise<void> => {
     selected.map((item) => deliveryView(item.id)),
   );
   res.json(ListDeliveriesResponse.parse(deliveries.filter(Boolean)));
-});
+  },
+);
 
-router.post("/deliveries", async (req, res): Promise<void> => {
+router.post(
+  "/deliveries",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
+  async (req, res): Promise<void> => {
+  const profile = res.locals.appUser as AppUserProfile;
   const body = CreateDeliveryBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
     return;
   }
 
+  const storeId = profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF"
+    ? profile.storeId
+    : body.data.storeId;
+  if (!storeId || (profile.storeId && profile.storeId !== storeId)) {
+    res.status(403).json({ error: "A conta não pode registrar entregas para esta unidade." });
+    return;
+  }
   const [store] = await db
     .select()
     .from(storesTable)
-    .where(and(eq(storesTable.id, body.data.storeId), eq(storesTable.active, true)))
+    .where(and(eq(storesTable.id, storeId), eq(storesTable.active, true)))
     .limit(1);
   if (!store) {
     res.status(400).json({ error: "Loja não encontrada ou inativa." });
@@ -228,17 +466,22 @@ router.post("/deliveries", async (req, res): Promise<void> => {
       destination: body.data.destination.trim(),
       orderNumber: body.data.orderNumber.trim(),
       notes: body.data.notes?.trim() || null,
-      storeId: body.data.storeId,
+      storeId,
       status: "REQUESTED",
       priority: body.data.priority,
+      deliveryAmountCents: Math.round(body.data.deliveryAmount * 100),
     })
     .returning();
   await addEvent(created.id, "REQUESTED", eventLabels.REQUESTED);
   const view = await deliveryView(created.id);
   res.status(201).json(CreateDeliveryResponse.parse(view));
-});
+  },
+);
 
-router.get("/deliveries/:deliveryId", async (req, res): Promise<void> => {
+router.get(
+  "/deliveries/:deliveryId",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"),
+  async (req, res): Promise<void> => {
   const params = GetDeliveryParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -249,11 +492,18 @@ router.get("/deliveries/:deliveryId", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Entrega não encontrada." });
     return;
   }
+  const profile = res.locals.appUser as AppUserProfile;
+  if (!canAccessDelivery(profile, delivery)) {
+    res.status(403).json({ error: "Esta entrega não pertence à sua área de acesso." });
+    return;
+  }
   res.json(GetDeliveryResponse.parse(delivery));
-});
+  },
+);
 
 router.post(
   "/deliveries/:deliveryId/dispatch",
+  requireRole("ADMIN", "CENTRAL"),
   async (req, res): Promise<void> => {
     const params = DispatchDeliveryParams.safeParse(req.params);
     const body = DispatchDeliveryBody.safeParse(req.body);
@@ -339,6 +589,7 @@ router.post(
 
 router.patch(
   "/deliveries/:deliveryId/status",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"),
   async (req, res): Promise<void> => {
     const params = UpdateDeliveryStatusParams.safeParse(req.params);
     const body = UpdateDeliveryStatusBody.safeParse(req.body);
@@ -361,7 +612,17 @@ router.patch(
         .for("update");
       if (!delivery) return { error: "not_found" as const };
 
+      const profile = res.locals.appUser as AppUserProfile;
+      if (!canAccessDelivery(profile, delivery)) {
+        return { error: "forbidden" as const };
+      }
       const nextStatus = body.data.status;
+      if (
+        (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") &&
+        nextStatus !== "IN_TRANSIT"
+      ) {
+        return { error: "role_restricted" as const };
+      }
       const allowed: Record<string, string[]> = {
         REQUESTED: ["CANCELLED"],
         OFFERED: ["ACCEPTED", "CANCELLED"],
@@ -424,7 +685,12 @@ router.patch(
         deliveryId: delivery.id,
         kind: nextStatus.toLowerCase(),
         label,
-        actor: nextStatus === "ACCEPTED" ? "Motoboy" : "Central de entregas",
+        actor:
+          profile.role === "COURIER"
+            ? "Motoboy"
+            : profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF"
+              ? "Equipe da unidade"
+              : "Central de entregas",
       });
       return { deliveryId: delivery.id };
     });
@@ -434,6 +700,10 @@ router.patch(
       const message =
         result.error === "not_found"
           ? "Entrega não encontrada."
+          : result.error === "forbidden"
+            ? "Esta entrega não pertence à sua área de acesso."
+            : result.error === "role_restricted"
+              ? "Este perfil só pode confirmar a saída da unidade."
           : result.error === "no_courier"
             ? "Nenhum motoboy disponível pode aceitar esta oferta."
             : result.error === "courier_taken"
@@ -448,15 +718,28 @@ router.patch(
   },
 );
 
-router.get("/stores", async (_req, res): Promise<void> => {
-  const stores = await db
-    .select()
-    .from(storesTable)
-    .orderBy(storesTable.name);
+router.get(
+  "/stores",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
+  async (_req, res): Promise<void> => {
+  const profile = res.locals.appUser as AppUserProfile;
+  if ((profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") && !profile.storeId) {
+    res.status(403).json({ error: "Esta conta não está vinculada a uma unidade." });
+    return;
+  }
+  const query = db.select().from(storesTable);
+  const stores =
+    profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF"
+      ? await query.where(eq(storesTable.id, profile.storeId!)).orderBy(storesTable.name)
+      : await query.orderBy(storesTable.name);
   res.json(ListStoresResponse.parse(stores));
-});
+  },
+);
 
-router.get("/couriers", async (_req, res): Promise<void> => {
+router.get(
+  "/couriers",
+  requireRole("ADMIN", "CENTRAL"),
+  async (_req, res): Promise<void> => {
   const couriers = await db
     .select()
     .from(couriersTable)
@@ -469,6 +752,7 @@ router.get("/couriers", async (_req, res): Promise<void> => {
       })),
     ),
   );
-});
+  },
+);
 
 export default router;

@@ -18,4 +18,6 @@ export interface DeliveryInput {
   notes?: string;
   storeId: string;
   priority: DeliveryInputPriority;
+  /** @exclusiveMinimum 0 */
+  deliveryAmount: number;
 }

@@ -25,15 +25,19 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AppUser,
   Courier,
+  CourierEarnings,
   DashboardSummary,
   Delivery,
   DeliveryInput,
   DeliveryStatusInput,
   DispatchInput,
+  GetCourierEarningsParams,
   HealthStatus,
   ListDeliveriesParams,
-  Store
+  Store,
+  UserRoleInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -931,6 +935,405 @@ export function useListCouriers<TData = Awaited<ReturnType<typeof listCouriers>>
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListCouriersQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetMyProfileUrl = () => {
+
+
+
+
+  return `/api/me`
+}
+
+/**
+ * @summary Get the signed-in user's application profile
+ */
+export const getMyProfile = async ( options?: Parameters<typeof customFetch>[1]): Promise<AppUser> => {
+
+  return customFetch<AppUser>(getGetMyProfileUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyProfileQueryKey = () => {
+    return [
+    `/api/me`
+    ] as const;
+    }
+
+
+export const getGetMyProfileQueryOptions = <TData = Awaited<ReturnType<typeof getMyProfile>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMyProfile>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyProfileQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyProfile>>> = ({ signal }) => getMyProfile({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyProfile>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetMyProfileQueryResult = NonNullable<Awaited<ReturnType<typeof getMyProfile>>>
+export type GetMyProfileQueryError = ErrorType<void>
+
+
+export function useGetMyProfile<TData = Awaited<ReturnType<typeof getMyProfile>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMyProfile>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getMyProfile>>,
+          TError,
+          Awaited<ReturnType<typeof getMyProfile>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetMyProfile<TData = Awaited<ReturnType<typeof getMyProfile>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMyProfile>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getMyProfile>>,
+          TError,
+          Awaited<ReturnType<typeof getMyProfile>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetMyProfile<TData = Awaited<ReturnType<typeof getMyProfile>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMyProfile>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get the signed-in user's application profile
+ */
+
+export function useGetMyProfile<TData = Awaited<ReturnType<typeof getMyProfile>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMyProfile>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetMyProfileQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListAccessUsersUrl = () => {
+
+
+
+
+  return `/api/access/users`
+}
+
+/**
+ * @summary List accounts and their application roles
+ */
+export const listAccessUsers = async ( options?: Parameters<typeof customFetch>[1]): Promise<AppUser[]> => {
+
+  return customFetch<AppUser[]>(getListAccessUsersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAccessUsersQueryKey = () => {
+    return [
+    `/api/access/users`
+    ] as const;
+    }
+
+
+export const getListAccessUsersQueryOptions = <TData = Awaited<ReturnType<typeof listAccessUsers>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccessUsers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAccessUsersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAccessUsers>>> = ({ signal }) => listAccessUsers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAccessUsers>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListAccessUsersQueryResult = NonNullable<Awaited<ReturnType<typeof listAccessUsers>>>
+export type ListAccessUsersQueryError = ErrorType<unknown>
+
+
+export function useListAccessUsers<TData = Awaited<ReturnType<typeof listAccessUsers>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccessUsers>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAccessUsers>>,
+          TError,
+          Awaited<ReturnType<typeof listAccessUsers>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAccessUsers<TData = Awaited<ReturnType<typeof listAccessUsers>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccessUsers>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAccessUsers>>,
+          TError,
+          Awaited<ReturnType<typeof listAccessUsers>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAccessUsers<TData = Awaited<ReturnType<typeof listAccessUsers>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccessUsers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List accounts and their application roles
+ */
+
+export function useListAccessUsers<TData = Awaited<ReturnType<typeof listAccessUsers>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccessUsers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListAccessUsersQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateAccessUserUrl = (userId: string,) => {
+
+
+
+
+  return `/api/access/users/${userId}`
+}
+
+/**
+ * @summary Update an account role and scope
+ */
+export const updateAccessUser = async (userId: string,
+    userRoleInput: UserRoleInput, options?: Parameters<typeof customFetch>[1]): Promise<AppUser> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AppUser>(getUpdateAccessUserUrl(userId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(userRoleInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateAccessUserMutationKey = () => ['updateAccessUser'] as const;
+
+export const getUpdateAccessUserMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAccessUser>>, TError,UpdateAccessUserMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAccessUser>>, TError,UpdateAccessUserMutationVariables, TContext> => {
+
+const mutationKey = getUpdateAccessUserMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAccessUser>>, UpdateAccessUserMutationVariables> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  updateAccessUser(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAccessUserMutationResult = NonNullable<Awaited<ReturnType<typeof updateAccessUser>>>
+    export type UpdateAccessUserMutationBody = BodyType<UserRoleInput>
+    export type UpdateAccessUserMutationError = ErrorType<unknown>
+    export type UpdateAccessUserMutationVariables = {userId: string;data: BodyType<UserRoleInput>}
+
+    /**
+ * @summary Update an account role and scope
+ */
+export const useUpdateAccessUser = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAccessUser>>, TError,UpdateAccessUserMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateAccessUser>>,
+        TError,
+        UpdateAccessUserMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateAccessUserMutationOptions(options), queryClient);
+    }
+
+export const getGetCourierEarningsUrl = (params?: GetCourierEarningsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/courier/earnings?${stringifiedParams}` : `/api/courier/earnings`
+}
+
+/**
+ * @summary Get completed deliveries and payable total for a period
+ */
+export const getCourierEarnings = async (params?: GetCourierEarningsParams, options?: Parameters<typeof customFetch>[1]): Promise<CourierEarnings> => {
+
+  return customFetch<CourierEarnings>(getGetCourierEarningsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCourierEarningsQueryKey = (params?: GetCourierEarningsParams,) => {
+    return [
+    `/api/courier/earnings`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCourierEarningsQueryOptions = <TData = Awaited<ReturnType<typeof getCourierEarnings>>, TError = ErrorType<unknown>>(params?: GetCourierEarningsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierEarnings>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCourierEarningsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCourierEarnings>>> = ({ signal }) => getCourierEarnings(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCourierEarnings>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCourierEarningsQueryResult = NonNullable<Awaited<ReturnType<typeof getCourierEarnings>>>
+export type GetCourierEarningsQueryError = ErrorType<unknown>
+
+
+export function useGetCourierEarnings<TData = Awaited<ReturnType<typeof getCourierEarnings>>, TError = ErrorType<unknown>>(
+ params: undefined |  GetCourierEarningsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierEarnings>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCourierEarnings>>,
+          TError,
+          Awaited<ReturnType<typeof getCourierEarnings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCourierEarnings<TData = Awaited<ReturnType<typeof getCourierEarnings>>, TError = ErrorType<unknown>>(
+ params?: GetCourierEarningsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierEarnings>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCourierEarnings>>,
+          TError,
+          Awaited<ReturnType<typeof getCourierEarnings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCourierEarnings<TData = Awaited<ReturnType<typeof getCourierEarnings>>, TError = ErrorType<unknown>>(
+ params?: GetCourierEarningsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierEarnings>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get completed deliveries and payable total for a period
+ */
+
+export function useGetCourierEarnings<TData = Awaited<ReturnType<typeof getCourierEarnings>>, TError = ErrorType<unknown>>(
+ params?: GetCourierEarningsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierEarnings>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCourierEarningsQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

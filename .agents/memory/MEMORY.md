@@ -1,1 +1,2 @@
 - [API client codegen](api-client-codegen.md) — Keep generated React Query hooks aligned with TanStack Query v5 and DOM iterable types.
+- [App do motoboy e repasses](courier-mobile-and-earnings.md) — A experiência do motoboy deve ser nativa em iOS/Android e exibir entregas e valor a receber.

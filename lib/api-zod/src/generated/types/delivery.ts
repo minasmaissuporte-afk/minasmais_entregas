@@ -35,5 +35,7 @@ export interface Delivery {
   estimatedMinutes?: number | null;
   /** @nullable */
   distanceKm?: number | null;
+  /** @minimum 0 */
+  deliveryAmount: number;
   events: DeliveryEvent[];
 }

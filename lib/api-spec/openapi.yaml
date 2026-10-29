@@ -16,6 +16,10 @@ tags:
     description: Operational dashboard
   - name: directory
     description: Stores and couriers
+  - name: access
+    description: Account access and role management
+  - name: courier
+    description: Courier-specific operations
 paths:
   /healthz:
     get:
@@ -182,6 +186,76 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Courier"
+  /me:
+    get:
+      operationId: getMyProfile
+      tags: [access]
+      summary: Get the signed-in user's application profile
+      responses:
+        "200":
+          description: Current account profile and access role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
+        "401":
+          description: Authentication required
+  /access/users:
+    get:
+      operationId: listAccessUsers
+      tags: [access]
+      summary: List accounts and their application roles
+      responses:
+        "200":
+          description: Accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AppUser"
+  /access/users/{userId}:
+    patch:
+      operationId: updateAccessUser
+      tags: [access]
+      summary: Update an account role and scope
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRoleInput"
+      responses:
+        "200":
+          description: Updated account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
+  /courier/earnings:
+    get:
+      operationId: getCourierEarnings
+      tags: [courier]
+      summary: Get completed deliveries and payable total for a period
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [day, week, month]
+      responses:
+        "200":
+          description: Completed delivery count and amount to receive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourierEarnings"
 components:
   schemas:
     HealthStatus:
@@ -193,7 +267,7 @@ components:
         - status
     Delivery:
       type: object
-      required: [id, code, customerName, destination, storeId, storeName, status, priority, createdAt, events]
+      required: [id, code, customerName, destination, storeId, storeName, status, priority, deliveryAmount, createdAt, events]
       properties:
         id: { type: string }
         code: { type: string }
@@ -214,6 +288,7 @@ components:
         lastLocationAt: { type: ["string", "null"], format: date-time }
         estimatedMinutes: { type: ["integer", "null"] }
         distanceKm: { type: ["number", "null"] }
+        deliveryAmount: { type: number, minimum: 0 }
         events:
           type: array
           items:
@@ -229,7 +304,7 @@ components:
         actor: { type: ["string", "null"] }
     DeliveryInput:
       type: object
-      required: [customerName, destination, orderNumber, storeId, priority]
+      required: [customerName, destination, orderNumber, storeId, priority, deliveryAmount]
       properties:
         customerName: { type: string, minLength: 2 }
         customerPhone: { type: string }
@@ -238,6 +313,7 @@ components:
         notes: { type: string }
         storeId: { type: string }
         priority: { type: string, enum: [normal, urgent] }
+        deliveryAmount: { type: number, exclusiveMinimum: 0 }
     DispatchInput:
       type: object
       required: [mode]
@@ -288,4 +364,33 @@ components:
         busyCouriers: { type: integer }
         averageAcceptanceMinutes: { type: number }
         averageTotalMinutes: { type: number }
+    AppUser:
+      type: object
+      required: [id, clerkUserId, email, name, role, storeId, courierId]
+      properties:
+        id: { type: string }
+        clerkUserId: { type: ["string", "null"] }
+        email: { type: string }
+        name: { type: string }
+        role:
+          type: string
+          enum: [ADMIN, CENTRAL, STORE_MANAGER, STORE_STAFF, COURIER, PENDING]
+        storeId: { type: ["string", "null"] }
+        courierId: { type: ["string", "null"] }
+    UserRoleInput:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [ADMIN, CENTRAL, STORE_MANAGER, STORE_STAFF, COURIER, PENDING]
+        storeId: { type: ["string", "null"] }
+        courierId: { type: ["string", "null"] }
+    CourierEarnings:
+      type: object
+      required: [period, completedDeliveries, amountToReceive]
+      properties:
+        period: { type: string, enum: [day, week, month] }
+        completedDeliveries: { type: integer }
+        amountToReceive: { type: number }
 

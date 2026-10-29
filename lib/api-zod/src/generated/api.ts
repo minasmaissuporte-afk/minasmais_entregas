@@ -45,6 +45,10 @@ export const ListDeliveriesQueryParams = zod.object({
   "storeId": zod.coerce.string().optional()
 })
 
+export const listDeliveriesResponseDeliveryAmountMin = 0;
+
+
+
 export const ListDeliveriesResponseItem = zod.object({
   "id": zod.string(),
   "code": zod.string(),
@@ -65,6 +69,7 @@ export const ListDeliveriesResponseItem = zod.object({
   "lastLocationAt": zod.coerce.date().nullish(),
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
+  "deliveryAmount": zod.number().min(listDeliveriesResponseDeliveryAmountMin),
   "events": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -84,6 +89,8 @@ export const createDeliveryBodyCustomerNameMin = 2;
 export const createDeliveryBodyDestinationMin = 5;
 
 
+export const createDeliveryBodyDeliveryAmountExclusiveMin = 0;
+
 
 
 export const CreateDeliveryBody = zod.object({
@@ -93,8 +100,13 @@ export const CreateDeliveryBody = zod.object({
   "orderNumber": zod.string().min(1),
   "notes": zod.string().optional(),
   "storeId": zod.string(),
-  "priority": zod.enum(['normal', 'urgent'])
+  "priority": zod.enum(['normal', 'urgent']),
+  "deliveryAmount": zod.number().gt(createDeliveryBodyDeliveryAmountExclusiveMin)
 })
+
+export const createDeliveryResponseDeliveryAmountMin = 0;
+
+
 
 export const CreateDeliveryResponse = zod.object({
   "id": zod.string(),
@@ -116,6 +128,7 @@ export const CreateDeliveryResponse = zod.object({
   "lastLocationAt": zod.coerce.date().nullish(),
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
+  "deliveryAmount": zod.number().min(createDeliveryResponseDeliveryAmountMin),
   "events": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -132,6 +145,10 @@ export const CreateDeliveryResponse = zod.object({
 export const GetDeliveryParams = zod.object({
   "deliveryId": zod.coerce.string()
 })
+
+export const getDeliveryResponseDeliveryAmountMin = 0;
+
+
 
 export const GetDeliveryResponse = zod.object({
   "id": zod.string(),
@@ -153,6 +170,7 @@ export const GetDeliveryResponse = zod.object({
   "lastLocationAt": zod.coerce.date().nullish(),
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
+  "deliveryAmount": zod.number().min(getDeliveryResponseDeliveryAmountMin),
   "events": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -175,6 +193,10 @@ export const DispatchDeliveryBody = zod.object({
   "courierId": zod.string().optional()
 })
 
+export const dispatchDeliveryResponseDeliveryAmountMin = 0;
+
+
+
 export const DispatchDeliveryResponse = zod.object({
   "id": zod.string(),
   "code": zod.string(),
@@ -195,6 +217,7 @@ export const DispatchDeliveryResponse = zod.object({
   "lastLocationAt": zod.coerce.date().nullish(),
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
+  "deliveryAmount": zod.number().min(dispatchDeliveryResponseDeliveryAmountMin),
   "events": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -217,6 +240,10 @@ export const UpdateDeliveryStatusBody = zod.object({
   "note": zod.string().optional()
 })
 
+export const updateDeliveryStatusResponseDeliveryAmountMin = 0;
+
+
+
 export const UpdateDeliveryStatusResponse = zod.object({
   "id": zod.string(),
   "code": zod.string(),
@@ -237,6 +264,7 @@ export const UpdateDeliveryStatusResponse = zod.object({
   "lastLocationAt": zod.coerce.date().nullish(),
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
+  "deliveryAmount": zod.number().min(updateDeliveryStatusResponseDeliveryAmountMin),
   "events": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -273,5 +301,72 @@ export const ListCouriersResponseItem = zod.object({
   "lastLocationAt": zod.coerce.date().nullable()
 })
 export const ListCouriersResponse = zod.array(ListCouriersResponseItem)
+
+
+/**
+ * @summary Get the signed-in user's application profile
+ */
+export const GetMyProfileResponse = zod.object({
+  "id": zod.string(),
+  "clerkUserId": zod.string().nullable(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
+  "storeId": zod.string().nullable(),
+  "courierId": zod.string().nullable()
+})
+
+
+/**
+ * @summary List accounts and their application roles
+ */
+export const ListAccessUsersResponseItem = zod.object({
+  "id": zod.string(),
+  "clerkUserId": zod.string().nullable(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
+  "storeId": zod.string().nullable(),
+  "courierId": zod.string().nullable()
+})
+export const ListAccessUsersResponse = zod.array(ListAccessUsersResponseItem)
+
+
+/**
+ * @summary Update an account role and scope
+ */
+export const UpdateAccessUserParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const UpdateAccessUserBody = zod.object({
+  "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
+  "storeId": zod.string().nullish(),
+  "courierId": zod.string().nullish()
+})
+
+export const UpdateAccessUserResponse = zod.object({
+  "id": zod.string(),
+  "clerkUserId": zod.string().nullable(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
+  "storeId": zod.string().nullable(),
+  "courierId": zod.string().nullable()
+})
+
+
+/**
+ * @summary Get completed deliveries and payable total for a period
+ */
+export const GetCourierEarningsQueryParams = zod.object({
+  "period": zod.enum(['day', 'week', 'month']).optional()
+})
+
+export const GetCourierEarningsResponse = zod.object({
+  "period": zod.enum(['day', 'week', 'month']),
+  "completedDeliveries": zod.number().int(),
+  "amountToReceive": zod.number()
+})
 
 

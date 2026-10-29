@@ -46,6 +46,8 @@ export interface Delivery {
   estimatedMinutes?: number | null;
   /** @nullable */
   distanceKm?: number | null;
+  /** @minimum 0 */
+  deliveryAmount: number;
   events: DeliveryEvent[];
 }
 
@@ -68,6 +70,8 @@ export interface DeliveryInput {
   notes?: string;
   storeId: string;
   priority: DeliveryInputPriority;
+  /** @exclusiveMinimum 0 */
+  deliveryAmount: number;
 }
 
 export type DispatchInputMode = typeof DispatchInputMode[keyof typeof DispatchInputMode];
@@ -144,9 +148,82 @@ export interface DashboardSummary {
   averageTotalMinutes: number;
 }
 
+export type AppUserRole = typeof AppUserRole[keyof typeof AppUserRole];
+
+
+export const AppUserRole = {
+  ADMIN: 'ADMIN',
+  CENTRAL: 'CENTRAL',
+  STORE_MANAGER: 'STORE_MANAGER',
+  STORE_STAFF: 'STORE_STAFF',
+  COURIER: 'COURIER',
+  PENDING: 'PENDING',
+} as const;
+
+export interface AppUser {
+  id: string;
+  /** @nullable */
+  clerkUserId: string | null;
+  email: string;
+  name: string;
+  role: AppUserRole;
+  /** @nullable */
+  storeId: string | null;
+  /** @nullable */
+  courierId: string | null;
+}
+
+export type UserRoleInputRole = typeof UserRoleInputRole[keyof typeof UserRoleInputRole];
+
+
+export const UserRoleInputRole = {
+  ADMIN: 'ADMIN',
+  CENTRAL: 'CENTRAL',
+  STORE_MANAGER: 'STORE_MANAGER',
+  STORE_STAFF: 'STORE_STAFF',
+  COURIER: 'COURIER',
+  PENDING: 'PENDING',
+} as const;
+
+export interface UserRoleInput {
+  role: UserRoleInputRole;
+  /** @nullable */
+  storeId?: string | null;
+  /** @nullable */
+  courierId?: string | null;
+}
+
+export type CourierEarningsPeriod = typeof CourierEarningsPeriod[keyof typeof CourierEarningsPeriod];
+
+
+export const CourierEarningsPeriod = {
+  day: 'day',
+  week: 'week',
+  month: 'month',
+} as const;
+
+export interface CourierEarnings {
+  period: CourierEarningsPeriod;
+  completedDeliveries: number;
+  amountToReceive: number;
+}
+
 export type ListDeliveriesParams = {
 status?: string;
 search?: string;
 storeId?: string;
 };
+
+export type GetCourierEarningsParams = {
+period?: GetCourierEarningsPeriod;
+};
+
+export type GetCourierEarningsPeriod = typeof GetCourierEarningsPeriod[keyof typeof GetCourierEarningsPeriod];
+
+
+export const GetCourierEarningsPeriod = {
+  day: 'day',
+  week: 'week',
+  month: 'month',
+} as const;
 
