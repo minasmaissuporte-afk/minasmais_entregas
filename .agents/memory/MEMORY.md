@@ -1,0 +1,1 @@
+- [API client codegen](api-client-codegen.md) — Keep generated React Query hooks aligned with TanStack Query v5 and DOM iterable types.

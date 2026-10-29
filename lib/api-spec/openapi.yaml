@@ -10,6 +10,12 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: deliveries
+    description: Delivery operations
+  - name: dashboard
+    description: Operational dashboard
+  - name: directory
+    description: Stores and couriers
 paths:
   /healthz:
     get:
@@ -24,6 +30,158 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get delivery operations summary
+      responses:
+        "200":
+          description: Current operational indicators
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /deliveries:
+    get:
+      operationId: listDeliveries
+      tags: [deliveries]
+      summary: List and filter deliveries
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: storeId
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching deliveries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Delivery"
+    post:
+      operationId: createDelivery
+      tags: [deliveries]
+      summary: Create a delivery request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryInput"
+      responses:
+        "201":
+          description: Delivery created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+  /deliveries/{deliveryId}:
+    get:
+      operationId: getDelivery
+      tags: [deliveries]
+      summary: Get a delivery and its event history
+      parameters:
+        - in: path
+          name: deliveryId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Delivery details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+        "404":
+          description: Delivery not found
+  /deliveries/{deliveryId}/dispatch:
+    post:
+      operationId: dispatchDelivery
+      tags: [deliveries]
+      summary: Offer a delivery to an eligible courier
+      parameters:
+        - in: path
+          name: deliveryId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DispatchInput"
+      responses:
+        "200":
+          description: Delivery offer dispatched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+  /deliveries/{deliveryId}/status:
+    patch:
+      operationId: updateDeliveryStatus
+      tags: [deliveries]
+      summary: Update a delivery status
+      parameters:
+        - in: path
+          name: deliveryId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryStatusInput"
+      responses:
+        "200":
+          description: Updated delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+  /stores:
+    get:
+      operationId: listStores
+      tags: [directory]
+      summary: List stores available to the central team
+      responses:
+        "200":
+          description: Stores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Store"
+  /couriers:
+    get:
+      operationId: listCouriers
+      tags: [directory]
+      summary: List couriers and current availability
+      responses:
+        "200":
+          description: Couriers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Courier"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +191,101 @@ components:
           type: string
       required:
         - status
+    Delivery:
+      type: object
+      required: [id, code, customerName, destination, storeId, storeName, status, priority, createdAt, events]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        customerName: { type: string }
+        customerPhone: { type: ["string", "null"] }
+        destination: { type: string }
+        orderNumber: { type: string }
+        notes: { type: ["string", "null"] }
+        storeId: { type: string }
+        storeName: { type: string }
+        courierId: { type: ["string", "null"] }
+        courierName: { type: ["string", "null"] }
+        courierInitials: { type: ["string", "null"] }
+        status: { type: string }
+        priority: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        lastLocationAt: { type: ["string", "null"], format: date-time }
+        estimatedMinutes: { type: ["integer", "null"] }
+        distanceKm: { type: ["number", "null"] }
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryEvent"
+    DeliveryEvent:
+      type: object
+      required: [id, label, timestamp, kind]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        timestamp: { type: string, format: date-time }
+        kind: { type: string }
+        actor: { type: ["string", "null"] }
+    DeliveryInput:
+      type: object
+      required: [customerName, destination, orderNumber, storeId, priority]
+      properties:
+        customerName: { type: string, minLength: 2 }
+        customerPhone: { type: string }
+        destination: { type: string, minLength: 5 }
+        orderNumber: { type: string, minLength: 1 }
+        notes: { type: string }
+        storeId: { type: string }
+        priority: { type: string, enum: [normal, urgent] }
+    DispatchInput:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [single, group] }
+        courierId: { type: string }
+    DeliveryStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ACCEPTED, TO_STORE, AT_STORE, IN_TRANSIT, COMPLETED, CANCELLED]
+        note: { type: string }
+    Store:
+      type: object
+      required: [id, name, code, city, address, active]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        code: { type: string }
+        city: { type: string }
+        address: { type: string }
+        active: { type: boolean }
+    Courier:
+      type: object
+      required: [id, name, initials, status, lastLocationAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        initials: { type: string }
+        status: { type: string, enum: [AVAILABLE, BUSY, OFFLINE] }
+        currentDeliveryCode: { type: ["string", "null"] }
+        lastLocationAt: { type: ["string", "null"], format: date-time }
+    DashboardSummary:
+      type: object
+      required: [requested, awaitingCourier, offered, accepted, inTransit, completed, delayed, cancelled, availableCouriers, busyCouriers, averageAcceptanceMinutes, averageTotalMinutes]
+      properties:
+        requested: { type: integer }
+        awaitingCourier: { type: integer }
+        offered: { type: integer }
+        accepted: { type: integer }
+        inTransit: { type: integer }
+        completed: { type: integer }
+        delayed: { type: integer }
+        cancelled: { type: integer }
+        availableCouriers: { type: integer }
+        busyCouriers: { type: integer }
+        averageAcceptanceMinutes: { type: number }
+        averageTotalMinutes: { type: number }
 

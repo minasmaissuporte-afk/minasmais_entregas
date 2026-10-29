@@ -1,0 +1,472 @@
+PROJETO: MINAS MAIS ENTREGAS
+
+Sistema inteligente de despacho, rastreamento e gestão de motoboys terceirizados
+
+1. OBJETIVO DO PROJETO
+
+Desenvolver uma plataforma de gestão de entregas para a Rede Minas Mais, composta por:
+
+* Painel Web da Central: acessado pelo computador para solicitar entregas, chamar motoboys, acompanhar operações e visualizar indicadores.
+* Aplicativo Mobile do Motoboy: instalado no celular do entregador terceirizado para receber solicitações, aceitar entregas, navegar até a loja, confirmar a retirada e registrar a conclusão.
+* Sistema de rastreamento em tempo real: integrado a um mapa para acompanhar a localização do motoboy durante a operação, respeitando as permissões de localização e a legislação aplicável.
+
+Todos os ambientes devem compartilhar a mesma base de dados e atualizar as informações automaticamente, sem necessidade de planilhas manuais, ligações ou mensagens para confirmar cada etapa.
+
+2. PAINEL WEB — CENTRAL DE CONTROLE
+
+Criar um painel administrativo moderno, responsivo e profissional, com identidade visual da Rede Minas Mais: vermelho, branco e cinza.
+
+O painel deve funcionar em computadores e notebooks, com atualização em tempo real.
+
+2.1. Dashboard principal
+
+Exibir cards com os seguintes indicadores:
+
+* Entregas solicitadas no dia.
+* Entregas aguardando motoboy.
+* Entregas enviadas aos motoboys.
+* Entregas aceitas.
+* Motoboys a caminho da loja.
+* Entregas aguardando retirada.
+* Entregas em trânsito.
+* Entregas concluídas.
+* Entregas atrasadas.
+* Entregas canceladas.
+* Motoboys disponíveis e ocupados.
+* Tempo médio de aceite.
+* Tempo médio de espera na loja.
+* Tempo médio de deslocamento.
+* Tempo médio total por entrega.
+
+Permitir filtrar os dados por data, horário, loja, cidade, motoboy, status e período.
+
+2.2. Cadastro de lojas
+
+Cada loja deverá possuir:
+
+* Nome e código da filial.
+* CNPJ.
+* Endereço completo.
+* Cidade, estado e CEP.
+* Latitude e longitude.
+* Telefone da loja.
+* Nome do gerente responsável.
+* Horário de funcionamento.
+* Raio ou região de atendimento.
+* Motoboys autorizados para atendimento, quando aplicável.
+
+O sistema deverá permitir cadastrar todas as filiais da Rede Minas Mais e visualizar os resultados individualmente ou de forma consolidada.
+
+2.3. Solicitação de entrega
+
+Criar um botão destacado chamado “NOVA ENTREGA”.
+
+Ao clicar, o operador deverá preencher:
+
+* Loja de origem, preferencialmente identificada automaticamente pelo usuário logado.
+* Endereço de destino.
+* Nome do cliente.
+* Telefone do cliente, quando necessário.
+* Número do pedido ou cupom.
+* Observações sobre a entrega.
+* Tipo de entrega ou prioridade.
+* Valor da entrega ou custo contratado, se aplicável.
+* Prazo estimado, quando configurado.
+
+O sistema deverá validar os campos obrigatórios e calcular uma estimativa de distância e tempo, quando houver integração com serviço de mapas.
+
+Após confirmar a solicitação, a central poderá escolher um motoboy específico ou disparar a entrega para os motoboys elegíveis.
+
+2.4. Despacho inteligente de motoboys
+
+Criar uma funcionalidade para enviar a solicitação de entrega ao celular do motoboy.
+
+O sistema deverá:
+
+1. Identificar os motoboys ativos e disponíveis.
+2. Considerar a localização mais recente, a distância até a loja, a disponibilidade e as regras de atendimento.
+3. Enviar uma notificação ao motoboy selecionado ou a um grupo elegível.
+4. Exibir na central o horário em que a oferta foi enviada.
+5. Registrar o horário do aceite ou da recusa.
+6. Permitir configurar um tempo máximo para resposta.
+7. Se não houver resposta, permitir redisparar a solicitação para outro motoboy.
+8. Impedir que dois motoboys assumam simultaneamente a mesma entrega.
+9. Permitir que a central cancele a solicitação ou faça uma nova atribuição, registrando o motivo e o histórico.
+
+O sistema deve permitir definir se a entrega será oferecida a um único motoboy por vez ou distribuída a vários candidatos, sendo que somente um poderá assumir a entrega.
+
+3. MAPA COM RASTREAMENTO EM TEMPO REAL
+
+Esta é uma das funcionalidades mais importantes do projeto.
+
+Criar uma tela de mapa interativo dentro do painel web, utilizando uma solução como Google Maps ou Mapbox.
+
+O mapa deverá mostrar:
+
+* A localização da loja de origem.
+* A localização atual do motoboy designado.
+* O endereço de destino.
+* A rota sugerida entre a loja e o cliente.
+* A posição do motoboy atualizada periodicamente durante a entrega.
+* O horário da última atualização de localização.
+* A situação atual da entrega.
+* A distância aproximada até a loja ou o destino.
+* O tempo estimado de chegada, quando disponível.
+* Alertas de localização desatualizada, ausência de sinal ou GPS indisponível.
+
+Ao clicar no ícone do motoboy no mapa, exibir um painel com nome, telefone corporativo ou de contato autorizado, loja atendida, status da entrega e horários registrados.
+
+A localização deverá ser coletada pelo aplicativo durante os períodos autorizados da operação, especialmente quando o motoboy estiver atendendo uma entrega ativa. Fora desse período, o rastreamento deverá seguir a política de privacidade definida pela empresa.
+
+Não apresentar uma posição antiga como se fosse atual. O sistema deve indicar claramente quando a localização estiver desatualizada.
+
+4. APLICATIVO MOBILE DO MOTOBOY
+
+Desenvolver um aplicativo para Android e iOS, com interface simples, rápida e fácil de utilizar, inclusive por entregadores com pouca familiaridade com tecnologia.
+
+Cada motoboy deverá possuir login individual e cadastro aprovado pela administração.
+
+4.1. Tela inicial
+
+Exibir:
+
+* Botão para ficar disponível ou indisponível.
+* Status de conexão e GPS.
+* Entregas recebidas.
+* Entregas em andamento.
+* Histórico de entregas concluídas.
+* Notificações.
+* Informações de suporte.
+
+4.2. Recebimento de nova entrega
+
+Quando a central enviar uma solicitação, o aplicativo deverá receber uma notificação com:
+
+* Código da entrega.
+* Nome ou identificação da loja.
+* Endereço da loja.
+* Distância estimada até a loja.
+* Prazo de resposta.
+* Informações essenciais para avaliar a solicitação.
+
+Exibir dois botões:
+
+ACEITAR ENTREGA
+
+RECUSAR ENTREGA
+
+Quando o motoboy aceitar, registrar automaticamente a data e a hora do aceite, atualizar o painel da central e mudar o status da entrega.
+
+Em caso de recusa, registrar o horário e, opcionalmente, o motivo.
+
+Se a oferta expirar, informar ao motoboy e atualizar o status na central.
+
+4.3. Deslocamento até a loja
+
+Após aceitar, o motoboy deverá visualizar o endereço da filial e um botão para abrir a navegação no aplicativo de mapas disponível no celular.
+
+Registrar:
+
+* Horário do aceite.
+* Horário em que iniciou o deslocamento, caso exista um botão específico.
+* Chegada à região da loja, quando detectada com precisão suficiente.
+* Confirmação de chegada à loja pelo motoboy.
+* Horário da confirmação.
+
+A chegada detectada pelo GPS deverá ser diferenciada da confirmação manual. A simples proximidade geográfica não deverá ser tratada como prova definitiva de presença.
+
+4.4. Retirada do pedido na farmácia
+
+Criar um botão chamado “CONFIRMAR RETIRADA DO PEDIDO”.
+
+Ao clicar, registrar:
+
+* Data e hora da retirada.
+* Identificação do motoboy.
+* Identificação da loja.
+* Código do pedido.
+* Confirmação de que o pacote foi recebido.
+
+Após essa confirmação, o status deverá mudar para “EM TRÂNSITO”.
+
+A central deverá receber a atualização imediatamente.
+
+Opcionalmente, permitir que o funcionário da loja confirme a entrega do pacote ao motoboy por meio de um PIN ou QR Code, aumentando a segurança do processo.
+
+4.5. Deslocamento até o cliente
+
+Durante o transporte, o aplicativo deverá:
+
+* Enviar atualizações de localização ao servidor.
+* Exibir a rota para o destino.
+* Permitir abrir um aplicativo de navegação.
+* Registrar a última localização conhecida.
+* Informar problemas de conexão ou GPS.
+* Permitir comunicar ocorrências à central.
+* Atualizar a previsão de chegada quando houver dados suficientes.
+
+O sistema deverá continuar funcionando de forma tolerante a falhas temporárias de internet, armazenando eventos pendentes no celular e sincronizando-os quando a conexão retornar.
+
+4.6. Confirmação de entrega concluída
+
+Ao chegar ao endereço, o motoboy deverá clicar em “FINALIZAR ENTREGA”.
+
+Registrar:
+
+* Data e hora da conclusão.
+* Localização no momento da confirmação, se autorizada e disponível.
+* Identificação do motoboy.
+* Código do pedido.
+* Resultado da entrega.
+* Observações, se necessário.
+
+Permitir, conforme a política da empresa, anexar foto da entrega, assinatura digital, PIN informado pelo cliente ou outra comprovação adequada.
+
+O sistema deverá atualizar o status para “CONCLUÍDA” e enviar a confirmação à central.
+
+Se a entrega não puder ser concluída, oferecer opções como cliente ausente, endereço incorreto, cliente recusou, problema com o pedido ou outra ocorrência. O motoboy deverá informar a situação e aguardar as orientações da central quando necessário.
+
+5. LINHA DO TEMPO COMPLETA DA ENTREGA
+
+Cada pedido deverá possuir uma linha do tempo auditável.
+
+Registrar, no mínimo:
+
+1. Solicitação criada.
+2. Oferta enviada ao motoboy.
+3. Oferta recebida no dispositivo, quando tecnicamente confirmável.
+4. Entrega aceita ou recusada.
+5. Início do deslocamento até a loja, quando registrado.
+6. Chegada à loja.
+7. Retirada confirmada.
+8. Início do transporte ao destino.
+9. Chegada ao destino, quando detectada ou confirmada.
+10. Entrega concluída ou ocorrência registrada.
+11. Cancelamentos e reatribuições, quando existirem.
+
+Para cada evento, armazenar data, hora, usuário ou dispositivo responsável, origem do evento e localização, quando pertinente e permitida.
+
+Não inventar horários nem substituir um horário real por um estimado.
+
+A central deverá conseguir abrir qualquer entrega e consultar todo o histórico, inclusive as alterações de status.
+
+6. CONTROLE DE TEMPO E INDICADORES
+
+Calcular automaticamente os seguintes indicadores:
+
+* Tempo entre solicitação e envio ao motoboy.
+* Tempo entre envio e aceite.
+* Tempo entre aceite e chegada à loja.
+* Tempo de espera na loja.
+* Tempo entre retirada e chegada ao destino.
+* Tempo total entre solicitação e conclusão.
+* Percentual de entregas dentro do prazo.
+* Percentual de entregas atrasadas.
+* Percentual de ofertas recusadas.
+* Percentual de entregas canceladas.
+* Número médio de entregas por motoboy.
+* Número de entregas por loja, turno e período.
+* Custo médio por entrega, quando houver dados financeiros.
+
+Permitir comparar os resultados entre motoboys, filiais, regiões, dias e meses.
+
+Os indicadores devem distinguir tempos registrados de estimativas e considerar separadamente os atrasos atribuíveis à loja, ao motoboy, ao cliente ou a outras ocorrências, quando houver dados confiáveis.
+
+7. ALERTAS AUTOMÁTICOS
+
+Criar regras configuráveis para gerar alertas à central nos seguintes casos:
+
+* Entrega sem aceite após o prazo definido.
+* Motoboy aceitou, mas não confirmou a chegada à loja dentro do tempo esperado.
+* Retirada ainda não confirmada.
+* Entrega em trânsito além do prazo previsto.
+* Localização desatualizada durante uma entrega ativa.
+* GPS ou internet indisponível.
+* Entrega cancelada ou recusada.
+* Falha na sincronização de eventos.
+* Pedido finalizado sem a comprovação exigida pela política da empresa.
+
+Os alertas deverão aparecer no painel e, quando configurado, ser enviados por notificações push ou outros canais autorizados.
+
+Evitar alertas duplicados e permitir definir prioridades e responsáveis por cada ocorrência.
+
+8. GESTÃO DE MOTOBOYS TERCEIRIZADOS
+
+Criar um módulo para cadastro e gestão de entregadores contendo:
+
+* Nome completo.
+* Identificação interna.
+* Telefone.
+* Documento e dados cadastrais estritamente necessários.
+* Empresa terceirizada, se aplicável.
+* Filiais e regiões atendidas.
+* Situação cadastral: pendente, ativo, suspenso ou inativo.
+* Disponibilidade operacional.
+* Histórico de entregas.
+* Indicadores de desempenho.
+* Registro de ocorrências.
+* Data de início e encerramento do vínculo operacional, quando aplicável.
+
+Permitir suspender ou desativar o acesso imediatamente.
+
+O sistema deve controlar o acesso de cada entregador apenas às suas próprias entregas e às informações necessárias para executar o serviço.
+
+9. RELATÓRIOS GERENCIAIS
+
+Disponibilizar relatórios com filtros por loja, região, motoboy, terceirizada, período e status.
+
+Relatórios essenciais:
+
+* Entregas por filial.
+* Entregas por motoboy.
+* Tempos médios por etapa.
+* Entregas fora do prazo.
+* Recusas e cancelamentos.
+* Ocorrências.
+* Custos de entrega.
+* Comparativo mensal.
+* Ranking operacional, com critérios transparentes.
+* Histórico completo por pedido.
+
+Permitir exportação para Excel e PDF, com controle de acesso aos dados.
+
+10. PERFIS E PERMISSÕES
+
+Criar perfis separados:
+
+Administrador geral: acesso à configuração global, usuários, lojas, regras e relatórios consolidados.
+
+Central de entregas: criação e despacho de pedidos, monitoramento do mapa, acompanhamento de ocorrências e reatribuição de entregas.
+
+Gerente da loja: consulta e acompanhamento das entregas da própria filial e confirmação da retirada, conforme as permissões concedidas.
+
+Funcionário autorizado da loja: confirmação de entrega do pacote ao motoboy, sem acesso desnecessário a outros dados.
+
+Motoboy terceirizado: recebimento de ofertas, aceite, navegação, confirmação de retirada, acompanhamento e finalização das próprias entregas.
+
+Toda ação administrativa relevante deverá ser registrada em log de auditoria.
+
+11. ARQUITETURA E TECNOLOGIAS SUGERIDAS
+
+Construir uma plataforma escalável e segura, com:
+
+* Painel web responsivo.
+* Aplicativo mobile para Android e iOS.
+* Backend com API segura.
+* Banco de dados relacional.
+* Atualização de status e localização em tempo real.
+* Serviço de notificações push.
+* Serviço de mapas, geocodificação e rotas.
+* Autenticação individual.
+* Controle de permissões.
+* Logs e monitoramento de erros.
+* Backups automáticos.
+* Ambientes de desenvolvimento, homologação e produção.
+
+Avaliar tecnologias como Flutter ou React Native para o aplicativo mobile, React ou Next.js para o painel web, e PostgreSQL com serviço de atualização em tempo real para o banco de dados.
+
+A escolha final deverá considerar custo, manutenção, suporte a rastreamento em segundo plano e facilidade de evolução futura.
+
+12. REQUISITOS TÉCNICOS IMPORTANTES
+
+O aplicativo deverá ser projetado para funcionar com a tela do celular bloqueada ou com o aplicativo em segundo plano durante uma entrega ativa, quando permitido pelo sistema operacional e pelas permissões concedidas.
+
+A equipe de desenvolvimento deverá implementar e testar corretamente os serviços de localização em segundo plano, as permissões de Android e iOS, as notificações e os mecanismos de recuperação após perda de conexão.
+
+A central deverá identificar a hora da última posição recebida, a precisão disponível e o estado de conexão.
+
+O sistema deverá diferenciar:
+
+* Horário do evento no dispositivo.
+* Horário de recebimento do evento no servidor.
+* Horário estimado de chegada.
+* Horário confirmado de conclusão.
+
+Os eventos deverão ser sincronizados sem duplicações, mesmo após interrupções de rede.
+
+A aplicação não deverá depender de uma página aberta permanentemente no celular para receber novas entregas. Implementar notificações push e mecanismos adequados para reabrir ou atualizar o aplicativo.
+
+13. PRIVACIDADE E SEGURANÇA
+
+Implementar o projeto em conformidade com a LGPD e com as regras aplicáveis ao trabalho com prestadores terceirizados.
+
+Prever:
+
+* Aviso claro sobre o rastreamento e sua finalidade.
+* Permissões de localização adequadas ao funcionamento do aplicativo.
+* Coleta limitada ao necessário para a operação.
+* Rastreamento vinculado a entregas ativas, segundo política definida.
+* Proteção dos dados pessoais dos clientes e motoboys.
+* Controle de acesso por perfil.
+* Criptografia em trânsito e proteção dos dados armazenados.
+* Política de retenção e exclusão de informações.
+* Registro de acessos e ações administrativas.
+* Procedimentos para incidentes de segurança.
+
+O mapa não deverá expor informações pessoais de clientes ou motoboys a usuários não autorizados.
+
+14. EXPERIÊNCIA VISUAL
+
+A interface deverá transmitir organização, velocidade, controle e profissionalismo.
+
+Utilizar a identidade visual da Rede Minas Mais, priorizando vermelho, branco e cinza.
+
+No painel web, criar:
+
+* Menu lateral.
+* Dashboard com indicadores.
+* Mapa central de rastreamento.
+* Lista de entregas com status e filtros.
+* Linha do tempo detalhada.
+* Alertas destacados de maneira discreta.
+* Botões de ação claros.
+
+No aplicativo do motoboy, priorizar botões grandes, poucas etapas e textos objetivos.
+
+Os status devem ser facilmente identificáveis por texto e sinalização visual, sem depender apenas de cores.
+
+15. CRITÉRIOS DE ACEITAÇÃO
+
+O projeto só deverá ser considerado pronto quando os seguintes testes forem aprovados:
+
+1. A central cria uma entrega e ela aparece no aplicativo do motoboy.
+2. O motoboy recebe uma notificação mesmo quando o aplicativo não está aberto, dentro das condições suportadas pelo sistema operacional.
+3. O aceite aparece na central com horário registrado.
+4. A central acompanha a localização do motoboy no mapa durante a entrega ativa.
+5. O sistema registra a chegada à loja e a confirmação de retirada.
+6. A central visualiza o início do transporte e a localização atualizada.
+7. A conclusão registra data, hora e comprovação configurada.
+8. O histórico completo pode ser consultado posteriormente.
+9. Recusas, cancelamentos e reatribuições são registrados corretamente.
+10. O sistema recupera eventos pendentes após perda temporária de internet.
+11. Não há duas atribuições ativas conflitantes para a mesma entrega.
+12. Os indicadores e relatórios apresentam resultados consistentes com os eventos registrados.
+13. Os perfis de acesso impedem a visualização indevida de dados.
+14. O funcionamento foi validado em aparelhos Android e iOS representativos.
+
+16. ENTREGÁVEIS DO DESENVOLVIMENTO
+
+Entregar:
+
+* Aplicativo mobile do motoboy.
+* Painel web da central.
+* Backend e banco de dados.
+* Integração com mapas e rastreamento.
+* Sistema de notificações.
+* Módulos de cadastro de lojas e motoboys.
+* Relatórios e indicadores.
+* Documentação técnica.
+* Manual de utilização.
+* Testes automatizados e testes operacionais.
+* Processo de implantação e publicação.
+* Plano de suporte, backups e manutenção.
+
+17. ORIENTAÇÃO FINAL PARA A EQUIPE DE DESENVOLVIMENTO
+
+Antes de iniciar a programação, apresente a arquitetura proposta, o modelo de dados, os fluxos de entrega, as telas do painel e do aplicativo, os custos recorrentes estimados e o cronograma de implantação.
+
+Desenvolva primeiro uma versão funcional com cadastro de lojas e motoboys, despacho de entregas, aceite pelo celular, mapa em tempo real, confirmação de retirada e confirmação de entrega concluída.
+
+Depois, evolua para relatórios avançados, indicadores comparativos, despacho inteligente, controle de custos e integrações com os sistemas internos da Rede Minas Mais.
+
+O resultado esperado é uma central de entregas na qual a Rede Minas Mais tenha visibilidade operacional de cada pedido, desde a solicitação na loja até a confirmação da entrega ao cliente, com horários registrados, rastreamento autorizado e histórico auditável.

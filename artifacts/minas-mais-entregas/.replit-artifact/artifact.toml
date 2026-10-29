@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Minas Mais Entregas"
+description = "Painel web responsivo para a central de entregas da Rede Minas Mais, com acompanhamento operacional, despacho de motoboys, histórico e indicadores."
+version = "1.0.0"
+id = "artifacts/minas-mais-entregas"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20758
+
+[services.development]
+run = "pnpm --filter @workspace/minas-mais-entregas run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/minas-mais-entregas", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/minas-mais-entregas/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20758"
+BASE_PATH = "/"
