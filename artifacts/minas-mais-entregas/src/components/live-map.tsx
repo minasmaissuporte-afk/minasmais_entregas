@@ -11,19 +11,23 @@ export type MapMarker = MapCoordinate & {
   id: string;
   title: string;
   detail: string;
-  kind: "courier" | "stop" | "current";
+  kind: "courier" | "stop" | "current" | "store";
   sequence?: number;
   completed?: boolean;
+  draggable?: boolean;
+  onDrag?: (coordinate: MapCoordinate) => void;
 };
 
 export default function LiveMap({
   markers,
   routeGeometry,
   ariaLabel,
+  size = "default",
 }: {
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
   ariaLabel: string;
+  size?: "default" | "compact";
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -78,6 +82,8 @@ export default function LiveMap({
       const color =
         marker.kind === "courier" || marker.kind === "current"
           ? "#1769aa"
+          : marker.kind === "store"
+            ? "#16804a"
           : marker.completed
             ? "#6b7280"
             : "#b91c2c";
@@ -86,7 +92,11 @@ export default function LiveMap({
           ? String(marker.sequence ?? "")
           : marker.kind === "current"
             ? "M"
-            : "•";
+            : marker.kind === "store"
+              ? "F"
+              : marker.kind === "courier"
+                ? "M"
+                : "•";
       const icon = L.divIcon({
         className: "",
         html: `<span style="display:grid;place-items:center;width:32px;height:32px;border:3px solid #fff;border-radius:50%;background:${color};color:#fff;font:700 13px/1 system-ui;box-shadow:0 2px 8px #1115">${label}</span>`,
@@ -103,9 +113,17 @@ export default function LiveMap({
         detail.style.margin = "4px 0 0";
         popup.append(detail);
       }
-      L.marker([marker.latitude, marker.longitude], { icon })
-        .bindPopup(popup)
-        .addTo(layers);
+      const leafletMarker = L.marker([marker.latitude, marker.longitude], {
+        icon,
+        draggable: Boolean(marker.draggable && marker.onDrag),
+      }).bindPopup(popup);
+      if (marker.draggable && marker.onDrag) {
+        leafletMarker.on("dragend", () => {
+          const point = leafletMarker.getLatLng();
+          marker.onDrag?.({ latitude: point.lat, longitude: point.lng });
+        });
+      }
+      leafletMarker.addTo(layers);
     });
 
     if (markerPoints.length) {
@@ -122,7 +140,11 @@ export default function LiveMap({
   return (
     <div
       ref={containerRef}
-      className="h-[280px] w-full bg-[#f3f2ef] sm:h-[340px]"
+      className={
+        size === "compact"
+          ? "h-48 w-full bg-[#f3f2ef] sm:h-56"
+          : "h-[280px] w-full bg-[#f3f2ef] sm:h-[340px]"
+      }
       role="region"
       aria-label={ariaLabel}
       data-testid="map-live"

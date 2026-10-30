@@ -39,8 +39,10 @@ import NotFound from '@/pages/not-found';
 import AccessManagement from '@/pages/access-management';
 import CourierPortal from '@/pages/courier-portal';
 import LiveMap, { type MapMarker } from '@/components/live-map';
+import AddressAutocomplete from '@/components/address-autocomplete';
 import CourierAccessPage from '@/pages/courier-access';
 import StorePortal from '@/pages/store-portal';
+import StoreManagement from '@/pages/store-management';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -259,6 +261,9 @@ function AppShell({ children, profile }: { children: ReactNode; profile: AppUser
         {profile.role === 'ADMIN' && <Link href="/access" className={`nav-link ${location === '/access' ? 'nav-active' : ''}`}>
           <ShieldCheck size={17} strokeWidth={1.8}/><span>Acessos</span>
         </Link>}
+        {profile.role === 'ADMIN' && <Link href="/filiais" className={`nav-link ${location === '/filiais' ? 'nav-active' : ''}`}>
+          <MapPin size={17} strokeWidth={1.8}/><span>Filiais</span>
+        </Link>}
       </div>
       <div className="mt-auto hidden border-t border-border p-4 md:block">
         <div className="flex items-center gap-3 rounded-lg bg-[#f7f6f4] p-3">
@@ -269,8 +274,18 @@ function AppShell({ children, profile }: { children: ReactNode; profile: AppUser
     </aside>
     <main className="min-w-0 flex-1">
       <header className="topbar">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="hidden sm:inline">Rede Minas Mais</span><span className="hidden sm:inline">/</span><span className="font-semibold text-foreground">{location.startsWith('/deliveries/') ? 'Detalhe da entrega' : 'Central de entregas'}</span></div>
-          <div className="ml-auto flex items-center gap-2"><span className="hidden text-[11px] text-muted-foreground sm:inline">Painel operacional</span><button className="button-quiet" onClick={() => void signOut({ redirectUrl: basePath || '/' })}>Sair</button></div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="hidden sm:inline">Rede Minas Mais</span><span className="hidden sm:inline">/</span><span className="font-semibold text-foreground">{location.startsWith('/deliveries/') ? 'Detalhe da entrega' : location === '/access' ? 'Acessos e perfis' : location === '/filiais' ? 'Filiais' : 'Central de entregas'}</span></div>
+          <div className="ml-auto flex items-center gap-2">
+            <nav className="flex items-center gap-1 md:hidden" aria-label="Navegação principal">
+              <Link href="/" className="icon-button" aria-label="Entregas"><Truck size={16}/></Link>
+              {profile.role === 'ADMIN' && <>
+                <Link href="/filiais" className="icon-button" aria-label="Filiais"><MapPin size={16}/></Link>
+                <Link href="/access" className="icon-button" aria-label="Acessos"><ShieldCheck size={16}/></Link>
+              </>}
+            </nav>
+            <span className="hidden text-[11px] text-muted-foreground sm:inline">Painel operacional</span>
+            <button className="button-quiet" onClick={() => void signOut({ redirectUrl: basePath || '/' })}>Sair</button>
+          </div>
       </header>
       <div className="ops-content mx-auto w-full px-4 pb-10 pt-7 sm:px-6 lg:px-9">{children}</div>
     </main>
@@ -282,8 +297,9 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   const storesQuery = useListStores({ query: { queryKey: getListStoresQueryKey() } });
   const create = useCreateDelivery();
   const [error, setError] = useState('');
+  const [customerCoordinates, setCustomerCoordinates] = useState<{ latitude: number | null; longitude: number | null }>({ latitude: null, longitude: null });
   const [form, setForm] = useState({ customerName: '', customerPhone: '', destination: '', orderNumber: '', notes: '', storeId: '', priority: 'normal', deliveryAmount: '' });
-  const update = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
+  const update = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value, ...(key === 'destination' ? { customerLatitude: null, customerLongitude: null } : {}) }));
   const hasUnsavedChanges = Boolean(
     form.customerName.trim() ||
     form.customerPhone.trim() ||
@@ -302,7 +318,7 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   useModalBehavior(requestClose);
   const submit = (e: FormEvent) => {
     e.preventDefault(); setError('');
-    create.mutate({ data: { ...form, deliveryAmount: Number(form.deliveryAmount), priority: form.priority as 'normal' | 'urgent' } }, {
+    create.mutate({ data: { ...form, customerLatitude: customerCoordinates.latitude, customerLongitude: customerCoordinates.longitude, deliveryAmount: Number(form.deliveryAmount), priority: form.priority as 'normal' | 'urgent' } }, {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
         void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
@@ -319,7 +335,18 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
           <Field label="Nome do cliente"><input required minLength={2} value={form.customerName} onChange={e => update('customerName', e.target.value)} placeholder="Nome completo" data-modal-initial-focus data-testid="input-customer-name"/></Field>
           <Field label="Telefone"><input type="tel" value={form.customerPhone} onChange={e => update('customerPhone', e.target.value)} placeholder="(31) 99999-0000" data-testid="input-customer-phone"/></Field>
         </div>
-        <Field label="Endereço de entrega"><input required minLength={5} value={form.destination} onChange={e => update('destination', e.target.value)} placeholder="Rua, número, bairro e complemento" data-testid="input-destination"/></Field>
+        <Field label="Endereço de entrega">
+          <AddressAutocomplete
+            id="input-destination"
+            required
+            value={form.destination}
+            onChange={value => update('destination', value)}
+            onSelect={suggestion => setCustomerCoordinates({ latitude: suggestion.latitude, longitude: suggestion.longitude })}
+            placeholder="Digite rua, número, bairro ou CEP"
+            inputClassName="w-full"
+            dataTestId="input-destination"
+          />
+        </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Número do pedido"><input required value={form.orderNumber} onChange={e => update('orderNumber', e.target.value)} placeholder="Ex.: 48271" data-testid="input-order-number"/></Field>
           <Field label="Unidade"><select required value={form.storeId} onChange={e => update('storeId', e.target.value)} data-testid="select-store"><option value="">Selecione uma unidade</option>{(storesQuery.data ?? []).filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name} · {s.city}</option>)}</select></Field>
@@ -537,6 +564,17 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
     detail: `${courier.currentDeliveryCode ? `Entrega ${courier.currentDeliveryCode} · ` : ''}Atualizado ${timeAgo(courier.lastLocationAt)}`,
     kind: 'courier',
   }));
+  const storeMarkers: MapMarker[] = (stores.data ?? [])
+    .filter(store => store.latitude != null && store.longitude != null)
+    .map(store => ({
+      id: store.id,
+      latitude: store.latitude!,
+      longitude: store.longitude!,
+      title: store.name,
+      detail: `${store.city}${store.stateCode ? ` · ${store.stateCode}` : ''}`,
+      kind: 'store',
+    }));
+  const mapMarkers = [...trackingMarkers, ...storeMarkers];
   return <div className="soft-enter">
     <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div><div className="eyebrow">VISÃO GERAL · REDE MINAS MAIS</div><h1 className="mt-2 text-[28px] font-bold tracking-[-.045em] sm:text-[34px]">Central de entregas</h1><p className="mt-1 text-sm text-muted-foreground">Acompanhe pedidos, disponibilidade e despacho em um só lugar.</p><p className="mt-2 text-[11px] text-muted-foreground">Atualização automática a cada 15 segundos.</p></div>
@@ -587,8 +625,14 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
             </Badge>
           </div>
         </div>
-        {couriers.isLoading ? <div className="skeleton m-4 h-[280px] sm:h-[340px]"/> : trackingMarkers.length ? (
-          <LiveMap markers={trackingMarkers} ariaLabel="Localização atual dos motoboys em atendimento"/>
+        {couriers.isLoading || stores.isLoading ? <div className="skeleton m-4 h-[280px] sm:h-[340px]"/> : mapMarkers.length ? (
+          <>
+            <div className="flex flex-wrap gap-4 px-4 pt-3 text-[11px] text-muted-foreground sm:px-5">
+              <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#16804a] text-[10px] font-bold text-white">F</span>Filial</span>
+              <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#1769aa] text-[10px] font-bold text-white">M</span>Motoboy</span>
+            </div>
+            <LiveMap markers={mapMarkers} ariaLabel="Localização das filiais e dos motoboys em atendimento"/>
+          </>
         ) : (
           <div className="grid min-h-[210px] place-items-center bg-[#f3f2ef] p-6 text-center">
             <div className="max-w-md">
@@ -828,6 +872,7 @@ function ClerkRoutes() {
           <Route path="/motoboy-pwa" component={CourierAccessPage}/>
           <Route path="/deliveries/:deliveryId" component={() => <CentralRoute><DeliveryDetail/></CentralRoute>}/>
           <Route path="/access" component={() => <CentralRoute adminOnly><AccessManagement/></CentralRoute>}/>
+          <Route path="/filiais" component={() => <CentralRoute adminOnly><StoreManagement/></CentralRoute>}/>
           <Route path="/sign-in/*?" component={SignInPage}/>
           <Route path="/sign-up/*?" component={SignUpPage}/>
           <Route component={NotFound}/>

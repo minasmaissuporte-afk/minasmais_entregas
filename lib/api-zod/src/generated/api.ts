@@ -67,6 +67,8 @@ export const ListDeliveriesResponseItem = zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional(),
   "lastLocationAt": zod.coerce.date().nullish(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
   "deliveryAmount": zod.number().min(listDeliveriesResponseDeliveryAmountMin),
@@ -88,6 +90,12 @@ export const createDeliveryBodyCustomerNameMin = 2;
 
 export const createDeliveryBodyDestinationMin = 5;
 
+export const createDeliveryBodyCustomerLatitudeMin = -90;
+export const createDeliveryBodyCustomerLatitudeMax = 90;
+
+export const createDeliveryBodyCustomerLongitudeMin = -180;
+export const createDeliveryBodyCustomerLongitudeMax = 180;
+
 
 export const createDeliveryBodyDeliveryAmountExclusiveMin = 0;
 
@@ -97,6 +105,8 @@ export const CreateDeliveryBody = zod.object({
   "customerName": zod.string().min(createDeliveryBodyCustomerNameMin),
   "customerPhone": zod.string().optional(),
   "destination": zod.string().min(createDeliveryBodyDestinationMin),
+  "customerLatitude": zod.number().min(createDeliveryBodyCustomerLatitudeMin).max(createDeliveryBodyCustomerLatitudeMax).nullish(),
+  "customerLongitude": zod.number().min(createDeliveryBodyCustomerLongitudeMin).max(createDeliveryBodyCustomerLongitudeMax).nullish(),
   "orderNumber": zod.string().min(1),
   "notes": zod.string().optional(),
   "storeId": zod.string(),
@@ -126,6 +136,8 @@ export const CreateDeliveryResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional(),
   "lastLocationAt": zod.coerce.date().nullish(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
   "deliveryAmount": zod.number().min(createDeliveryResponseDeliveryAmountMin),
@@ -168,6 +180,8 @@ export const GetDeliveryResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional(),
   "lastLocationAt": zod.coerce.date().nullish(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
   "deliveryAmount": zod.number().min(getDeliveryResponseDeliveryAmountMin),
@@ -226,6 +240,8 @@ export const DispatchDeliveryResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional(),
   "lastLocationAt": zod.coerce.date().nullish(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
   "deliveryAmount": zod.number().min(dispatchDeliveryResponseDeliveryAmountMin),
@@ -273,6 +289,8 @@ export const UpdateDeliveryStatusResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional(),
   "lastLocationAt": zod.coerce.date().nullish(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
   "deliveryAmount": zod.number().min(updateDeliveryStatusResponseDeliveryAmountMin),
@@ -289,15 +307,254 @@ export const UpdateDeliveryStatusResponse = zod.object({
 /**
  * @summary List stores available to the central team
  */
+export const listStoresResponseDeliveryCountMin = 0;
+
+
+
 export const ListStoresResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "code": zod.string(),
   "city": zod.string(),
   "address": zod.string(),
-  "active": zod.boolean()
+  "active": zod.boolean(),
+  "street": zod.string().nullable(),
+  "number": zod.string().nullable(),
+  "complement": zod.string().nullable(),
+  "neighborhood": zod.string().nullable(),
+  "stateCode": zod.string().nullable(),
+  "postalCode": zod.string().nullable(),
+  "phone": zod.string().nullable(),
+  "managerName": zod.string().nullable(),
+  "managerPhone": zod.string().nullable(),
+  "assistantManagerName": zod.string().nullable(),
+  "assistantManagerPhone": zod.string().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "deliveryCount": zod.number().int().min(listStoresResponseDeliveryCountMin)
 })
 export const ListStoresResponse = zod.array(ListStoresResponseItem)
+
+
+/**
+ * @summary Create a store branch
+ */
+export const createStoreBodyNameMin = 2;
+
+export const createStoreBodyAddressMin = 5;
+
+
+
+export const createStoreBodyCityMin = 2;
+
+export const createStoreBodyStateCodeMin = 2;
+export const createStoreBodyStateCodeMax = 2;
+
+export const createStoreBodyManagerNameMin = 2;
+
+export const createStoreBodyLatitudeMin = -90;
+export const createStoreBodyLatitudeMax = 90;
+
+export const createStoreBodyLongitudeMin = -180;
+export const createStoreBodyLongitudeMax = 180;
+
+
+
+export const CreateStoreBody = zod.object({
+  "name": zod.string().min(createStoreBodyNameMin),
+  "address": zod.string().min(createStoreBodyAddressMin),
+  "street": zod.string().min(1),
+  "number": zod.string().min(1),
+  "complement": zod.string().optional(),
+  "neighborhood": zod.string().optional(),
+  "city": zod.string().min(createStoreBodyCityMin),
+  "stateCode": zod.string().min(createStoreBodyStateCodeMin).max(createStoreBodyStateCodeMax),
+  "postalCode": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "managerName": zod.string().min(createStoreBodyManagerNameMin),
+  "managerPhone": zod.string().optional(),
+  "assistantManagerName": zod.string().optional(),
+  "assistantManagerPhone": zod.string().optional(),
+  "latitude": zod.number().min(createStoreBodyLatitudeMin).max(createStoreBodyLatitudeMax),
+  "longitude": zod.number().min(createStoreBodyLongitudeMin).max(createStoreBodyLongitudeMax)
+})
+
+export const createStoreResponseDeliveryCountMin = 0;
+
+
+
+export const CreateStoreResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "code": zod.string(),
+  "city": zod.string(),
+  "address": zod.string(),
+  "active": zod.boolean(),
+  "street": zod.string().nullable(),
+  "number": zod.string().nullable(),
+  "complement": zod.string().nullable(),
+  "neighborhood": zod.string().nullable(),
+  "stateCode": zod.string().nullable(),
+  "postalCode": zod.string().nullable(),
+  "phone": zod.string().nullable(),
+  "managerName": zod.string().nullable(),
+  "managerPhone": zod.string().nullable(),
+  "assistantManagerName": zod.string().nullable(),
+  "assistantManagerPhone": zod.string().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "deliveryCount": zod.number().int().min(createStoreResponseDeliveryCountMin)
+})
+
+
+/**
+ * @summary Update a store branch
+ */
+export const UpdateStoreParams = zod.object({
+  "storeId": zod.coerce.string()
+})
+
+export const updateStoreBodyNameMin = 2;
+
+export const updateStoreBodyAddressMin = 5;
+
+
+
+export const updateStoreBodyCityMin = 2;
+
+export const updateStoreBodyStateCodeMin = 2;
+export const updateStoreBodyStateCodeMax = 2;
+
+export const updateStoreBodyManagerNameMin = 2;
+
+export const updateStoreBodyLatitudeMin = -90;
+export const updateStoreBodyLatitudeMax = 90;
+
+export const updateStoreBodyLongitudeMin = -180;
+export const updateStoreBodyLongitudeMax = 180;
+
+
+
+export const UpdateStoreBody = zod.object({
+  "name": zod.string().min(updateStoreBodyNameMin),
+  "address": zod.string().min(updateStoreBodyAddressMin),
+  "street": zod.string().min(1),
+  "number": zod.string().min(1),
+  "complement": zod.string().optional(),
+  "neighborhood": zod.string().optional(),
+  "city": zod.string().min(updateStoreBodyCityMin),
+  "stateCode": zod.string().min(updateStoreBodyStateCodeMin).max(updateStoreBodyStateCodeMax),
+  "postalCode": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "managerName": zod.string().min(updateStoreBodyManagerNameMin),
+  "managerPhone": zod.string().optional(),
+  "assistantManagerName": zod.string().optional(),
+  "assistantManagerPhone": zod.string().optional(),
+  "latitude": zod.number().min(updateStoreBodyLatitudeMin).max(updateStoreBodyLatitudeMax),
+  "longitude": zod.number().min(updateStoreBodyLongitudeMin).max(updateStoreBodyLongitudeMax)
+})
+
+export const updateStoreResponseDeliveryCountMin = 0;
+
+
+
+export const UpdateStoreResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "code": zod.string(),
+  "city": zod.string(),
+  "address": zod.string(),
+  "active": zod.boolean(),
+  "street": zod.string().nullable(),
+  "number": zod.string().nullable(),
+  "complement": zod.string().nullable(),
+  "neighborhood": zod.string().nullable(),
+  "stateCode": zod.string().nullable(),
+  "postalCode": zod.string().nullable(),
+  "phone": zod.string().nullable(),
+  "managerName": zod.string().nullable(),
+  "managerPhone": zod.string().nullable(),
+  "assistantManagerName": zod.string().nullable(),
+  "assistantManagerPhone": zod.string().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "deliveryCount": zod.number().int().min(updateStoreResponseDeliveryCountMin)
+})
+
+
+/**
+ * @summary Delete a store without linked deliveries or accounts
+ */
+export const DeleteStoreParams = zod.object({
+  "storeId": zod.coerce.string()
+})
+
+export const DeleteStoreResponse = zod.void()
+
+
+/**
+ * @summary Search Brazilian addresses through Geoapify
+ */
+export const autocompleteAddressesQueryTextoMin = 3;
+
+
+
+export const AutocompleteAddressesQueryParams = zod.object({
+  "texto": zod.coerce.string().min(autocompleteAddressesQueryTextoMin)
+})
+
+export const autocompleteAddressesResponseLatitudeMin = -90;
+export const autocompleteAddressesResponseLatitudeMax = 90;
+
+export const autocompleteAddressesResponseLongitudeMin = -180;
+export const autocompleteAddressesResponseLongitudeMax = 180;
+
+
+
+export const AutocompleteAddressesResponseItem = zod.object({
+  "formatted": zod.string(),
+  "street": zod.string().nullable(),
+  "houseNumber": zod.string().nullable(),
+  "suburb": zod.string().nullable(),
+  "district": zod.string().nullable(),
+  "city": zod.string().nullable(),
+  "stateCode": zod.string().nullable(),
+  "postcode": zod.string().nullable(),
+  "latitude": zod.number().min(autocompleteAddressesResponseLatitudeMin).max(autocompleteAddressesResponseLatitudeMax),
+  "longitude": zod.number().min(autocompleteAddressesResponseLongitudeMin).max(autocompleteAddressesResponseLongitudeMax)
+})
+export const AutocompleteAddressesResponse = zod.array(AutocompleteAddressesResponseItem)
+
+
+/**
+ * @summary Remove known demo records without changing user accounts
+ */
+export const CleanupDemoDataBody = zod.object({
+  "confirmation": zod.enum(['REMOVE_DEMO_RECORDS'])
+})
+
+export const cleanupDemoDataResponseRemovedDeliveriesMin = 0;
+
+export const cleanupDemoDataResponseRemovedCouriersMin = 0;
+
+export const cleanupDemoDataResponseRemovedStoresMin = 0;
+
+export const cleanupDemoDataResponsePreservedDeliveriesMin = 0;
+
+export const cleanupDemoDataResponsePreservedLinkedCouriersMin = 0;
+
+export const cleanupDemoDataResponsePreservedLinkedStoresMin = 0;
+
+
+
+export const CleanupDemoDataResponse = zod.object({
+  "removedDeliveries": zod.number().int().min(cleanupDemoDataResponseRemovedDeliveriesMin),
+  "removedCouriers": zod.number().int().min(cleanupDemoDataResponseRemovedCouriersMin),
+  "removedStores": zod.number().int().min(cleanupDemoDataResponseRemovedStoresMin),
+  "preservedDeliveries": zod.number().int().min(cleanupDemoDataResponsePreservedDeliveriesMin),
+  "preservedLinkedCouriers": zod.number().int().min(cleanupDemoDataResponsePreservedLinkedCouriersMin),
+  "preservedLinkedStores": zod.number().int().min(cleanupDemoDataResponsePreservedLinkedStoresMin)
+})
 
 
 /**

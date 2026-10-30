@@ -18,6 +18,19 @@ export const storesTable = pgTable("stores", {
   code: text("code").notNull().unique(),
   city: text("city").notNull(),
   address: text("address").notNull(),
+  street: text("street"),
+  number: text("number"),
+  complement: text("complement"),
+  neighborhood: text("neighborhood"),
+  stateCode: text("state_code"),
+  postalCode: text("postal_code"),
+  phone: text("phone"),
+  managerName: text("manager_name"),
+  managerPhone: text("manager_phone"),
+  assistantManagerName: text("assistant_manager_name"),
+  assistantManagerPhone: text("assistant_manager_phone"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
   active: boolean("active").notNull().default(true),
 });
 
@@ -68,6 +81,8 @@ export const deliveriesTable = pgTable(
     customerName: text("customer_name").notNull(),
     customerPhone: text("customer_phone"),
     destination: text("destination").notNull(),
+    customerLatitude: real("customer_latitude"),
+    customerLongitude: real("customer_longitude"),
     orderNumber: text("order_number").notNull(),
     notes: text("notes"),
     storeId: text("store_id")

@@ -192,6 +192,113 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Store"
+    post:
+      operationId: createStore
+      tags: [directory]
+      summary: Create a store branch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreInput"
+      responses:
+        "201":
+          description: Store branch created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Store"
+  /stores/{storeId}:
+    put:
+      operationId: updateStore
+      tags: [directory]
+      summary: Update a store branch
+      parameters:
+        - in: path
+          name: storeId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreInput"
+      responses:
+        "200":
+          description: Store branch updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Store"
+        "404":
+          description: Store branch not found
+    delete:
+      operationId: deleteStore
+      tags: [directory]
+      summary: Delete a store without linked deliveries or accounts
+      parameters:
+        - in: path
+          name: storeId
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Store branch deleted
+        "404":
+          description: Store branch not found
+        "409":
+          description: Store branch has linked deliveries or accounts
+  /enderecos/autocomplete:
+    get:
+      operationId: autocompleteAddresses
+      tags: [directory]
+      summary: Search Brazilian addresses through Geoapify
+      parameters:
+        - in: query
+          name: texto
+          required: true
+          schema:
+            type: string
+            minLength: 3
+      responses:
+        "200":
+          description: Address suggestions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AddressSuggestion"
+        "422":
+          description: Search text is invalid
+        "502":
+          description: Geocoding provider could not complete the request
+        "503":
+          description: Geocoding is not configured
+  /admin/demo-data/cleanup:
+    post:
+      operationId: cleanupDemoData
+      tags: [access]
+      summary: Remove known demo records without changing user accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DemoDataCleanupInput"
+      responses:
+        "200":
+          description: Demo data cleanup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoDataCleanupSummary"
+        "403":
+          description: Administrator role required
   /couriers:
     get:
       operationId: listCouriers
@@ -433,7 +540,7 @@ components:
         - status
     Delivery:
       type: object
-      required: [id, code, customerName, destination, storeId, storeName, status, priority, deliveryAmount, createdAt, events]
+      required: [id, code, customerName, destination, storeId, storeName, status, priority, deliveryAmount, createdAt, events, customerLatitude, customerLongitude]
       properties:
         id: { type: string }
         code: { type: string }
@@ -452,6 +559,8 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         lastLocationAt: { type: ["string", "null"], format: date-time }
+        customerLatitude: { type: ["number", "null"] }
+        customerLongitude: { type: ["number", "null"] }
         estimatedMinutes: { type: ["integer", "null"] }
         distanceKm: { type: ["number", "null"] }
         deliveryAmount: { type: number, minimum: 0 }
@@ -475,6 +584,8 @@ components:
         customerName: { type: string, minLength: 2 }
         customerPhone: { type: string }
         destination: { type: string, minLength: 5 }
+        customerLatitude: { type: ["number", "null"], minimum: -90, maximum: 90 }
+        customerLongitude: { type: ["number", "null"], minimum: -180, maximum: 180 }
         orderNumber: { type: string, minLength: 1 }
         notes: { type: string }
         storeId: { type: string }
@@ -496,7 +607,7 @@ components:
         note: { type: string }
     Store:
       type: object
-      required: [id, name, code, city, address, active]
+      required: [id, name, code, city, address, active, street, number, complement, neighborhood, stateCode, postalCode, phone, managerName, managerPhone, assistantManagerName, assistantManagerPhone, latitude, longitude, deliveryCount]
       properties:
         id: { type: string }
         name: { type: string }
@@ -504,6 +615,71 @@ components:
         city: { type: string }
         address: { type: string }
         active: { type: boolean }
+        street: { type: ["string", "null"] }
+        number: { type: ["string", "null"] }
+        complement: { type: ["string", "null"] }
+        neighborhood: { type: ["string", "null"] }
+        stateCode: { type: ["string", "null"] }
+        postalCode: { type: ["string", "null"] }
+        phone: { type: ["string", "null"] }
+        managerName: { type: ["string", "null"] }
+        managerPhone: { type: ["string", "null"] }
+        assistantManagerName: { type: ["string", "null"] }
+        assistantManagerPhone: { type: ["string", "null"] }
+        latitude: { type: ["number", "null"] }
+        longitude: { type: ["number", "null"] }
+        deliveryCount: { type: integer, minimum: 0 }
+    StoreInput:
+      type: object
+      required: [name, address, street, number, city, stateCode, managerName, latitude, longitude]
+      properties:
+        name: { type: string, minLength: 2 }
+        address: { type: string, minLength: 5 }
+        street: { type: string, minLength: 1 }
+        number: { type: string, minLength: 1 }
+        complement: { type: string }
+        neighborhood: { type: string }
+        city: { type: string, minLength: 2 }
+        stateCode: { type: string, minLength: 2, maxLength: 2 }
+        postalCode: { type: string }
+        phone: { type: string }
+        managerName: { type: string, minLength: 2 }
+        managerPhone: { type: string }
+        assistantManagerName: { type: string }
+        assistantManagerPhone: { type: string }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+    AddressSuggestion:
+      type: object
+      required: [formatted, street, houseNumber, suburb, district, city, stateCode, postcode, latitude, longitude]
+      properties:
+        formatted: { type: string }
+        street: { type: ["string", "null"] }
+        houseNumber: { type: ["string", "null"] }
+        suburb: { type: ["string", "null"] }
+        district: { type: ["string", "null"] }
+        city: { type: ["string", "null"] }
+        stateCode: { type: ["string", "null"] }
+        postcode: { type: ["string", "null"] }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+    DemoDataCleanupSummary:
+      type: object
+      required: [removedDeliveries, removedCouriers, removedStores, preservedDeliveries, preservedLinkedCouriers, preservedLinkedStores]
+      properties:
+        removedDeliveries: { type: integer, minimum: 0 }
+        removedCouriers: { type: integer, minimum: 0 }
+        removedStores: { type: integer, minimum: 0 }
+        preservedDeliveries: { type: integer, minimum: 0 }
+        preservedLinkedCouriers: { type: integer, minimum: 0 }
+        preservedLinkedStores: { type: integer, minimum: 0 }
+    DemoDataCleanupInput:
+      type: object
+      required: [confirmation]
+      properties:
+        confirmation:
+          type: string
+          enum: [REMOVE_DEMO_RECORDS]
     Courier:
       type: object
       required: [id, name, initials, status, currentLatitude, currentLongitude, lastLocationAt]

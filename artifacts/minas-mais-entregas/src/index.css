@@ -394,6 +394,7 @@
 input:not(.search-box input),textarea { width:100%; border:1px solid #e2e0dd; border-radius:7px; background:#fff; padding:9px 10px; color:#32353a; font-size:12px; }
 input::placeholder,textarea::placeholder { color:#a1a1a3; }
 textarea { resize:vertical; }
+.field-label { display:flex; flex-direction:column; gap:6px; color:#777a80; font-size:11px; font-weight:600; }
 .skeleton { border-radius:6px; background:linear-gradient(90deg,#f1f0ee,#f8f7f5,#f1f0ee); background-size:200% 100%; animation:skeleton-shift 1.4s ease infinite; }
 @keyframes skeleton-shift { to { background-position:-200% 0; } }
 .modal-backdrop { position:fixed; z-index:1000; inset:0; display:flex; align-items:center; justify-content:center; overflow-y:auto; overscroll-behavior:contain; padding:16px; background:rgba(28,29,32,.42); backdrop-filter:blur(3px); }

@@ -13,6 +13,18 @@ export interface DeliveryInput {
   customerPhone?: string;
   /** @minLength 5 */
   destination: string;
+  /**
+     * @minimum -90
+     * @maximum 90
+     * @nullable
+     */
+  customerLatitude?: number | null;
+  /**
+     * @minimum -180
+     * @maximum 180
+     * @nullable
+     */
+  customerLongitude?: number | null;
   /** @minLength 1 */
   orderNumber: string;
   notes?: string;

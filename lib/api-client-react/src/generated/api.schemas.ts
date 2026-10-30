@@ -43,6 +43,10 @@ export interface Delivery {
   /** @nullable */
   lastLocationAt?: string | null;
   /** @nullable */
+  customerLatitude: number | null;
+  /** @nullable */
+  customerLongitude: number | null;
+  /** @nullable */
   estimatedMinutes?: number | null;
   /** @nullable */
   distanceKm?: number | null;
@@ -65,6 +69,18 @@ export interface DeliveryInput {
   customerPhone?: string;
   /** @minLength 5 */
   destination: string;
+  /**
+     * @minimum -90
+     * @maximum 90
+     * @nullable
+     */
+  customerLatitude?: number | null;
+  /**
+     * @minimum -180
+     * @maximum 180
+     * @nullable
+     */
+  customerLongitude?: number | null;
   /** @minLength 1 */
   orderNumber: string;
   notes?: string;
@@ -111,6 +127,125 @@ export interface Store {
   city: string;
   address: string;
   active: boolean;
+  /** @nullable */
+  street: string | null;
+  /** @nullable */
+  number: string | null;
+  /** @nullable */
+  complement: string | null;
+  /** @nullable */
+  neighborhood: string | null;
+  /** @nullable */
+  stateCode: string | null;
+  /** @nullable */
+  postalCode: string | null;
+  /** @nullable */
+  phone: string | null;
+  /** @nullable */
+  managerName: string | null;
+  /** @nullable */
+  managerPhone: string | null;
+  /** @nullable */
+  assistantManagerName: string | null;
+  /** @nullable */
+  assistantManagerPhone: string | null;
+  /** @nullable */
+  latitude: number | null;
+  /** @nullable */
+  longitude: number | null;
+  /** @minimum 0 */
+  deliveryCount: number;
+}
+
+export interface StoreInput {
+  /** @minLength 2 */
+  name: string;
+  /** @minLength 5 */
+  address: string;
+  /** @minLength 1 */
+  street: string;
+  /** @minLength 1 */
+  number: string;
+  complement?: string;
+  neighborhood?: string;
+  /** @minLength 2 */
+  city: string;
+  /**
+     * @minLength 2
+     * @maxLength 2
+     */
+  stateCode: string;
+  postalCode?: string;
+  phone?: string;
+  /** @minLength 2 */
+  managerName: string;
+  managerPhone?: string;
+  assistantManagerName?: string;
+  assistantManagerPhone?: string;
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude: number;
+}
+
+export interface AddressSuggestion {
+  formatted: string;
+  /** @nullable */
+  street: string | null;
+  /** @nullable */
+  houseNumber: string | null;
+  /** @nullable */
+  suburb: string | null;
+  /** @nullable */
+  district: string | null;
+  /** @nullable */
+  city: string | null;
+  /** @nullable */
+  stateCode: string | null;
+  /** @nullable */
+  postcode: string | null;
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude: number;
+}
+
+export interface DemoDataCleanupSummary {
+  /** @minimum 0 */
+  removedDeliveries: number;
+  /** @minimum 0 */
+  removedCouriers: number;
+  /** @minimum 0 */
+  removedStores: number;
+  /** @minimum 0 */
+  preservedDeliveries: number;
+  /** @minimum 0 */
+  preservedLinkedCouriers: number;
+  /** @minimum 0 */
+  preservedLinkedStores: number;
+}
+
+export type DemoDataCleanupInputConfirmation = typeof DemoDataCleanupInputConfirmation[keyof typeof DemoDataCleanupInputConfirmation];
+
+
+export const DemoDataCleanupInputConfirmation = {
+  REMOVE_DEMO_RECORDS: 'REMOVE_DEMO_RECORDS',
+} as const;
+
+export interface DemoDataCleanupInput {
+  confirmation: DemoDataCleanupInputConfirmation;
 }
 
 export type CourierStatus = typeof CourierStatus[keyof typeof CourierStatus];
@@ -359,6 +494,13 @@ export type ListDeliveriesParams = {
 status?: string;
 search?: string;
 storeId?: string;
+};
+
+export type AutocompleteAddressesParams = {
+/**
+ * @minLength 3
+ */
+texto: string;
 };
 
 export type GetCourierEarningsParams = {

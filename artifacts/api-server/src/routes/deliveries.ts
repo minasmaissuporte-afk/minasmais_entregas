@@ -20,7 +20,6 @@ import {
   ListCouriersResponse,
   ListDeliveriesQueryParams,
   ListDeliveriesResponse,
-  ListStoresResponse,
   UpdateAccessUserBody,
   UpdateAccessUserParams,
   UpdateAccessUserResponse,
@@ -604,6 +603,15 @@ router.post(
     res.status(400).json({ error: body.error.message });
     return;
   }
+  if (
+    (body.data.customerLatitude == null) !==
+    (body.data.customerLongitude == null)
+  ) {
+    res.status(400).json({
+      error: "Latitude e longitude do endereço precisam ser informadas juntas.",
+    });
+    return;
+  }
 
   const storeId = profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF"
     ? profile.storeId
@@ -632,6 +640,8 @@ router.post(
       customerName: body.data.customerName.trim(),
       customerPhone: body.data.customerPhone?.trim() || null,
       destination: body.data.destination.trim(),
+      customerLatitude: body.data.customerLatitude ?? null,
+      customerLongitude: body.data.customerLongitude ?? null,
       orderNumber: body.data.orderNumber.trim(),
       notes: body.data.notes?.trim() || null,
       storeId,
@@ -1005,24 +1015,6 @@ router.patch(
 
     const view = await deliveryView(result.deliveryId);
     res.json(UpdateDeliveryStatusResponse.parse(view));
-  },
-);
-
-router.get(
-  "/stores",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
-  async (_req, res): Promise<void> => {
-  const profile = res.locals.appUser as AppUserProfile;
-  if ((profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") && !profile.storeId) {
-    res.status(403).json({ error: "Esta conta não está vinculada a uma unidade." });
-    return;
-  }
-  const query = db.select().from(storesTable);
-  const stores =
-    profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF"
-      ? await query.where(eq(storesTable.id, profile.storeId!)).orderBy(storesTable.name)
-      : await query.orderBy(storesTable.name);
-  res.json(ListStoresResponse.parse(stores));
   },
 );
 

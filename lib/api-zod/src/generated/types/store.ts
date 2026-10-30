@@ -13,4 +13,32 @@ export interface Store {
   city: string;
   address: string;
   active: boolean;
+  /** @nullable */
+  street: string | null;
+  /** @nullable */
+  number: string | null;
+  /** @nullable */
+  complement: string | null;
+  /** @nullable */
+  neighborhood: string | null;
+  /** @nullable */
+  stateCode: string | null;
+  /** @nullable */
+  postalCode: string | null;
+  /** @nullable */
+  phone: string | null;
+  /** @nullable */
+  managerName: string | null;
+  /** @nullable */
+  managerPhone: string | null;
+  /** @nullable */
+  assistantManagerName: string | null;
+  /** @nullable */
+  assistantManagerPhone: string | null;
+  /** @nullable */
+  latitude: number | null;
+  /** @nullable */
+  longitude: number | null;
+  /** @minimum 0 */
+  deliveryCount: number;
 }

@@ -26,7 +26,9 @@ import type {
 
 import type {
   AcceptCourierRouteInput,
+  AddressSuggestion,
   AppUser,
+  AutocompleteAddressesParams,
   Courier,
   CourierDeliveryNavigation,
   CourierDeliveryRoute,
@@ -38,11 +40,14 @@ import type {
   Delivery,
   DeliveryInput,
   DeliveryStatusInput,
+  DemoDataCleanupInput,
+  DemoDataCleanupSummary,
   DispatchInput,
   GetCourierEarningsParams,
   HealthStatus,
   ListDeliveriesParams,
   Store,
+  StoreInput,
   UserRoleInput
 } from './api.schemas';
 
@@ -926,6 +931,453 @@ export function useListStores<TData = Awaited<ReturnType<typeof listStores>>, TE
 
 
 
+
+export const getCreateStoreUrl = () => {
+
+
+
+
+  return `/api/stores`
+}
+
+/**
+ * @summary Create a store branch
+ */
+export const createStore = async (storeInput: StoreInput, options?: Parameters<typeof customFetch>[1]): Promise<Store> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Store>(getCreateStoreUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(storeInput)
+  }
+);}
+
+
+
+
+
+export const getCreateStoreMutationKey = () => ['createStore'] as const;
+
+export const getCreateStoreMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStore>>, TError,CreateStoreMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createStore>>, TError,CreateStoreMutationVariables, TContext> => {
+
+const mutationKey = getCreateStoreMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createStore>>, CreateStoreMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createStore(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateStoreMutationResult = NonNullable<Awaited<ReturnType<typeof createStore>>>
+    export type CreateStoreMutationBody = BodyType<StoreInput>
+    export type CreateStoreMutationError = ErrorType<unknown>
+    export type CreateStoreMutationVariables = {data: BodyType<StoreInput>}
+
+    /**
+ * @summary Create a store branch
+ */
+export const useCreateStore = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStore>>, TError,CreateStoreMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createStore>>,
+        TError,
+        CreateStoreMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateStoreMutationOptions(options), queryClient);
+    }
+
+export const getUpdateStoreUrl = (storeId: string,) => {
+
+
+
+
+  return `/api/stores/${storeId}`
+}
+
+/**
+ * @summary Update a store branch
+ */
+export const updateStore = async (storeId: string,
+    storeInput: StoreInput, options?: Parameters<typeof customFetch>[1]): Promise<Store> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Store>(getUpdateStoreUrl(storeId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(storeInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateStoreMutationKey = () => ['updateStore'] as const;
+
+export const getUpdateStoreMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStore>>, TError,UpdateStoreMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateStore>>, TError,UpdateStoreMutationVariables, TContext> => {
+
+const mutationKey = getUpdateStoreMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateStore>>, UpdateStoreMutationVariables> = (props) => {
+          const {storeId,data} = props ?? {};
+
+          return  updateStore(storeId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateStoreMutationResult = NonNullable<Awaited<ReturnType<typeof updateStore>>>
+    export type UpdateStoreMutationBody = BodyType<StoreInput>
+    export type UpdateStoreMutationError = ErrorType<void>
+    export type UpdateStoreMutationVariables = {storeId: string;data: BodyType<StoreInput>}
+
+    /**
+ * @summary Update a store branch
+ */
+export const useUpdateStore = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStore>>, TError,UpdateStoreMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateStore>>,
+        TError,
+        UpdateStoreMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateStoreMutationOptions(options), queryClient);
+    }
+
+export const getDeleteStoreUrl = (storeId: string,) => {
+
+
+
+
+  return `/api/stores/${storeId}`
+}
+
+/**
+ * @summary Delete a store without linked deliveries or accounts
+ */
+export const deleteStore = async (storeId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteStoreUrl(storeId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteStoreMutationKey = () => ['deleteStore'] as const;
+
+export const getDeleteStoreMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStore>>, TError,DeleteStoreMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteStore>>, TError,DeleteStoreMutationVariables, TContext> => {
+
+const mutationKey = getDeleteStoreMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteStore>>, DeleteStoreMutationVariables> = (props) => {
+          const {storeId} = props ?? {};
+
+          return  deleteStore(storeId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteStoreMutationResult = NonNullable<Awaited<ReturnType<typeof deleteStore>>>
+
+    export type DeleteStoreMutationError = ErrorType<void>
+    export type DeleteStoreMutationVariables = {storeId: string}
+
+    /**
+ * @summary Delete a store without linked deliveries or accounts
+ */
+export const useDeleteStore = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStore>>, TError,DeleteStoreMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteStore>>,
+        TError,
+        DeleteStoreMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteStoreMutationOptions(options), queryClient);
+    }
+
+export const getAutocompleteAddressesUrl = (params: AutocompleteAddressesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/enderecos/autocomplete?${stringifiedParams}` : `/api/enderecos/autocomplete`
+}
+
+/**
+ * @summary Search Brazilian addresses through Geoapify
+ */
+export const autocompleteAddresses = async (params: AutocompleteAddressesParams, options?: Parameters<typeof customFetch>[1]): Promise<AddressSuggestion[]> => {
+
+  return customFetch<AddressSuggestion[]>(getAutocompleteAddressesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAutocompleteAddressesQueryKey = (params?: AutocompleteAddressesParams,) => {
+    return [
+    `/api/enderecos/autocomplete`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getAutocompleteAddressesQueryOptions = <TData = Awaited<ReturnType<typeof autocompleteAddresses>>, TError = ErrorType<void>>(params: AutocompleteAddressesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof autocompleteAddresses>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAutocompleteAddressesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof autocompleteAddresses>>> = ({ signal }) => autocompleteAddresses(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof autocompleteAddresses>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type AutocompleteAddressesQueryResult = NonNullable<Awaited<ReturnType<typeof autocompleteAddresses>>>
+export type AutocompleteAddressesQueryError = ErrorType<void>
+
+
+export function useAutocompleteAddresses<TData = Awaited<ReturnType<typeof autocompleteAddresses>>, TError = ErrorType<void>>(
+ params: AutocompleteAddressesParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof autocompleteAddresses>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof autocompleteAddresses>>,
+          TError,
+          Awaited<ReturnType<typeof autocompleteAddresses>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useAutocompleteAddresses<TData = Awaited<ReturnType<typeof autocompleteAddresses>>, TError = ErrorType<void>>(
+ params: AutocompleteAddressesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof autocompleteAddresses>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof autocompleteAddresses>>,
+          TError,
+          Awaited<ReturnType<typeof autocompleteAddresses>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useAutocompleteAddresses<TData = Awaited<ReturnType<typeof autocompleteAddresses>>, TError = ErrorType<void>>(
+ params: AutocompleteAddressesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof autocompleteAddresses>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Search Brazilian addresses through Geoapify
+ */
+
+export function useAutocompleteAddresses<TData = Awaited<ReturnType<typeof autocompleteAddresses>>, TError = ErrorType<void>>(
+ params: AutocompleteAddressesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof autocompleteAddresses>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getAutocompleteAddressesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCleanupDemoDataUrl = () => {
+
+
+
+
+  return `/api/admin/demo-data/cleanup`
+}
+
+/**
+ * @summary Remove known demo records without changing user accounts
+ */
+export const cleanupDemoData = async (demoDataCleanupInput: DemoDataCleanupInput, options?: Parameters<typeof customFetch>[1]): Promise<DemoDataCleanupSummary> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<DemoDataCleanupSummary>(getCleanupDemoDataUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(demoDataCleanupInput)
+  }
+);}
+
+
+
+
+
+export const getCleanupDemoDataMutationKey = () => ['cleanupDemoData'] as const;
+
+export const getCleanupDemoDataMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cleanupDemoData>>, TError,CleanupDemoDataMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cleanupDemoData>>, TError,CleanupDemoDataMutationVariables, TContext> => {
+
+const mutationKey = getCleanupDemoDataMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cleanupDemoData>>, CleanupDemoDataMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  cleanupDemoData(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CleanupDemoDataMutationResult = NonNullable<Awaited<ReturnType<typeof cleanupDemoData>>>
+    export type CleanupDemoDataMutationBody = BodyType<DemoDataCleanupInput>
+    export type CleanupDemoDataMutationError = ErrorType<void>
+    export type CleanupDemoDataMutationVariables = {data: BodyType<DemoDataCleanupInput>}
+
+    /**
+ * @summary Remove known demo records without changing user accounts
+ */
+export const useCleanupDemoData = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cleanupDemoData>>, TError,CleanupDemoDataMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof cleanupDemoData>>,
+        TError,
+        CleanupDemoDataMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCleanupDemoDataMutationOptions(options), queryClient);
+    }
 
 export const getListCouriersUrl = () => {
 

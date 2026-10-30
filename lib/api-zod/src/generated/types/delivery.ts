@@ -32,6 +32,10 @@ export interface Delivery {
   /** @nullable */
   lastLocationAt?: Date | null;
   /** @nullable */
+  customerLatitude: number | null;
+  /** @nullable */
+  customerLongitude: number | null;
+  /** @nullable */
   estimatedMinutes?: number | null;
   /** @nullable */
   distanceKm?: number | null;

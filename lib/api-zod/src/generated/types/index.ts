@@ -7,8 +7,10 @@
  */
 
 export * from './acceptCourierRouteInput';
+export * from './addressSuggestion';
 export * from './appUser';
 export * from './appUserRole';
+export * from './autocompleteAddressesParams';
 export * from './courier';
 export * from './courierDeliveryNavigation';
 export * from './courierDeliveryRoute';
@@ -29,6 +31,9 @@ export * from './deliveryRouteStopKind';
 export * from './deliveryRouteStopStatus';
 export * from './deliveryStatusInput';
 export * from './deliveryStatusInputStatus';
+export * from './demoDataCleanupInput';
+export * from './demoDataCleanupInputConfirmation';
+export * from './demoDataCleanupSummary';
 export * from './dispatchInput';
 export * from './dispatchInputMode';
 export * from './getCourierEarningsParams';
@@ -38,5 +43,6 @@ export * from './listDeliveriesParams';
 export * from './routeCoordinate';
 export * from './routeDeliverySummary';
 export * from './store';
+export * from './storeInput';
 export * from './userRoleInput';
 export * from './userRoleInputRole';
