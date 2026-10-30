@@ -562,6 +562,10 @@ export const CleanupDemoDataResponse = zod.object({
 /**
  * @summary List couriers and current availability
  */
+export const ListCouriersQueryParams = zod.object({
+  "includeUnlinked": zod.coerce.boolean().optional().describe('Include courier profiles without a linked courier account. Administrator-only.')
+})
+
 export const listCouriersResponseCurrentAccuracyMetersMin = 0;
 
 export const listCouriersResponseCurrentSpeedMetersPerSecondMin = 0;

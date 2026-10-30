@@ -39,6 +39,7 @@ export * from './dispatchInputMode';
 export * from './getCourierEarningsParams';
 export * from './getCourierEarningsPeriod';
 export * from './healthStatus';
+export * from './listCouriersParams';
 export * from './listDeliveriesParams';
 export * from './routeCoordinate';
 export * from './routeDeliverySummary';

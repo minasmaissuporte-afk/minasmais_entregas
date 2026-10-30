@@ -45,6 +45,7 @@ import type {
   DispatchInput,
   GetCourierEarningsParams,
   HealthStatus,
+  ListCouriersParams,
   ListDeliveriesParams,
   Store,
   StoreInput,
@@ -1379,20 +1380,27 @@ export const useCleanupDemoData = <TError = ErrorType<void>,
       return useMutation(getCleanupDemoDataMutationOptions(options), queryClient);
     }
 
-export const getListCouriersUrl = () => {
+export const getListCouriersUrl = (params?: ListCouriersParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/couriers`
+  return stringifiedParams.length > 0 ? `/api/couriers?${stringifiedParams}` : `/api/couriers`
 }
 
 /**
  * @summary List couriers and current availability
  */
-export const listCouriers = async ( options?: Parameters<typeof customFetch>[1]): Promise<Courier[]> => {
+export const listCouriers = async (params?: ListCouriersParams, options?: Parameters<typeof customFetch>[1]): Promise<Courier[]> => {
 
-  return customFetch<Courier[]>(getListCouriersUrl(),
+  return customFetch<Courier[]>(getListCouriersUrl(params),
   {
     ...options,
     method: 'GET'
@@ -1405,23 +1413,23 @@ export const listCouriers = async ( options?: Parameters<typeof customFetch>[1])
 
 
 
-export const getListCouriersQueryKey = () => {
+export const getListCouriersQueryKey = (params?: ListCouriersParams,) => {
     return [
-    `/api/couriers`
+    `/api/couriers`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListCouriersQueryOptions = <TData = Awaited<ReturnType<typeof listCouriers>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCouriers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+export const getListCouriersQueryOptions = <TData = Awaited<ReturnType<typeof listCouriers>>, TError = ErrorType<unknown>>(params?: ListCouriersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCouriers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListCouriersQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListCouriersQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCouriers>>> = ({ signal }) => listCouriers({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCouriers>>> = ({ signal }) => listCouriers(params, { signal, ...requestOptions });
 
 
 
@@ -1435,7 +1443,7 @@ export type ListCouriersQueryError = ErrorType<unknown>
 
 
 export function useListCouriers<TData = Awaited<ReturnType<typeof listCouriers>>, TError = ErrorType<unknown>>(
-  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCouriers>>, TError, TData>> & Pick<
+ params: undefined |  ListCouriersParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCouriers>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof listCouriers>>,
           TError,
@@ -1445,7 +1453,7 @@ export function useListCouriers<TData = Awaited<ReturnType<typeof listCouriers>>
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useListCouriers<TData = Awaited<ReturnType<typeof listCouriers>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCouriers>>, TError, TData>> & Pick<
+ params?: ListCouriersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCouriers>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof listCouriers>>,
           TError,
@@ -1455,7 +1463,7 @@ export function useListCouriers<TData = Awaited<ReturnType<typeof listCouriers>>
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useListCouriers<TData = Awaited<ReturnType<typeof listCouriers>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCouriers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ params?: ListCouriersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCouriers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
@@ -1463,11 +1471,11 @@ export function useListCouriers<TData = Awaited<ReturnType<typeof listCouriers>>
  */
 
 export function useListCouriers<TData = Awaited<ReturnType<typeof listCouriers>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCouriers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ params?: ListCouriersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCouriers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
  , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getListCouriersQueryOptions(options)
+  const queryOptions = getListCouriersQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

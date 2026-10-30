@@ -304,6 +304,13 @@ paths:
       operationId: listCouriers
       tags: [directory]
       summary: List couriers and current availability
+      parameters:
+        - in: query
+          name: includeUnlinked
+          required: false
+          schema:
+            type: boolean
+          description: Include courier profiles without a linked courier account. Administrator-only.
       responses:
         "200":
           description: Couriers

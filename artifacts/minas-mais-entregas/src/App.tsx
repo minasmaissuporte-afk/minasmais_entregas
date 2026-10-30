@@ -427,7 +427,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: () => void }) {
   const qc = useQueryClient();
-  const couriersQuery = useListCouriers({ query: { queryKey: getListCouriersQueryKey() } });
+  const couriersQuery = useListCouriers(undefined, { query: { queryKey: getListCouriersQueryKey() } });
   const dispatch = useDispatchDelivery();
   const [courierId, setCourierId] = useState('');
   const [error, setError] = useState('');
@@ -486,7 +486,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
   const deleteDelivery = useDeleteDelivery();
   const summary = useGetDashboardSummary({ query: { refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
   const stores = useListStores({ query: { queryKey: getListStoresQueryKey() } });
-  const couriers = useListCouriers({ query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
+  const couriers = useListCouriers(undefined, { query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
   const params = useMemo(() => ({ ...(status ? { status } : {}), ...(search ? { search } : {}), ...(storeId ? { storeId } : {}) }), [status, search, storeId]);
   const deliveries = useListDeliveries(params, { query: { refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
   const [now, setNow] = useState(() => Date.now());
@@ -743,7 +743,7 @@ function DeliveryDetail() {
   const [, params] = useRoute('/deliveries/:deliveryId');
   const id = params?.deliveryId ?? '';
   const { data, isLoading, isError, refetch } = useGetDelivery(id, { query: { enabled: !!id, queryKey: getGetDeliveryQueryKey(id), refetchInterval: 15000 } });
-  const couriers = useListCouriers({ query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000 } });
+  const couriers = useListCouriers(undefined, { query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000 } });
   const qc = useQueryClient();
   const updateStatus = useUpdateDeliveryStatus();
   const dispatch = useDispatchDelivery();

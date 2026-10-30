@@ -462,7 +462,18 @@ router.get(
   requireRole("ADMIN", "CENTRAL"),
   async (_req, res): Promise<void> => {
   const deliveries = await db.select().from(deliveriesTable);
-  const couriers = await db.select().from(couriersTable);
+  const linkedCourierRows = await db
+    .select({ courierId: appUsersTable.courierId })
+    .from(appUsersTable)
+    .where(eq(appUsersTable.role, "COURIER"));
+  const linkedCourierIds = new Set(
+    linkedCourierRows
+      .map((row) => row.courierId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const couriers = (await db.select().from(couriersTable)).filter((courier) =>
+    linkedCourierIds.has(courier.id),
+  );
   const events = await db.select().from(deliveryEventsTable);
   const now = Date.now();
   const activeStatuses = new Set([
@@ -820,6 +831,18 @@ router.post(
 
       let courierId: string | null = null;
       if (body.data.mode === "single") {
+        const linkedCourierRows = await tx
+          .select({ courierId: appUsersTable.courierId })
+          .from(appUsersTable)
+          .where(eq(appUsersTable.role, "COURIER"));
+        const linkedCourierIds = [
+          ...new Set(
+            linkedCourierRows
+              .map((row) => row.courierId)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        ];
+        if (!linkedCourierIds.length) return { error: "no_courier" as const };
         const [courier] = body.data.courierId
           ? await tx
               .select()
@@ -827,6 +850,7 @@ router.post(
               .where(
                 and(
                   eq(couriersTable.id, body.data.courierId),
+                  inArray(couriersTable.id, linkedCourierIds),
                   inArray(couriersTable.status, ["AVAILABLE", "OFFLINE"]),
                 ),
               )
@@ -834,7 +858,12 @@ router.post(
           : await tx
               .select()
               .from(couriersTable)
-              .where(eq(couriersTable.status, "AVAILABLE"))
+              .where(
+                and(
+                  eq(couriersTable.status, "AVAILABLE"),
+                  inArray(couriersTable.id, linkedCourierIds),
+                ),
+              )
               .limit(1);
         if (!courier) return { error: "no_courier" as const };
         courierId = courier.id;
@@ -939,15 +968,44 @@ router.patch(
 
       let courierId = delivery.courierId;
       if (nextStatus === "ACCEPTED" && !courierId) {
-        const [available] = await tx
-          .select()
-          .from(couriersTable)
-          .where(eq(couriersTable.status, "AVAILABLE"))
-          .limit(1);
+        const linkedCourierRows = await tx
+          .select({ courierId: appUsersTable.courierId })
+          .from(appUsersTable)
+          .where(eq(appUsersTable.role, "COURIER"));
+        const linkedCourierIds = [
+          ...new Set(
+            linkedCourierRows
+              .map((row) => row.courierId)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        ];
+        const [available] = linkedCourierIds.length
+          ? await tx
+              .select()
+              .from(couriersTable)
+              .where(
+                and(
+                  eq(couriersTable.status, "AVAILABLE"),
+                  inArray(couriersTable.id, linkedCourierIds),
+                ),
+              )
+              .limit(1)
+          : [];
         if (!available) return { error: "no_courier" as const };
         courierId = available.id;
       }
       if (nextStatus === "ACCEPTED" && courierId) {
+        const [linkedCourier] = await tx
+          .select({ id: appUsersTable.id })
+          .from(appUsersTable)
+          .where(
+            and(
+              eq(appUsersTable.role, "COURIER"),
+              eq(appUsersTable.courierId, courierId),
+            ),
+          )
+          .limit(1);
+        if (!linkedCourier) return { error: "no_courier" as const };
         const [updatedCourier] = await tx
           .update(couriersTable)
           .set({ status: "BUSY" })
@@ -1031,8 +1089,19 @@ router.patch(
 router.get(
   "/couriers",
   requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
-  async (_req, res): Promise<void> => {
+  async (req, res): Promise<void> => {
   const profile = res.locals.appUser as AppUserProfile;
+  const linkedCourierRows = await db
+    .select({ courierId: appUsersTable.courierId })
+    .from(appUsersTable)
+    .where(eq(appUsersTable.role, "COURIER"));
+  const linkedCourierIds = new Set(
+    linkedCourierRows
+      .map((row) => row.courierId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const includeUnlinked =
+    profile.role === "ADMIN" && req.query.includeUnlinked === "true";
   let couriers;
   if (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") {
     if (!profile.storeId) {
@@ -1057,7 +1126,10 @@ router.get(
       ...new Set(
         assignedRows
           .map((row) => row.courierId)
-          .filter((courierId): courierId is string => courierId !== null),
+            .filter(
+              (courierId): courierId is string =>
+                courierId !== null && linkedCourierIds.has(courierId),
+            ),
       ),
     ];
     couriers = courierIds.length
@@ -1068,10 +1140,13 @@ router.get(
           .orderBy(couriersTable.name)
       : [];
   } else {
-    couriers = await db
+    const rows = await db
       .select()
       .from(couriersTable)
       .orderBy(couriersTable.name);
+    couriers = includeUnlinked
+      ? rows
+      : rows.filter((courier) => linkedCourierIds.has(courier.id));
   }
   res.json(
     ListCouriersResponse.parse(

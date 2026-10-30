@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getListAccessUsersQueryKey,
+  getListCouriersQueryKey,
   useListAccessUsers,
   useListCouriers,
   useListStores,
@@ -25,7 +26,7 @@ export default function AccessManagement() {
   const { user: signedInUser } = useUser();
   const users = useListAccessUsers();
   const stores = useListStores();
-  const couriers = useListCouriers();
+  const couriers = useListCouriers({ includeUnlinked: true });
   const adminCount = users.data?.filter((user) => user.role === "ADMIN").length ?? 0;
 
   return (
@@ -147,6 +148,9 @@ function UserAccessRow({
           await queryClient.invalidateQueries({
             queryKey: getListAccessUsersQueryKey(),
           });
+          await queryClient.invalidateQueries({
+            queryKey: getListCouriersQueryKey(),
+          });
         },
         onError: () => setMessage("Não foi possível salvar. Confira o vínculo escolhido."),
       },
@@ -169,6 +173,9 @@ function UserAccessRow({
         onSuccess: async () => {
           await queryClient.invalidateQueries({
             queryKey: getListAccessUsersQueryKey(),
+          });
+          await queryClient.invalidateQueries({
+            queryKey: getListCouriersQueryKey(),
           });
         },
         onError: (error) => {

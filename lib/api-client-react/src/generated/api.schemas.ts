@@ -539,6 +539,13 @@ export type AutocompleteAddressesParams = {
 texto: string;
 };
 
+export type ListCouriersParams = {
+/**
+ * Include courier profiles without a linked courier account. Administrator-only.
+ */
+includeUnlinked?: boolean;
+};
+
 export type GetCourierEarningsParams = {
 period?: GetCourierEarningsPeriod;
 };

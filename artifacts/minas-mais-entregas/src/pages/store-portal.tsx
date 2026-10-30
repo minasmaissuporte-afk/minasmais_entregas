@@ -20,7 +20,7 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
     {},
     { query: { queryKey: getListDeliveriesQueryKey(), refetchInterval: 15000 } },
   );
-  const couriers = useListCouriers({
+  const couriers = useListCouriers(undefined, {
     query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000 },
   });
   const activeCouriers = useMemo(
