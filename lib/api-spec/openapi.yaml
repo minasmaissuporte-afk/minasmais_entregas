@@ -308,6 +308,24 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/CourierDeliveryRoute"
+  /courier/location:
+    post:
+      operationId: updateCourierLocation
+      tags: [courier]
+      summary: Update the signed-in courier's current location during active work
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourierLocationInput"
+      responses:
+        "200":
+          description: Current courier location saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourierLocation"
   /courier/routes/{routeId}/accept:
     post:
       operationId: acceptCourierRoute
@@ -439,13 +457,15 @@ components:
         active: { type: boolean }
     Courier:
       type: object
-      required: [id, name, initials, status, lastLocationAt]
+      required: [id, name, initials, status, currentLatitude, currentLongitude, lastLocationAt]
       properties:
         id: { type: string }
         name: { type: string }
         initials: { type: string }
         status: { type: string, enum: [AVAILABLE, BUSY, OFFLINE] }
         currentDeliveryCode: { type: ["string", "null"] }
+        currentLatitude: { type: ["number", "null"] }
+        currentLongitude: { type: ["number", "null"] }
         lastLocationAt: { type: ["string", "null"], format: date-time }
     DashboardSummary:
       type: object
@@ -508,6 +528,25 @@ components:
       properties:
         latitude: { type: number, minimum: -90, maximum: 90 }
         longitude: { type: number, minimum: -180, maximum: 180 }
+    CourierLocationInput:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+    CourierLocation:
+      type: object
+      required: [latitude, longitude, lastLocationAt]
+      properties:
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        lastLocationAt: { type: string, format: date-time }
+    RouteCoordinate:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
     RouteDeliverySummary:
       type: object
       required: [id, code, customerName, destination, storeName, deliveryAmount, status]
@@ -537,7 +576,7 @@ components:
         deliveryAmount: { type: number }
     CourierDeliveryRoute:
       type: object
-      required: [id, status, courierId, deliveryCount, amountToReceive, distanceKm, estimatedMinutes, lockedAt, deliveries, stops]
+      required: [id, status, courierId, deliveryCount, amountToReceive, distanceKm, estimatedMinutes, lockedAt, deliveries, stops, routeGeometry]
       properties:
         id: { type: string }
         status: { type: string, enum: [OFFERED, ACCEPTED, COMPLETED] }
@@ -555,4 +594,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DeliveryRouteStop"
+        routeGeometry:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/RouteCoordinate"
 

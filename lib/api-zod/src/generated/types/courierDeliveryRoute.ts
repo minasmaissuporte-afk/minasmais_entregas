@@ -7,6 +7,7 @@
  */
 import type { CourierDeliveryRouteStatus } from './courierDeliveryRouteStatus';
 import type { DeliveryRouteStop } from './deliveryRouteStop';
+import type { RouteCoordinate } from './routeCoordinate';
 import type { RouteDeliverySummary } from './routeDeliverySummary';
 
 export interface CourierDeliveryRoute {
@@ -24,4 +25,6 @@ export interface CourierDeliveryRoute {
   lockedAt: Date | null;
   deliveries: RouteDeliverySummary[];
   stops: DeliveryRouteStop[];
+  /** @nullable */
+  routeGeometry: RouteCoordinate[] | null;
 }

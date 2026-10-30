@@ -1,12 +1,15 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  getListCouriersQueryKey,
   getListDeliveriesQueryKey,
+  useListCouriers,
   useListDeliveries,
   useUpdateDeliveryStatus,
   type AppUser,
 } from "@workspace/api-client-react";
 import { Check, LogOut, PackageCheck } from "lucide-react";
 import { useClerk } from "@clerk/react";
+import LiveMap, { type MapMarker } from "@/components/live-map";
 
 export default function StorePortal({ profile }: { profile: AppUser }) {
   const { signOut } = useClerk();
@@ -15,6 +18,31 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
     {},
     { query: { queryKey: getListDeliveriesQueryKey(), refetchInterval: 15000 } },
   );
+  const couriers = useListCouriers({
+    query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000 },
+  });
+  const trackingMarkers: MapMarker[] = (couriers.data ?? [])
+    .filter(
+      (courier) =>
+        courier.status === "BUSY" &&
+        courier.currentLatitude != null &&
+        courier.currentLongitude != null,
+    )
+    .map((courier) => ({
+      id: courier.id,
+      latitude: courier.currentLatitude!,
+      longitude: courier.currentLongitude!,
+      title: courier.name,
+      detail: `Entrega ${courier.currentDeliveryCode ?? ""} · posição recebida ${
+        courier.lastLocationAt
+          ? new Date(courier.lastLocationAt).toLocaleTimeString("pt-BR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "sem horário"
+      }`,
+      kind: "courier",
+    }));
   const updateStatus = useUpdateDeliveryStatus();
   const confirmPickup = (deliveryId: string) => {
     updateStatus.mutate(
@@ -51,6 +79,24 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
             Olá, {profile.name}. Aqui aparecem somente as entregas da sua unidade.
           </p>
         </div>
+        <section className="panel mb-5 overflow-hidden" aria-label="Rastreamento dos motoboys da unidade">
+          <div className="border-b border-border px-4 py-4 sm:px-5">
+            <div className="eyebrow">ACOMPANHAMENTO</div>
+            <h2 className="mt-1 text-sm font-bold">Motoboys com entregas da unidade</h2>
+          </div>
+          {couriers.isLoading ? (
+            <div className="skeleton m-4 h-[280px]" />
+          ) : trackingMarkers.length ? (
+            <LiveMap
+              markers={trackingMarkers}
+              ariaLabel="Localização atual dos motoboys atendendo esta unidade"
+            />
+          ) : (
+            <div className="p-5 text-sm text-muted-foreground">
+              Nenhuma posição GPS recebida para entregas ativas desta unidade. O mapa será atualizado quando o motoboy permitir a localização no PWA.
+            </div>
+          )}
+        </section>
         {deliveries.isLoading ? (
           <div className="panel p-5 text-sm text-muted-foreground">Carregando entregas…</div>
         ) : deliveries.isError ? (

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetCourierEarningsQueryKey,
@@ -6,9 +6,11 @@ import {
   getListDeliveriesQueryKey,
   useAcceptCourierRoute,
   useCompleteCourierRouteStop,
+  useUpdateCourierLocation,
   type CourierDeliveryRoute,
 } from "@workspace/api-client-react";
 import { Check, Clock3, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
+import LiveMap, { type MapCoordinate, type MapMarker } from "@/components/live-map";
 
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -36,20 +38,79 @@ export default function CourierRoutesSection({
   routes,
   isLoading,
   isError,
+  isWorking,
   onRetry,
 }: {
   routes: CourierDeliveryRoute[];
   isLoading: boolean;
   isError: boolean;
+  isWorking: boolean;
   onRetry: () => void;
 }) {
   const queryClient = useQueryClient();
   const acceptRoute = useAcceptCourierRoute();
   const completeStop = useCompleteCourierRouteStop();
+  const updateLocation = useUpdateCourierLocation();
+  const updateLocationRef = useRef(updateLocation.mutateAsync);
+  updateLocationRef.current = updateLocation.mutateAsync;
   const [busyRouteId, setBusyRouteId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [locationMessage, setLocationMessage] = useState("");
+  const [currentPosition, setCurrentPosition] = useState<MapCoordinate | null>(null);
   const activeRoute = routes.find((route) => route.status === "ACCEPTED");
   const offeredRoutes = routes.filter((route) => route.status === "OFFERED");
+
+  useEffect(() => {
+    if (!isWorking) {
+      setCurrentPosition(null);
+      setLocationMessage("");
+      return;
+    }
+    if (!navigator.geolocation) {
+      setLocationMessage("Este navegador não oferece localização GPS.");
+      return;
+    }
+
+    let watching = true;
+    let lastDisplayedAt = 0;
+    let lastSentAt = 0;
+    const watchId = navigator.geolocation.watchPosition(
+      ({ coords }) => {
+        if (!watching) return;
+        const position = {
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+        };
+        const now = Date.now();
+        if (now - lastDisplayedAt >= 5_000) {
+          setCurrentPosition(position);
+          lastDisplayedAt = now;
+        }
+        if (now - lastSentAt < 15_000) return;
+        lastSentAt = now;
+        void updateLocationRef.current({ data: position })
+          .then(() => {
+            if (watching) setLocationMessage("");
+          })
+          .catch(() => {
+            if (watching) {
+              setLocationMessage("O GPS está ativo, mas não foi possível enviar a posição para a central.");
+            }
+          });
+      },
+      () => {
+        if (watching) {
+          setLocationMessage("Permita o acesso à localização e mantenha o PWA aberto durante o atendimento.");
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 },
+    );
+    setLocationMessage("Compartilhamento de localização ativo durante o atendimento. Mantenha o PWA aberto.");
+    return () => {
+      watching = false;
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [isWorking]);
 
   const refreshRouteData = async () => {
     await Promise.all([
@@ -115,6 +176,8 @@ export default function CourierRoutesSection({
             <ActiveRouteCard
               route={activeRoute}
               busy={busyRouteId === activeRoute.id}
+              currentPosition={currentPosition}
+              locationMessage={locationMessage}
               onComplete={(stopId) => void handleCompleteStop(activeRoute.id, stopId)}
             />
           )}
@@ -173,15 +236,40 @@ export default function CourierRoutesSection({
 function ActiveRouteCard({
   route,
   busy,
+  currentPosition,
+  locationMessage,
   onComplete,
 }: {
   route: CourierDeliveryRoute;
   busy: boolean;
+  currentPosition: MapCoordinate | null;
+  locationMessage: string;
   onComplete: (stopId: string) => void;
 }) {
   const completedStops = route.stops.filter((stop) => stop.status === "DONE").length;
   const nextStop = route.stops.find((stop) => stop.status === "PENDING");
   const progress = route.stops.length ? Math.round((completedStops / route.stops.length) * 100) : 0;
+  const mapMarkers: MapMarker[] = [
+    ...route.stops.map((stop) => ({
+      id: stop.id,
+      latitude: stop.latitude,
+      longitude: stop.longitude,
+      title: `${stop.sequence}. ${stop.kind === "pickup" ? "Retirada" : "Entrega"} · ${stop.code}`,
+      detail: stop.address,
+      kind: "stop" as const,
+      sequence: stop.sequence,
+      completed: stop.status === "DONE",
+    })),
+    ...(currentPosition
+      ? [{
+          id: `current-${route.id}`,
+          ...currentPosition,
+          title: "Sua posição atual",
+          detail: "Localização recebida pelo GPS do aparelho",
+          kind: "current" as const,
+        }]
+      : []),
+  ];
 
   return (
     <article className="overflow-hidden rounded-2xl bg-[#a91d2a] p-4 text-white shadow-sm sm:p-5">
@@ -204,6 +292,26 @@ function ActiveRouteCard({
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/15">
         <div className="h-full rounded-full bg-white transition-all" style={{ width: `${progress}%` }} />
       </div>
+      {route.stops.length > 0 && (
+        <div className="mt-4 overflow-hidden rounded-xl bg-white text-[#24272d]">
+          <div className="border-b border-border px-4 py-3">
+            <div className="text-sm font-bold">Mapa da rota</div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {route.routeGeometry?.length
+                ? "Traçado viário calculado pelo Geoapify, com paradas numeradas."
+                : "Paradas numeradas na sequência da rota."}
+            </p>
+          </div>
+          <LiveMap
+            markers={mapMarkers}
+            routeGeometry={route.routeGeometry}
+            ariaLabel="Rota do motoboy com paradas numeradas e posição atual"
+          />
+          <div className="px-4 py-2 text-[11px] text-muted-foreground">
+            {locationMessage || "Aguardando posição GPS do aparelho."}
+          </div>
+        </div>
+      )}
 
       {nextStop ? (
         <div className="mt-4 rounded-xl bg-white p-4 text-[#24272d]">

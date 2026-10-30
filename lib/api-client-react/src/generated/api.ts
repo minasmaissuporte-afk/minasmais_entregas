@@ -30,6 +30,8 @@ import type {
   Courier,
   CourierDeliveryRoute,
   CourierEarnings,
+  CourierLocation,
+  CourierLocationInput,
   CreateDeliveryRouteInput,
   DashboardSummary,
   Delivery,
@@ -1612,6 +1614,94 @@ export function useListCourierRoutes<TData = Awaited<ReturnType<typeof listCouri
 
 
 
+
+export const getUpdateCourierLocationUrl = () => {
+
+
+
+
+  return `/api/courier/location`
+}
+
+/**
+ * @summary Update the signed-in courier's current location during active work
+ */
+export const updateCourierLocation = async (courierLocationInput: CourierLocationInput, options?: Parameters<typeof customFetch>[1]): Promise<CourierLocation> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<CourierLocation>(getUpdateCourierLocationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(courierLocationInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateCourierLocationMutationKey = () => ['updateCourierLocation'] as const;
+
+export const getUpdateCourierLocationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCourierLocation>>, TError,UpdateCourierLocationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCourierLocation>>, TError,UpdateCourierLocationMutationVariables, TContext> => {
+
+const mutationKey = getUpdateCourierLocationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCourierLocation>>, UpdateCourierLocationMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateCourierLocation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCourierLocationMutationResult = NonNullable<Awaited<ReturnType<typeof updateCourierLocation>>>
+    export type UpdateCourierLocationMutationBody = BodyType<CourierLocationInput>
+    export type UpdateCourierLocationMutationError = ErrorType<unknown>
+    export type UpdateCourierLocationMutationVariables = {data: BodyType<CourierLocationInput>}
+
+    /**
+ * @summary Update the signed-in courier's current location during active work
+ */
+export const useUpdateCourierLocation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCourierLocation>>, TError,UpdateCourierLocationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateCourierLocation>>,
+        TError,
+        UpdateCourierLocationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateCourierLocationMutationOptions(options), queryClient);
+    }
 
 export const getAcceptCourierRouteUrl = (routeId: string,) => {
 

@@ -38,6 +38,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import AccessManagement from '@/pages/access-management';
 import CourierPortal from '@/pages/courier-portal';
+import LiveMap, { type MapMarker } from '@/components/live-map';
 import CourierAccessPage from '@/pages/courier-access';
 import StorePortal from '@/pages/store-portal';
 
@@ -423,6 +424,20 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
     );
   };
   const counts = summary.data;
+  const trackingCouriers = (couriers.data ?? []).filter(
+    courier =>
+      courier.status === 'BUSY' &&
+      courier.currentLatitude != null &&
+      courier.currentLongitude != null,
+  );
+  const trackingMarkers: MapMarker[] = trackingCouriers.map(courier => ({
+    id: courier.id,
+    latitude: courier.currentLatitude!,
+    longitude: courier.currentLongitude!,
+    title: courier.name,
+    detail: `${courier.currentDeliveryCode ? `Entrega ${courier.currentDeliveryCode} · ` : ''}Atualizado ${timeAgo(courier.lastLocationAt)}`,
+    kind: 'courier',
+  }));
   return <div className="soft-enter">
     <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div><div className="eyebrow">VISÃO GERAL · REDE MINAS MAIS</div><h1 className="mt-2 text-[28px] font-bold tracking-[-.045em] sm:text-[34px]">Central de entregas</h1><p className="mt-1 text-sm text-muted-foreground">Acompanhe pedidos, disponibilidade e despacho em um só lugar.</p><p className="mt-2 text-[11px] text-muted-foreground">Atualização automática a cada 15 segundos.</p></div>
@@ -454,20 +469,24 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
       <div className="panel overflow-hidden">
         <div className="flex items-center justify-between border-b border-border px-4 py-4 sm:px-5">
           <div><div className="eyebrow">ACOMPANHAMENTO</div><h2 className="mt-1 text-sm font-bold">Mapa de rastreamento</h2></div>
-          <Badge tone="amber">Integração pendente</Badge>
+          <Badge tone={trackingCouriers.length ? 'green' : 'amber'}>{trackingCouriers.length ? `${trackingCouriers.length} em rota` : 'Aguardando GPS'}</Badge>
         </div>
-        <div className="relative grid min-h-[210px] place-items-center overflow-hidden bg-[#f3f2ef] p-6 text-center" style={{ backgroundImage: 'linear-gradient(rgba(90, 91, 87, .055) 1px, transparent 1px), linear-gradient(90deg, rgba(90, 91, 87, .055) 1px, transparent 1px)', backgroundSize: '28px 28px' }}>
-          <div className="relative max-w-md">
-            <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white text-primary shadow-sm"><MapPin size={20}/></span>
-            <h3 className="mt-3 text-sm font-semibold">Coordenadas GPS não disponíveis</h3>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">A integração com mapas e o envio de latitude/longitude ainda não estão configurados. Nenhuma posição está sendo exibida como atual.</p>
+        {couriers.isLoading ? <div className="skeleton m-4 h-[280px] sm:h-[340px]"/> : trackingMarkers.length ? (
+          <LiveMap markers={trackingMarkers} ariaLabel="Localização atual dos motoboys em atendimento"/>
+        ) : (
+          <div className="grid min-h-[210px] place-items-center bg-[#f3f2ef] p-6 text-center">
+            <div className="max-w-md">
+              <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white text-primary shadow-sm"><MapPin size={20}/></span>
+              <h3 className="mt-3 text-sm font-semibold">Aguardando uma posição GPS</h3>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">O mapa mostrará a última posição recebida quando um motoboy estiver em atendimento ativo e permitir o acesso à localização no PWA.</p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
       <div className="panel overflow-hidden">
         <div className="border-b border-border px-4 py-4 sm:px-5"><div className="eyebrow">SINAL DE LOCALIZAÇÃO</div><h2 className="mt-1 text-sm font-bold">Último registro recebido</h2></div>
         {couriers.isLoading ? <Skeleton rows={3}/> : couriers.isError ? <p className="p-5 text-sm text-muted-foreground">Não foi possível consultar os registros de localização.</p> : !couriers.data?.length ? <EmptyState title="Sem entregadores cadastrados" detail="Os registros aparecerão aqui quando houver entregadores."/> :
-          <ul className="divide-y divide-border">{couriers.data.map(c => <li key={c.id} className="flex items-center gap-3 px-4 py-3 sm:px-5"><span className="avatar">{c.initials}</span><div className="min-w-0 flex-1"><div className="truncate text-xs font-semibold">{c.name}</div><div className="mt-1 text-[10px] text-muted-foreground">Posição não disponível · {timeAgo(c.lastLocationAt)}</div></div><Badge tone={c.status === 'AVAILABLE' ? 'green' : c.status === 'BUSY' ? 'blue' : 'muted'}>{c.status === 'AVAILABLE' ? 'Disponível' : c.status === 'BUSY' ? 'Ocupado' : 'Offline'}</Badge></li>)}</ul>}
+          <ul className="divide-y divide-border">{couriers.data.map(c => <li key={c.id} className="flex items-center gap-3 px-4 py-3 sm:px-5"><span className="avatar">{c.initials}</span><div className="min-w-0 flex-1"><div className="truncate text-xs font-semibold">{c.name}</div><div className="mt-1 text-[10px] text-muted-foreground">{c.currentLatitude != null && c.currentLongitude != null ? `GPS recebido ${timeAgo(c.lastLocationAt)}` : c.status === 'BUSY' ? 'Aguardando permissão/localização GPS' : 'Sem atendimento ativo'}{c.currentDeliveryCode ? ` · ${c.currentDeliveryCode}` : ''}</div></div><Badge tone={c.status === 'AVAILABLE' ? 'green' : c.status === 'BUSY' ? 'blue' : 'muted'}>{c.status === 'AVAILABLE' ? 'Disponível' : c.status === 'BUSY' ? 'Em atendimento' : 'Offline'}</Badge></li>)}</ul>}
       </div>
     </section>
     <section className="panel overflow-hidden">
@@ -498,7 +517,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
             </tr>)}</tbody>
           </table></div>}
     </section>
-    <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground"><span>Atualizações refletem os registros disponíveis no sistema.</span><span className="inline-flex items-center gap-1"><Clock3 size={12}/>Sem rastreamento GPS em tempo real</span></div>
+     <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground"><span>Atualizações refletem os registros disponíveis no sistema.</span><span className="inline-flex items-center gap-1"><Clock3 size={12}/>GPS atualizado a cada 15 segundos enquanto o PWA está aberto</span></div>
     {showCreate && <DeliveryModal onClose={() => setShowCreate(false)}/>}
     {dispatchId && <DispatchModal deliveryId={dispatchId} onClose={() => setDispatchId(null)}/>}
   </div>;

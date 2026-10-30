@@ -787,7 +787,12 @@ router.patch(
       if (["COMPLETED", "CANCELLED"].includes(nextStatus) && courierId) {
         await tx
           .update(couriersTable)
-          .set({ status: "AVAILABLE", currentDeliveryCode: null })
+          .set({
+            status: "AVAILABLE",
+            currentDeliveryCode: null,
+            currentLatitude: null,
+            currentLongitude: null,
+          })
           .where(eq(couriersTable.id, courierId));
       } else if (nextStatus === "ACCEPTED" && courierId) {
         await tx
@@ -857,16 +862,55 @@ router.get(
 
 router.get(
   "/couriers",
-  requireRole("ADMIN", "CENTRAL"),
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
   async (_req, res): Promise<void> => {
-  const couriers = await db
-    .select()
-    .from(couriersTable)
-    .orderBy(couriersTable.name);
+  const profile = res.locals.appUser as AppUserProfile;
+  let couriers;
+  if (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") {
+    if (!profile.storeId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a uma unidade." });
+      return;
+    }
+    const assignedRows = await db
+      .select({ courierId: deliveriesTable.courierId })
+      .from(deliveriesTable)
+      .where(
+        and(
+          eq(deliveriesTable.storeId, profile.storeId),
+          inArray(deliveriesTable.status, [
+            "ACCEPTED",
+            "TO_STORE",
+            "AT_STORE",
+            "IN_TRANSIT",
+          ]),
+        ),
+      );
+    const courierIds = [
+      ...new Set(
+        assignedRows
+          .map((row) => row.courierId)
+          .filter((courierId): courierId is string => courierId !== null),
+      ),
+    ];
+    couriers = courierIds.length
+      ? await db
+          .select()
+          .from(couriersTable)
+          .where(inArray(couriersTable.id, courierIds))
+          .orderBy(couriersTable.name)
+      : [];
+  } else {
+    couriers = await db
+      .select()
+      .from(couriersTable)
+      .orderBy(couriersTable.name);
+  }
   res.json(
     ListCouriersResponse.parse(
       couriers.map((courier) => ({
         ...courier,
+        currentLatitude: courier.currentLatitude ?? null,
+        currentLongitude: courier.currentLongitude ?? null,
         lastLocationAt: courier.lastLocationAt?.toISOString() ?? null,
       })),
     ),

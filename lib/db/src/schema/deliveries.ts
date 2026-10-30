@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   real,
   text,
@@ -28,6 +29,8 @@ export const couriersTable = pgTable(
     initials: text("initials").notNull(),
     status: text("status").notNull().default("AVAILABLE"),
     currentDeliveryCode: text("current_delivery_code"),
+    currentLatitude: real("current_latitude"),
+    currentLongitude: real("current_longitude"),
     lastLocationAt: timestamp("last_location_at", { withTimezone: true }),
   },
   (table) => [index("couriers_status_idx").on(table.status)],
@@ -119,6 +122,9 @@ export const deliveryRoutesTable = pgTable(
     status: text("status").notNull().default("OFFERED"),
     startLatitude: real("start_latitude"),
     startLongitude: real("start_longitude"),
+    routeGeometry: jsonb("route_geometry").$type<
+      Array<{ latitude: number; longitude: number }> | null
+    >(),
     distanceMeters: integer("distance_meters"),
     durationSeconds: integer("duration_seconds"),
     lockedAt: timestamp("locked_at", { withTimezone: true }),

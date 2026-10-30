@@ -18,3 +18,11 @@ O usuário confirmou em 30 de outubro de 2026 que o teste de login funcionou cor
 **Why:** o fluxo de acesso já foi testado pelo usuário no ambiente disponível.
 
 **How to apply:** considere esse ambiente verificado; valide novamente após republicar, pois as contas do Clerk de desenvolvimento e produção são separadas.
+
+## Localização e mapas
+
+Não inventar coordenadas: o mapa deve exibir somente posições GPS realmente recebidas durante um atendimento ativo, com horário da última atualização. O PWA precisa permanecer aberto para continuar enviando a posição; o rastreamento em segundo plano não é garantido em iOS/Android.
+
+**Why:** o usuário solicitou rastreamento real no painel e rota visível no PWA, sem dados fictícios.
+
+**How to apply:** mantenha posições atuais protegidas por perfil e vinculadas ao atendimento; informe quando o GPS estiver ausente ou desatualizado, sem apresentar pontos estimados como atuais.

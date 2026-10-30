@@ -10,6 +10,8 @@ import {
   CreateDeliveryRouteBody,
   CreateDeliveryRouteResponse,
   ListCourierRoutesResponse,
+  UpdateCourierLocationBody,
+  UpdateCourierLocationResponse,
   type CourierDeliveryRoute,
 } from "@workspace/api-zod";
 import {
@@ -38,6 +40,34 @@ type DeliveryRow = {
 };
 
 type Coordinate = { latitude: number; longitude: number };
+
+function extractRouteGeometry(coordinates: unknown): Coordinate[] | null {
+  const points: Coordinate[] = [];
+  const visit = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    if (
+      value.length >= 2 &&
+      typeof value[0] === "number" &&
+      typeof value[1] === "number"
+    ) {
+      const [longitude, latitude] = value;
+      if (
+        Number.isFinite(latitude) &&
+        Number.isFinite(longitude) &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        longitude >= -180 &&
+        longitude <= 180
+      ) {
+        points.push({ latitude, longitude });
+      }
+      return;
+    }
+    for (const nested of value) visit(nested);
+  };
+  visit(coordinates);
+  return points.length >= 2 ? points : null;
+}
 
 class RoutePlanningError extends Error {
   constructor(
@@ -142,6 +172,7 @@ async function routeView(
     lockedAt: route.lockedAt?.toISOString() ?? null,
     deliveries,
     stops,
+    routeGeometry: route.routeGeometry ?? null,
   });
 }
 
@@ -213,6 +244,7 @@ async function optimizeRoute(
     latitude: number;
     longitude: number;
   }>;
+  routeGeometry: Coordinate[] | null;
   distanceMeters: number | null;
   durationSeconds: number | null;
 }> {
@@ -301,6 +333,9 @@ async function optimizeRoute(
       issues?: { unassignedShipments?: number[] };
     };
     features?: Array<{
+      geometry?: {
+        coordinates?: unknown;
+      };
       properties?: {
         agent_index?: number;
         distance?: number;
@@ -324,6 +359,9 @@ async function optimizeRoute(
   const properties =
     plan.features?.find((feature) => feature.properties?.agent_index === 0)
       ?.properties ?? plan.features?.[0]?.properties;
+  const routeFeature =
+    plan.features?.find((feature) => feature.properties?.agent_index === 0) ??
+    plan.features?.[0];
   const actions = properties?.actions ?? [];
   const stops = actions.flatMap((action) => {
     if (action.type !== "pickup" && action.type !== "delivery") return [];
@@ -361,6 +399,7 @@ async function optimizeRoute(
   }
   return {
     stops,
+    routeGeometry: extractRouteGeometry(routeFeature?.geometry?.coordinates),
     distanceMeters:
       typeof properties?.distance === "number"
         ? Math.round(properties.distance)
@@ -474,6 +513,87 @@ router.get(
 );
 
 router.post(
+  "/courier/location",
+  requireRole("COURIER"),
+  async (req, res): Promise<void> => {
+    const body = UpdateCourierLocationBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "Informe uma localização GPS válida." });
+      return;
+    }
+
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+
+    const [courier] = await db
+      .select()
+      .from(couriersTable)
+      .where(eq(couriersTable.id, profile.courierId))
+      .limit(1);
+    if (!courier || courier.status !== "BUSY") {
+      res.status(409).json({ error: "A localização só é recebida durante um atendimento ativo." });
+      return;
+    }
+
+    const [activeRoute] = await db
+      .select({ id: deliveryRoutesTable.id })
+      .from(deliveryRoutesTable)
+      .where(
+        and(
+          eq(deliveryRoutesTable.courierId, profile.courierId),
+          eq(deliveryRoutesTable.status, "ACCEPTED"),
+        ),
+      )
+      .limit(1);
+    const [activeDelivery] = await db
+      .select({ id: deliveriesTable.id })
+      .from(deliveriesTable)
+      .where(
+        and(
+          eq(deliveriesTable.courierId, profile.courierId),
+          inArray(deliveriesTable.status, [
+            "ACCEPTED",
+            "TO_STORE",
+            "AT_STORE",
+            "IN_TRANSIT",
+          ]),
+        ),
+      )
+      .limit(1);
+    if (!activeRoute && !activeDelivery) {
+      res.status(409).json({ error: "Não há entrega ativa para compartilhar a localização." });
+      return;
+    }
+
+    const now = new Date();
+    const [updated] = await db
+      .update(couriersTable)
+      .set({
+        currentLatitude: body.data.latitude,
+        currentLongitude: body.data.longitude,
+        lastLocationAt: now,
+      })
+      .where(eq(couriersTable.id, profile.courierId))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: "Motoboy não encontrado." });
+      return;
+    }
+
+    res.json(
+      UpdateCourierLocationResponse.parse({
+        latitude: updated.currentLatitude,
+        longitude: updated.currentLongitude,
+        lastLocationAt: updated.lastLocationAt?.toISOString(),
+      }),
+    );
+  },
+);
+
+router.post(
   "/courier/routes/:routeId/accept",
   requireRole("COURIER"),
   async (req, res): Promise<void> => {
@@ -555,6 +675,7 @@ router.post(
           courierId: courier.id,
           startLatitude: body.data.latitude,
           startLongitude: body.data.longitude,
+          routeGeometry: plan.routeGeometry,
           distanceMeters: plan.distanceMeters,
           durationSeconds: plan.durationSeconds,
           lockedAt: now,
@@ -594,6 +715,8 @@ router.post(
         .set({
           status: "BUSY",
           currentDeliveryCode: deliveryRows[0]?.code ?? null,
+          currentLatitude: body.data.latitude,
+          currentLongitude: body.data.longitude,
           lastLocationAt: now,
         })
         .where(eq(couriersTable.id, courier.id));
@@ -711,7 +834,12 @@ router.post(
           .where(eq(deliveryRoutesTable.id, route.id));
         await tx
           .update(couriersTable)
-          .set({ status: "AVAILABLE", currentDeliveryCode: null })
+          .set({
+            status: "AVAILABLE",
+            currentDeliveryCode: null,
+            currentLatitude: null,
+            currentLongitude: null,
+          })
           .where(eq(couriersTable.id, profile.courierId!));
       }
       return { routeId: route.id };

@@ -130,6 +130,10 @@ export interface Courier {
   /** @nullable */
   currentDeliveryCode?: string | null;
   /** @nullable */
+  currentLatitude: number | null;
+  /** @nullable */
+  currentLongitude: number | null;
+  /** @nullable */
   lastLocationAt: string | null;
 }
 
@@ -229,6 +233,46 @@ export interface AcceptCourierRouteInput {
   longitude: number;
 }
 
+export interface CourierLocationInput {
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude: number;
+}
+
+export interface CourierLocation {
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude: number;
+  lastLocationAt: string;
+}
+
+export interface RouteCoordinate {
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude: number;
+}
+
 export interface RouteDeliverySummary {
   id: string;
   code: string;
@@ -294,6 +338,8 @@ export interface CourierDeliveryRoute {
   lockedAt: string | null;
   deliveries: RouteDeliverySummary[];
   stops: DeliveryRouteStop[];
+  /** @nullable */
+  routeGeometry: RouteCoordinate[] | null;
 }
 
 export type ListDeliveriesParams = {

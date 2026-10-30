@@ -309,6 +309,8 @@ export const ListCouriersResponseItem = zod.object({
   "initials": zod.string(),
   "status": zod.enum(['AVAILABLE', 'BUSY', 'OFFLINE']),
   "currentDeliveryCode": zod.string().nullish(),
+  "currentLatitude": zod.number().nullable(),
+  "currentLongitude": zod.number().nullable(),
   "lastLocationAt": zod.coerce.date().nullable()
 })
 export const ListCouriersResponse = zod.array(ListCouriersResponseItem)
@@ -393,6 +395,14 @@ export const CreateDeliveryRouteBody = zod.object({
   "deliveryIds": zod.array(zod.string()).min(createDeliveryRouteBodyDeliveryIdsMin).max(createDeliveryRouteBodyDeliveryIdsMax)
 })
 
+export const createDeliveryRouteResponseRouteGeometryItemLatitudeMin = -90;
+export const createDeliveryRouteResponseRouteGeometryItemLatitudeMax = 90;
+
+export const createDeliveryRouteResponseRouteGeometryItemLongitudeMin = -180;
+export const createDeliveryRouteResponseRouteGeometryItemLongitudeMax = 180;
+
+
+
 export const CreateDeliveryRouteResponse = zod.object({
   "id": zod.string(),
   "status": zod.enum(['OFFERED', 'ACCEPTED', 'COMPLETED']),
@@ -424,13 +434,25 @@ export const CreateDeliveryRouteResponse = zod.object({
   "customerName": zod.string(),
   "storeName": zod.string(),
   "deliveryAmount": zod.number()
-}))
+})),
+  "routeGeometry": zod.array(zod.object({
+  "latitude": zod.number().min(createDeliveryRouteResponseRouteGeometryItemLatitudeMin).max(createDeliveryRouteResponseRouteGeometryItemLatitudeMax),
+  "longitude": zod.number().min(createDeliveryRouteResponseRouteGeometryItemLongitudeMin).max(createDeliveryRouteResponseRouteGeometryItemLongitudeMax)
+})).nullable()
 })
 
 
 /**
  * @summary List route offers and the signed-in courier's active route
  */
+export const listCourierRoutesResponseRouteGeometryItemLatitudeMin = -90;
+export const listCourierRoutesResponseRouteGeometryItemLatitudeMax = 90;
+
+export const listCourierRoutesResponseRouteGeometryItemLongitudeMin = -180;
+export const listCourierRoutesResponseRouteGeometryItemLongitudeMax = 180;
+
+
+
 export const ListCourierRoutesResponseItem = zod.object({
   "id": zod.string(),
   "status": zod.enum(['OFFERED', 'ACCEPTED', 'COMPLETED']),
@@ -462,9 +484,44 @@ export const ListCourierRoutesResponseItem = zod.object({
   "customerName": zod.string(),
   "storeName": zod.string(),
   "deliveryAmount": zod.number()
-}))
+})),
+  "routeGeometry": zod.array(zod.object({
+  "latitude": zod.number().min(listCourierRoutesResponseRouteGeometryItemLatitudeMin).max(listCourierRoutesResponseRouteGeometryItemLatitudeMax),
+  "longitude": zod.number().min(listCourierRoutesResponseRouteGeometryItemLongitudeMin).max(listCourierRoutesResponseRouteGeometryItemLongitudeMax)
+})).nullable()
 })
 export const ListCourierRoutesResponse = zod.array(ListCourierRoutesResponseItem)
+
+
+/**
+ * @summary Update the signed-in courier's current location during active work
+ */
+export const updateCourierLocationBodyLatitudeMin = -90;
+export const updateCourierLocationBodyLatitudeMax = 90;
+
+export const updateCourierLocationBodyLongitudeMin = -180;
+export const updateCourierLocationBodyLongitudeMax = 180;
+
+
+
+export const UpdateCourierLocationBody = zod.object({
+  "latitude": zod.number().min(updateCourierLocationBodyLatitudeMin).max(updateCourierLocationBodyLatitudeMax),
+  "longitude": zod.number().min(updateCourierLocationBodyLongitudeMin).max(updateCourierLocationBodyLongitudeMax)
+})
+
+export const updateCourierLocationResponseLatitudeMin = -90;
+export const updateCourierLocationResponseLatitudeMax = 90;
+
+export const updateCourierLocationResponseLongitudeMin = -180;
+export const updateCourierLocationResponseLongitudeMax = 180;
+
+
+
+export const UpdateCourierLocationResponse = zod.object({
+  "latitude": zod.number().min(updateCourierLocationResponseLatitudeMin).max(updateCourierLocationResponseLatitudeMax),
+  "longitude": zod.number().min(updateCourierLocationResponseLongitudeMin).max(updateCourierLocationResponseLongitudeMax),
+  "lastLocationAt": zod.coerce.date()
+})
 
 
 /**
@@ -486,6 +543,14 @@ export const AcceptCourierRouteBody = zod.object({
   "latitude": zod.number().min(acceptCourierRouteBodyLatitudeMin).max(acceptCourierRouteBodyLatitudeMax),
   "longitude": zod.number().min(acceptCourierRouteBodyLongitudeMin).max(acceptCourierRouteBodyLongitudeMax)
 })
+
+export const acceptCourierRouteResponseRouteGeometryItemLatitudeMin = -90;
+export const acceptCourierRouteResponseRouteGeometryItemLatitudeMax = 90;
+
+export const acceptCourierRouteResponseRouteGeometryItemLongitudeMin = -180;
+export const acceptCourierRouteResponseRouteGeometryItemLongitudeMax = 180;
+
+
 
 export const AcceptCourierRouteResponse = zod.object({
   "id": zod.string(),
@@ -518,7 +583,11 @@ export const AcceptCourierRouteResponse = zod.object({
   "customerName": zod.string(),
   "storeName": zod.string(),
   "deliveryAmount": zod.number()
-}))
+})),
+  "routeGeometry": zod.array(zod.object({
+  "latitude": zod.number().min(acceptCourierRouteResponseRouteGeometryItemLatitudeMin).max(acceptCourierRouteResponseRouteGeometryItemLatitudeMax),
+  "longitude": zod.number().min(acceptCourierRouteResponseRouteGeometryItemLongitudeMin).max(acceptCourierRouteResponseRouteGeometryItemLongitudeMax)
+})).nullable()
 })
 
 
@@ -529,6 +598,14 @@ export const CompleteCourierRouteStopParams = zod.object({
   "routeId": zod.coerce.string(),
   "stopId": zod.coerce.string()
 })
+
+export const completeCourierRouteStopResponseRouteGeometryItemLatitudeMin = -90;
+export const completeCourierRouteStopResponseRouteGeometryItemLatitudeMax = 90;
+
+export const completeCourierRouteStopResponseRouteGeometryItemLongitudeMin = -180;
+export const completeCourierRouteStopResponseRouteGeometryItemLongitudeMax = 180;
+
+
 
 export const CompleteCourierRouteStopResponse = zod.object({
   "id": zod.string(),
@@ -561,7 +638,11 @@ export const CompleteCourierRouteStopResponse = zod.object({
   "customerName": zod.string(),
   "storeName": zod.string(),
   "deliveryAmount": zod.number()
-}))
+})),
+  "routeGeometry": zod.array(zod.object({
+  "latitude": zod.number().min(completeCourierRouteStopResponseRouteGeometryItemLatitudeMin).max(completeCourierRouteStopResponseRouteGeometryItemLatitudeMax),
+  "longitude": zod.number().min(completeCourierRouteStopResponseRouteGeometryItemLongitudeMin).max(completeCourierRouteStopResponseRouteGeometryItemLongitudeMax)
+})).nullable()
 })
 
 

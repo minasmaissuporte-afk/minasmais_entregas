@@ -74,6 +74,11 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     () => (routes.isLoading ? [] : (deliveries.data ?? []).filter((delivery) => !groupedDeliveryIds.has(delivery.id))),
     [deliveries.data, groupedDeliveryIds, routes.isLoading],
   );
+  const isWorking =
+    (routes.data ?? []).some((route) => route.status === "ACCEPTED") ||
+    individualDeliveries.some((delivery) =>
+      ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status),
+    );
 
   const updateDelivery = (deliveryId: string, status: string) => {
     setActionError("");
@@ -166,6 +171,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           routes={routes.data ?? []}
           isLoading={routes.isLoading}
           isError={routes.isError}
+          isWorking={isWorking}
           onRetry={() => void routes.refetch()}
         />
 

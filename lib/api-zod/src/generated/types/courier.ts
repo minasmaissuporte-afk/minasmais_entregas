@@ -15,5 +15,9 @@ export interface Courier {
   /** @nullable */
   currentDeliveryCode?: string | null;
   /** @nullable */
+  currentLatitude: number | null;
+  /** @nullable */
+  currentLongitude: number | null;
+  /** @nullable */
   lastLocationAt: Date | null;
 }
