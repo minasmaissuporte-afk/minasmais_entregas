@@ -535,6 +535,54 @@ export const UpdateCourierLocationResponse = zod.object({
 
 
 /**
+ * @summary Get the signed-in courier's live route for an individual delivery
+ */
+export const GetCourierDeliveryNavigationParams = zod.object({
+  "deliveryId": zod.coerce.string()
+})
+
+export const getCourierDeliveryNavigationResponseCurrentPositionLatitudeMin = -90;
+export const getCourierDeliveryNavigationResponseCurrentPositionLatitudeMax = 90;
+
+export const getCourierDeliveryNavigationResponseCurrentPositionLongitudeMin = -180;
+export const getCourierDeliveryNavigationResponseCurrentPositionLongitudeMax = 180;
+
+export const getCourierDeliveryNavigationResponseTargetPositionLatitudeMin = -90;
+export const getCourierDeliveryNavigationResponseTargetPositionLatitudeMax = 90;
+
+export const getCourierDeliveryNavigationResponseTargetPositionLongitudeMin = -180;
+export const getCourierDeliveryNavigationResponseTargetPositionLongitudeMax = 180;
+
+export const getCourierDeliveryNavigationResponseRouteGeometryItemLatitudeMin = -90;
+export const getCourierDeliveryNavigationResponseRouteGeometryItemLatitudeMax = 90;
+
+export const getCourierDeliveryNavigationResponseRouteGeometryItemLongitudeMin = -180;
+export const getCourierDeliveryNavigationResponseRouteGeometryItemLongitudeMax = 180;
+
+
+
+export const GetCourierDeliveryNavigationResponse = zod.object({
+  "currentPosition": zod.object({
+  "latitude": zod.number().min(getCourierDeliveryNavigationResponseCurrentPositionLatitudeMin).max(getCourierDeliveryNavigationResponseCurrentPositionLatitudeMax),
+  "longitude": zod.number().min(getCourierDeliveryNavigationResponseCurrentPositionLongitudeMin).max(getCourierDeliveryNavigationResponseCurrentPositionLongitudeMax)
+}),
+  "targetPosition": zod.object({
+  "latitude": zod.number().min(getCourierDeliveryNavigationResponseTargetPositionLatitudeMin).max(getCourierDeliveryNavigationResponseTargetPositionLatitudeMax),
+  "longitude": zod.number().min(getCourierDeliveryNavigationResponseTargetPositionLongitudeMin).max(getCourierDeliveryNavigationResponseTargetPositionLongitudeMax)
+}),
+  "targetLabel": zod.string(),
+  "targetAddress": zod.string(),
+  "distanceMeters": zod.number().int().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "routeGeometry": zod.array(zod.object({
+  "latitude": zod.number().min(getCourierDeliveryNavigationResponseRouteGeometryItemLatitudeMin).max(getCourierDeliveryNavigationResponseRouteGeometryItemLatitudeMax),
+  "longitude": zod.number().min(getCourierDeliveryNavigationResponseRouteGeometryItemLongitudeMin).max(getCourierDeliveryNavigationResponseRouteGeometryItemLongitudeMax)
+})),
+  "lastLocationAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Accept and optimize a grouped delivery route
  */
 export const AcceptCourierRouteParams = zod.object({

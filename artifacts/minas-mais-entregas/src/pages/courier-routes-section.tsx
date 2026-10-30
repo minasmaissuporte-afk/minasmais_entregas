@@ -11,6 +11,7 @@ import {
 } from "@workspace/api-client-react";
 import { Check, Clock3, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
 import LiveMap, { type MapCoordinate, type MapMarker } from "@/components/live-map";
+import SwipeToConfirm from "@/components/swipe-to-confirm";
 
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -336,14 +337,22 @@ function ActiveRouteCard({
             >
               <Navigation size={15} /> Navegar
             </a>
-            <button
-              className="button-primary min-h-10 justify-center"
-              type="button"
-              disabled={busy}
-              onClick={() => onComplete(nextStop.id)}
-            >
-              <Check size={15} />{busy ? "Salvando…" : nextStop.kind === "pickup" ? "Confirmar retirada" : "Concluir entrega"}
-            </button>
+            {nextStop.kind === "delivery" ? (
+              <SwipeToConfirm
+                disabled={busy}
+                label="Deslize para confirmar a entrega"
+                onConfirm={() => onComplete(nextStop.id)}
+              />
+            ) : (
+              <button
+                className="button-primary min-h-10 justify-center"
+                type="button"
+                disabled={busy}
+                onClick={() => onComplete(nextStop.id)}
+              >
+                <Check size={15} />{busy ? "Salvando…" : "Confirmar retirada"}
+              </button>
+            )}
           </div>
         </div>
       ) : (

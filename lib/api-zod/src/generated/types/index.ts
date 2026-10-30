@@ -10,6 +10,7 @@ export * from './acceptCourierRouteInput';
 export * from './appUser';
 export * from './appUserRole';
 export * from './courier';
+export * from './courierDeliveryNavigation';
 export * from './courierDeliveryRoute';
 export * from './courierDeliveryRouteStatus';
 export * from './courierEarnings';

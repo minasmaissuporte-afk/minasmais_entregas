@@ -28,6 +28,7 @@ import type {
   AcceptCourierRouteInput,
   AppUser,
   Courier,
+  CourierDeliveryNavigation,
   CourierDeliveryRoute,
   CourierEarnings,
   CourierLocation,
@@ -1776,6 +1777,107 @@ export const useUpdateCourierLocation = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getUpdateCourierLocationMutationOptions(options), queryClient);
     }
+
+export const getGetCourierDeliveryNavigationUrl = (deliveryId: string,) => {
+
+
+
+
+  return `/api/courier/deliveries/${deliveryId}/navigation`
+}
+
+/**
+ * @summary Get the signed-in courier's live route for an individual delivery
+ */
+export const getCourierDeliveryNavigation = async (deliveryId: string, options?: Parameters<typeof customFetch>[1]): Promise<CourierDeliveryNavigation> => {
+
+  return customFetch<CourierDeliveryNavigation>(getGetCourierDeliveryNavigationUrl(deliveryId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCourierDeliveryNavigationQueryKey = (deliveryId: string,) => {
+    return [
+    `/api/courier/deliveries/${deliveryId}/navigation`
+    ] as const;
+    }
+
+
+export const getGetCourierDeliveryNavigationQueryOptions = <TData = Awaited<ReturnType<typeof getCourierDeliveryNavigation>>, TError = ErrorType<void>>(deliveryId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierDeliveryNavigation>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCourierDeliveryNavigationQueryKey(deliveryId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCourierDeliveryNavigation>>> = ({ signal }) => getCourierDeliveryNavigation(deliveryId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: deliveryId !== null && deliveryId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCourierDeliveryNavigation>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCourierDeliveryNavigationQueryResult = NonNullable<Awaited<ReturnType<typeof getCourierDeliveryNavigation>>>
+export type GetCourierDeliveryNavigationQueryError = ErrorType<void>
+
+
+export function useGetCourierDeliveryNavigation<TData = Awaited<ReturnType<typeof getCourierDeliveryNavigation>>, TError = ErrorType<void>>(
+ deliveryId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierDeliveryNavigation>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCourierDeliveryNavigation>>,
+          TError,
+          Awaited<ReturnType<typeof getCourierDeliveryNavigation>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCourierDeliveryNavigation<TData = Awaited<ReturnType<typeof getCourierDeliveryNavigation>>, TError = ErrorType<void>>(
+ deliveryId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierDeliveryNavigation>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCourierDeliveryNavigation>>,
+          TError,
+          Awaited<ReturnType<typeof getCourierDeliveryNavigation>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCourierDeliveryNavigation<TData = Awaited<ReturnType<typeof getCourierDeliveryNavigation>>, TError = ErrorType<void>>(
+ deliveryId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierDeliveryNavigation>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get the signed-in courier's live route for an individual delivery
+ */
+
+export function useGetCourierDeliveryNavigation<TData = Awaited<ReturnType<typeof getCourierDeliveryNavigation>>, TError = ErrorType<void>>(
+ deliveryId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierDeliveryNavigation>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCourierDeliveryNavigationQueryOptions(deliveryId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getAcceptCourierRouteUrl = (routeId: string,) => {
 

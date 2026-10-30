@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  getGetCourierDeliveryNavigationQueryKey,
   getGetCourierEarningsQueryKey,
   getListCourierRoutesQueryKey,
   getListDeliveriesQueryKey,
@@ -12,6 +13,8 @@ import {
 import { useClerk } from "@clerk/react";
 import { Bike, CheckCircle2, Clock3, LogOut, PackageCheck } from "lucide-react";
 import { useMemo, useState } from "react";
+import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
+import SwipeToConfirm from "@/components/swipe-to-confirm";
 import CourierRoutesSection from "@/pages/courier-routes-section";
 
 type Period = "day" | "week" | "month";
@@ -94,6 +97,9 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           await Promise.all([
             queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
             queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period }) }),
+            queryClient.invalidateQueries({
+              queryKey: getGetCourierDeliveryNavigationQueryKey(deliveryId),
+            }),
           ]);
         },
         onError: () => setActionError("Não foi possível atualizar esta entrega. Tente novamente."),
@@ -203,22 +209,36 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                         {statusLabel[delivery.status] ?? delivery.status}
                       </span>
                     </div>
-                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
-                      <span className="text-sm font-semibold">{money(delivery.deliveryAmount)}</span>
-                      {nextStatus ? (
-                        <button
-                          className="button-primary min-h-9"
+                    {["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status) && (
+                      <CourierDeliveryNavigation deliveryId={delivery.id} />
+                    )}
+                    {delivery.status === "IN_TRANSIT" && nextStatus ? (
+                      <div className="mt-3 space-y-3 border-t border-border pt-3">
+                        <div className="text-sm font-semibold">{money(delivery.deliveryAmount)}</div>
+                        <SwipeToConfirm
                           disabled={updateStatus.isPending}
-                          onClick={() => updateDelivery(delivery.id, nextStatus)}
-                        >
-                          {updateStatus.isPending ? "Salvando…" : nextStatusLabel[delivery.status]}
-                        </button>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700">
-                          <CheckCircle2 size={14} /> Finalizada
-                        </span>
-                      )}
-                    </div>
+                          label="Deslize para confirmar a entrega"
+                          onConfirm={() => updateDelivery(delivery.id, nextStatus)}
+                        />
+                      </div>
+                    ) : (
+                      <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                        <span className="text-sm font-semibold">{money(delivery.deliveryAmount)}</span>
+                        {nextStatus ? (
+                          <button
+                            className="button-primary min-h-9"
+                            disabled={updateStatus.isPending}
+                            onClick={() => updateDelivery(delivery.id, nextStatus)}
+                          >
+                            {updateStatus.isPending ? "Salvando…" : nextStatusLabel[delivery.status]}
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700">
+                            <CheckCircle2 size={14} /> Finalizada
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </article>
                 );
               })}

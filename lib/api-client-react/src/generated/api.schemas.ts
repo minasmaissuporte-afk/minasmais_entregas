@@ -273,6 +273,19 @@ export interface RouteCoordinate {
   longitude: number;
 }
 
+export interface CourierDeliveryNavigation {
+  currentPosition: RouteCoordinate;
+  targetPosition: RouteCoordinate;
+  targetLabel: string;
+  targetAddress: string;
+  /** @nullable */
+  distanceMeters: number | null;
+  /** @nullable */
+  durationSeconds: number | null;
+  routeGeometry: RouteCoordinate[];
+  lastLocationAt: string;
+}
+
 export interface RouteDeliverySummary {
   id: string;
   code: string;

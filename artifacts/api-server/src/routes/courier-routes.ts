@@ -9,6 +9,8 @@ import {
   CompleteCourierRouteStopResponse,
   CreateDeliveryRouteBody,
   CreateDeliveryRouteResponse,
+  GetCourierDeliveryNavigationParams,
+  GetCourierDeliveryNavigationResponse,
   ListCourierRoutesResponse,
   UpdateCourierLocationBody,
   UpdateCourierLocationResponse,
@@ -590,6 +592,133 @@ router.post(
         lastLocationAt: updated.lastLocationAt?.toISOString(),
       }),
     );
+  },
+);
+
+router.get(
+  "/courier/deliveries/:deliveryId/navigation",
+  requireRole("COURIER"),
+  async (req, res): Promise<void> => {
+    const params = GetCourierDeliveryNavigationParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "Entrega inválida." });
+      return;
+    }
+
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+
+    const [row] = await routeDeliveries([params.data.deliveryId]);
+    if (!row) {
+      res.status(404).json({ error: "Entrega não encontrada." });
+      return;
+    }
+    if (row.delivery.courierId !== profile.courierId) {
+      res.status(403).json({ error: "Esta entrega não pertence à sua conta." });
+      return;
+    }
+    if (!["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(row.delivery.status)) {
+      res.status(409).json({ error: "O mapa da rota fica disponível durante um atendimento ativo." });
+      return;
+    }
+
+    const [courier] = await db
+      .select()
+      .from(couriersTable)
+      .where(eq(couriersTable.id, profile.courierId))
+      .limit(1);
+    if (
+      !courier ||
+      courier.status !== "BUSY" ||
+      courier.currentLatitude == null ||
+      courier.currentLongitude == null ||
+      !courier.lastLocationAt ||
+      Date.now() - courier.lastLocationAt.getTime() > 120_000
+    ) {
+      res.status(409).json({
+        error: "Aguardando uma posição GPS real e atual. Permita a localização e mantenha o PWA aberto.",
+      });
+      return;
+    }
+
+    const apiKey = process.env.GEOAPIFY_API_KEY;
+    if (!apiKey) {
+      res.status(503).json({ error: "A integração de rotas Geoapify não está configurada." });
+      return;
+    }
+
+    const targetsStore = ["ACCEPTED", "TO_STORE"].includes(row.delivery.status);
+    const targetAddress = targetsStore
+      ? `${row.storeAddress}, ${row.storeCity}`
+      : row.delivery.destination;
+    const targetLabel = targetsStore ? "Unidade de retirada" : "Entrega ao cliente";
+
+    try {
+      const targetPosition = await geocodeAddress(
+        targetsStore ? row.storeAddress : row.delivery.destination,
+        row.storeCity,
+        apiKey,
+      );
+      const waypoints = [
+        `${courier.currentLatitude},${courier.currentLongitude}`,
+        `${targetPosition.latitude},${targetPosition.longitude}`,
+      ].join("|");
+      const query = new URLSearchParams({
+        waypoints,
+        mode: "drive",
+        apiKey,
+      });
+      const response = await fetch(
+        `https://api.geoapify.com/v1/routing?${query.toString()}`,
+        { signal: AbortSignal.timeout(20_000) },
+      );
+      if (!response.ok) {
+        throw new RoutePlanningError("O Geoapify não conseguiu calcular esta rota.", 502);
+      }
+
+      const result = (await response.json()) as {
+        features?: Array<{
+          geometry?: { coordinates?: unknown };
+          properties?: { distance?: number; time?: number };
+        }>;
+      };
+      const feature = result.features?.[0];
+      const routeGeometry = extractRouteGeometry(feature?.geometry?.coordinates);
+      if (!feature || !routeGeometry) {
+        throw new RoutePlanningError("Não foi possível traçar a rota para este endereço.", 422);
+      }
+
+      res.json(
+        GetCourierDeliveryNavigationResponse.parse({
+          currentPosition: {
+            latitude: courier.currentLatitude,
+            longitude: courier.currentLongitude,
+          },
+          targetPosition,
+          targetLabel,
+          targetAddress,
+          distanceMeters:
+            typeof feature.properties?.distance === "number"
+              ? Math.round(feature.properties.distance)
+              : null,
+          durationSeconds:
+            typeof feature.properties?.time === "number"
+              ? Math.round(feature.properties.time)
+              : null,
+          routeGeometry,
+          lastLocationAt: courier.lastLocationAt.toISOString(),
+        }),
+      );
+    } catch (error) {
+      const routeError =
+        error instanceof RoutePlanningError
+          ? error
+          : new RoutePlanningError("Não foi possível calcular a rota agora.", 502);
+      res.status(routeError.status).json({ error: routeError.message });
+    }
   },
 );
 
