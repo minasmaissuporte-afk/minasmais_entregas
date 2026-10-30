@@ -52,6 +52,7 @@ export interface Delivery {
   distanceKm?: number | null;
   /** @minimum 0 */
   deliveryAmount: number;
+  evidenceAvailable: boolean;
   events: DeliveryEvent[];
 }
 
@@ -86,8 +87,11 @@ export interface DeliveryInput {
   notes?: string;
   storeId: string;
   priority: DeliveryInputPriority;
-  /** @exclusiveMinimum 0 */
-  deliveryAmount: number;
+  /**
+     * Deprecated; server uses the selected branch's configured fee
+     * @minimum 0
+     */
+  deliveryAmount?: number;
 }
 
 export type DispatchInputMode = typeof DispatchInputMode[keyof typeof DispatchInputMode];
@@ -118,6 +122,7 @@ export const DeliveryStatusInputStatus = {
 export interface DeliveryStatusInput {
   status: DeliveryStatusInputStatus;
   note?: string;
+  evidencePath?: string;
 }
 
 export interface Store {
@@ -155,6 +160,8 @@ export interface Store {
   longitude: number | null;
   /** @minimum 0 */
   deliveryCount: number;
+  /** @minimum 0 */
+  deliveryFee: number;
 }
 
 export interface StoreInput {
@@ -192,6 +199,126 @@ export interface StoreInput {
      * @maximum 180
      */
   longitude: number;
+  /** @minimum 0 */
+  deliveryFee: number;
+}
+
+export interface PushConfig {
+  enabled: boolean;
+  /** @nullable */
+  publicKey: string | null;
+}
+
+export interface PushSubscriptionInput {
+  /** @minLength 10 */
+  endpoint: string;
+  /** @minLength 16 */
+  p256dh: string;
+  /** @minLength 8 */
+  auth: string;
+}
+
+export type DeliveryEvidenceUploadInputContentType = typeof DeliveryEvidenceUploadInputContentType[keyof typeof DeliveryEvidenceUploadInputContentType];
+
+
+export const DeliveryEvidenceUploadInputContentType = {
+  'image/jpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+} as const;
+
+export interface DeliveryEvidenceUploadInput {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name: string;
+  /**
+     * @minimum 1
+     * @maximum 8388608
+     */
+  size: number;
+  contentType: DeliveryEvidenceUploadInputContentType;
+}
+
+export interface DeliveryEvidenceUploadUrl {
+  uploadURL: string;
+  objectPath: string;
+}
+
+export interface CompleteCourierRouteStopInput {
+  evidencePath?: string;
+}
+
+export interface RouteCoordinate {
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude: number;
+}
+
+export interface ActiveOperationsRoute {
+  id: string;
+  courierId: string;
+  courierFirstName: string;
+  routeGeometry: RouteCoordinate[];
+}
+
+export interface DeliveryAnalyticsSummary {
+  total: number;
+  completed: number;
+  cancelled: number;
+  averageTotalMinutes: number;
+  averageStoreMinutes: number;
+  averageDeliveryMinutes: number;
+  courierAmount: number;
+}
+
+export interface DeliveryAnalyticsDay {
+  date: string;
+  created: number;
+  completed: number;
+}
+
+export interface DeliveryAnalyticsCourier {
+  courierId: string;
+  courierName: string;
+  completedDeliveries: number;
+  courierAmount: number;
+  averageTotalMinutes: number;
+}
+
+export interface DeliveryAnalyticsRow {
+  id: string;
+  code: string;
+  customerName: string;
+  destination: string;
+  storeName: string;
+  /** @nullable */
+  courierName: string | null;
+  status: string;
+  deliveryAmount: number;
+  createdAt: string;
+  /** @nullable */
+  storeArrivedAt: string | null;
+  /** @nullable */
+  storeDepartedAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  evidenceAvailable: boolean;
+}
+
+export interface DeliveryAnalytics {
+  summary: DeliveryAnalyticsSummary;
+  daily: DeliveryAnalyticsDay[];
+  couriers: DeliveryAnalyticsCourier[];
+  deliveries: DeliveryAnalyticsRow[];
 }
 
 export interface AddressSuggestion {
@@ -431,19 +558,6 @@ export interface CourierLocation {
   lastLocationAt: string;
 }
 
-export interface RouteCoordinate {
-  /**
-     * @minimum -90
-     * @maximum 90
-     */
-  latitude: number;
-  /**
-     * @minimum -180
-     * @maximum 180
-     */
-  longitude: number;
-}
-
 export interface CourierDeliveryNavigation {
   currentPosition: RouteCoordinate;
   targetPosition: RouteCoordinate;
@@ -525,6 +639,14 @@ export interface CourierDeliveryRoute {
   /** @nullable */
   routeGeometry: RouteCoordinate[] | null;
 }
+
+export type GetDeliveryAnalyticsParams = {
+from?: string;
+to?: string;
+storeId?: string;
+courierId?: string;
+status?: string;
+};
 
 export type ListDeliveriesParams = {
 status?: string;

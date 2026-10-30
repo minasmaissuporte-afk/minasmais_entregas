@@ -41,4 +41,6 @@ export interface Store {
   longitude: number | null;
   /** @minimum 0 */
   deliveryCount: number;
+  /** @minimum 0 */
+  deliveryFee: number;
 }

@@ -13,6 +13,8 @@ import {
   getListCouriersQueryKey,
   getListDeliveriesQueryKey,
   getListStoresQueryKey,
+  getListActiveRoutesQueryKey,
+  getGetDeliveryAnalyticsQueryKey,
   useCreateDelivery,
   useCreateDeliveryRoute,
   useDeleteDelivery,
@@ -23,6 +25,7 @@ import {
   useListCouriers,
   useListDeliveries,
   useListStores,
+  useListActiveRoutes,
   useUpdateDeliveryStatus,
   type AppUser,
 } from '@workspace/api-client-react';
@@ -44,6 +47,8 @@ import AddressAutocomplete from '@/components/address-autocomplete';
 import CourierAccessPage from '@/pages/courier-access';
 import StorePortal from '@/pages/store-portal';
 import StoreManagement from '@/pages/store-management';
+import Reports from '@/pages/reports';
+import EvidencePhotoAction from '@/components/evidence-photo-action';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -202,7 +207,7 @@ function LandingPage() {
 function HomeRedirect() {
   return (
     <>
-      <Show when="signed-in"><Redirect to="/user-portal" /></Show>
+      <Show when="signed-in"><UserPortalRoute /></Show>
       <Show when="signed-out"><LandingPage /></Show>
     </>
   );
@@ -265,6 +270,9 @@ function AppShell({ children, profile }: { children: ReactNode; profile: AppUser
         {profile.role === 'ADMIN' && <Link href="/filiais" className={`nav-link ${location === '/filiais' ? 'nav-active' : ''}`}>
           <MapPin size={17} strokeWidth={1.8}/><span>Filiais</span>
         </Link>}
+        {(profile.role === 'ADMIN' || profile.role === 'CENTRAL') && <Link href="/reports" className={`nav-link ${location === '/reports' ? 'nav-active' : ''}`}>
+          <History size={17} strokeWidth={1.8}/><span>Relatórios</span>
+        </Link>}
       </div>
       <div className="mt-auto hidden border-t border-border p-4 md:block">
         <div className="flex items-center gap-3 rounded-lg bg-[#f7f6f4] p-3">
@@ -275,7 +283,7 @@ function AppShell({ children, profile }: { children: ReactNode; profile: AppUser
     </aside>
     <main className="min-w-0 flex-1">
       <header className="topbar">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="hidden sm:inline">Rede Minas Mais</span><span className="hidden sm:inline">/</span><span className="font-semibold text-foreground">{location.startsWith('/deliveries/') ? 'Detalhe da entrega' : location === '/access' ? 'Acessos e perfis' : location === '/filiais' ? 'Filiais' : 'Central de entregas'}</span></div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="hidden sm:inline">Rede Minas Mais</span><span className="hidden sm:inline">/</span><span className="font-semibold text-foreground">{location.startsWith('/deliveries/') ? 'Detalhe da entrega' : location === '/access' ? 'Acessos e perfis' : location === '/filiais' ? 'Filiais' : location === '/reports' ? 'Relatórios' : 'Central de entregas'}</span></div>
           <div className="ml-auto flex items-center gap-2">
             <nav className="flex items-center gap-1 md:hidden" aria-label="Navegação principal">
               <Link href="/" className="icon-button" aria-label="Entregas"><Truck size={16}/></Link>
@@ -283,6 +291,7 @@ function AppShell({ children, profile }: { children: ReactNode; profile: AppUser
                 <Link href="/filiais" className="icon-button" aria-label="Filiais"><MapPin size={16}/></Link>
                 <Link href="/access" className="icon-button" aria-label="Acessos"><ShieldCheck size={16}/></Link>
               </>}
+              {(profile.role === 'ADMIN' || profile.role === 'CENTRAL') && <Link href="/reports" className="icon-button" aria-label="Relatórios"><History size={16}/></Link>}
             </nav>
             <span className="hidden text-[11px] text-muted-foreground sm:inline">Painel operacional</span>
             <button className="button-quiet" onClick={() => void signOut({ redirectUrl: basePath || '/' })}>Sair</button>
@@ -299,7 +308,8 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   const create = useCreateDelivery();
   const [error, setError] = useState('');
   const [customerCoordinates, setCustomerCoordinates] = useState<{ latitude: number | null; longitude: number | null }>({ latitude: null, longitude: null });
-  const [form, setForm] = useState({ customerName: '', customerPhone: '', destination: '', orderNumber: '', notes: '', storeId: '', priority: 'normal', deliveryAmount: '' });
+  const [form, setForm] = useState({ customerName: '', customerPhone: '', destination: '', orderNumber: '', notes: '', storeId: '', priority: 'normal' });
+  const selectedStore = (storesQuery.data ?? []).find(store => store.id === form.storeId);
   const update = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value, ...(key === 'destination' ? { customerLatitude: null, customerLongitude: null } : {}) }));
   const hasUnsavedChanges = Boolean(
     form.customerName.trim() ||
@@ -308,7 +318,6 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
     form.orderNumber.trim() ||
     form.notes.trim() ||
     form.storeId ||
-    form.deliveryAmount ||
     form.priority !== 'normal',
   );
   const requestClose = () => {
@@ -319,10 +328,11 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   useModalBehavior(requestClose);
   const submit = (e: FormEvent) => {
     e.preventDefault(); setError('');
-    create.mutate({ data: { ...form, customerLatitude: customerCoordinates.latitude, customerLongitude: customerCoordinates.longitude, deliveryAmount: Number(form.deliveryAmount), priority: form.priority as 'normal' | 'urgent' } }, {
+    create.mutate({ data: { ...form, customerLatitude: customerCoordinates.latitude, customerLongitude: customerCoordinates.longitude, priority: form.priority as 'normal' | 'urgent' } }, {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
         void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+        void qc.invalidateQueries({ queryKey: getGetDeliveryAnalyticsQueryKey() });
         onClose();
       },
       onError: () => setError('Não foi possível registrar. Confira os dados e tente novamente.'),
@@ -354,7 +364,7 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
           <Field label="Número do pedido"><input required value={form.orderNumber} onChange={e => update('orderNumber', e.target.value)} placeholder="Ex.: 48271" data-testid="input-order-number"/></Field>
           <Field label="Unidade"><select required value={form.storeId} onChange={e => update('storeId', e.target.value)} data-testid="select-store"><option value="">Selecione uma unidade</option>{(storesQuery.data ?? []).filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name} · {s.city}</option>)}</select></Field>
         </div>
-        <Field label="Valor do motoboy (R$)"><input required type="number" min="0.01" step="0.01" value={form.deliveryAmount} onChange={e => update('deliveryAmount', e.target.value)} placeholder="Ex.: 12,50" data-testid="input-delivery-amount"/></Field>
+        <Field label="Tarifa da filial (R$)"><input type="text" readOnly value={selectedStore ? selectedStore.deliveryFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Selecione uma filial'} aria-label="Tarifa definida pela filial" data-testid="text-delivery-fee"/></Field>
         {storesQuery.isLoading && <p className="text-xs text-muted-foreground">Carregando unidades disponíveis…</p>}
         {storesQuery.isError && <p className="text-xs text-destructive">Não foi possível carregar as unidades. Reabra o formulário para tentar novamente.</p>}
         <Field label="Observações"><textarea rows={2} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Referências úteis para a entrega" data-testid="input-notes"/></Field>
@@ -446,6 +456,7 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
         void qc.invalidateQueries({ queryKey: getGetDeliveryQueryKey(deliveryId) });
         void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
         void qc.invalidateQueries({ queryKey: getListCouriersQueryKey() });
+        void qc.invalidateQueries({ queryKey: getGetDeliveryAnalyticsQueryKey() });
         onClose();
       }, onError: () => setError('Não foi possível enviar a oferta. O motoboy pode ter iniciado outra entrega; atualize a lista e tente novamente.'),
     });
@@ -473,6 +484,7 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
 function Dashboard({ isAdmin }: { isAdmin: boolean }) {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedCourierId, setSelectedCourierId] = useState('');
+  const [selectedRouteId, setSelectedRouteId] = useState('');
   const [dispatchId, setDispatchId] = useState<string | null>(null);
   const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<string[]>([]);
   const [routeFeedback, setRouteFeedback] = useState('');
@@ -486,6 +498,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
   const deleteDelivery = useDeleteDelivery();
   const summary = useGetDashboardSummary({ query: { refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
   const stores = useListStores({ query: { queryKey: getListStoresQueryKey() } });
+  const activeRoutes = useListActiveRoutes({ query: { queryKey: getListActiveRoutesQueryKey(), refetchInterval: 15000, refetchOnWindowFocus: true } });
   const couriers = useListCouriers(undefined, { query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
   const params = useMemo(() => ({ ...(status ? { status } : {}), ...(search ? { search } : {}), ...(storeId ? { storeId } : {}) }), [status, search, storeId]);
   const deliveries = useListDeliveries(params, { query: { refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
@@ -494,6 +507,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
     summary.refetch(),
     couriers.refetch(),
     deliveries.refetch(),
+    activeRoutes.refetch(),
   ]);
   const refreshDashboardRef = useRef(refreshDashboard);
   refreshDashboardRef.current = refreshDashboard;
@@ -519,6 +533,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
     void qc.invalidateQueries({ queryKey: getGetDeliveryQueryKey(id) });
     void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
     void qc.invalidateQueries({ queryKey: getListCouriersQueryKey() });
+    void qc.invalidateQueries({ queryKey: getGetDeliveryAnalyticsQueryKey() });
   };
   const toggleRouteDelivery = (id: string, checked: boolean) => {
     setRouteFeedback('');
@@ -606,6 +621,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
         ? `Sinal perdido — última posição há ${formatAge(age)}`
         : `${courier.currentDeliveryCode ? `Entrega ${courier.currentDeliveryCode} · ` : ''}Atualizado há ${formatAge(age)}`,
       kind: 'courier',
+      label: courier.name.split(' ')[0],
       stale,
     };
   });
@@ -619,6 +635,8 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
       detail: `${store.city}${store.stateCode ? ` · ${store.stateCode}` : ''}`,
       kind: 'store',
     }));
+  const activeRouteList = activeRoutes.data ?? [];
+  const selectedRoute = activeRouteList.find(route => route.id === selectedRouteId) ?? activeRouteList[0];
   const mapMarkers = [...trackingMarkers, ...storeMarkers];
   return <div className="soft-enter">
     <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -665,27 +683,33 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
               <option value="">Todos os motoboys</option>
               {allCouriers.map(courier => <option key={courier.id} value={courier.id}>{courier.name}</option>)}
             </select>
+            {activeRouteList.length > 0 && <select className="filter-select w-full sm:w-auto" value={selectedRoute?.id ?? ''} onChange={event => setSelectedRouteId(event.target.value)} aria-label="Selecionar rota ativa">
+              {activeRouteList.map(route => <option key={route.id} value={route.id}>Rota · {route.courierFirstName}</option>)}
+            </select>}
             <div className="flex items-center gap-2">
               <span className="online-indicator"><i className={hasLiveLocation ? 'animate-pulse' : ''}/>{hasLiveLocation ? 'Ao vivo' : 'Sem sinal ao vivo'}</span>
               <span className="text-[10px] text-muted-foreground">{latestLocationAge == null ? 'Aguardando GPS' : `Atualizado há ${formatAge(latestLocationAge)}`}</span>
             </div>
           </div>
         </div>
-        {couriers.isLoading || stores.isLoading ? <div className="skeleton m-4 h-[280px] sm:h-[340px]"/> : mapMarkers.length ? (
+        {couriers.isLoading || stores.isLoading || activeRoutes.isLoading ? <div className="skeleton m-4 h-[280px] sm:h-[340px]"/> : mapMarkers.length || selectedRoute?.routeGeometry.length ? (
           <>
             <div className="flex flex-wrap gap-4 px-4 pt-3 text-[11px] text-muted-foreground sm:px-5">
               <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#16804a] text-[10px] font-bold text-white">F</span>Filial</span>
               <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#1769aa] text-[10px] font-bold text-white">M</span>Motoboy</span>
               <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-gray-500 text-[10px] font-bold text-white">M</span>Sinal perdido</span>
             </div>
-            <LiveMap markers={mapMarkers} ariaLabel="Localização das filiais e dos motoboys em atendimento"/>
+            {!trackingMarkers.length && !selectedRoute && <p className="mx-4 mt-3 rounded-lg border border-dashed border-[#dedbd7] bg-[#faf9f7] px-3 py-2 text-xs text-muted-foreground sm:mx-5">Sem GPS ou rota ativa no momento. O mapa está exibindo somente as filiais cadastradas.</p>}
+            {selectedRoute && !selectedRoute.routeGeometry.length && <p className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:mx-5">Rota ativa de {selectedRoute.courierFirstName}, mas a geometria ainda não está disponível.</p>}
+            {selectedRoute && <p className="px-4 pt-3 text-xs font-semibold text-[#a91d2a]">Rota ativa de {selectedRoute.courierFirstName} · {selectedRoute.routeGeometry.length} pontos</p>}
+            <LiveMap markers={mapMarkers} routeGeometry={selectedRoute?.routeGeometry} ariaLabel="Localização das filiais, motoboys e rota ativa"/>
           </>
         ) : (
           <div className="grid min-h-[210px] place-items-center bg-[#f3f2ef] p-6 text-center">
             <div className="max-w-md">
               <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white text-primary shadow-sm"><MapPin size={20}/></span>
-              <h3 className="mt-3 text-sm font-semibold">{effectiveSelectedCourierId ? `Aguardando GPS de ${allCouriers.find(courier => courier.id === effectiveSelectedCourierId)?.name ?? 'motoboy selecionado'}` : 'Aguardando uma posição GPS'}</h3>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">O mapa mostra posições reais enviadas pelo PWA enquanto o motoboy está conectado.</p>
+              <h3 className="mt-3 text-sm font-semibold">{effectiveSelectedCourierId ? `Aguardando GPS de ${allCouriers.find(courier => courier.id === effectiveSelectedCourierId)?.name ?? 'motoboy selecionado'}` : 'Sem GPS ou rota ativa'}</h3>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{activeRoutes.isError ? 'Não foi possível consultar as rotas ativas.' : 'Não há posições GPS com coordenadas nem geometria de rota disponíveis neste momento.'}</p>
             </div>
           </div>
         )}
@@ -755,9 +779,11 @@ function DeliveryDetail() {
     void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
     void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
     void qc.invalidateQueries({ queryKey: getListCouriersQueryKey() });
+    void qc.invalidateQueries({ queryKey: getGetDeliveryAnalyticsQueryKey() });
   };
   const applyStatus = () => {
     if (!nextStatus || !data) return;
+    if (nextStatus === "COMPLETED") return;
     setActionError('');
     updateStatus.mutate({ deliveryId: id, data: { status: nextStatus as 'ACCEPTED' | 'TO_STORE' | 'AT_STORE' | 'IN_TRANSIT' | 'COMPLETED' | 'CANCELLED' } }, {
       onSuccess: () => { refresh(); setNextStatus(''); },
@@ -776,9 +802,14 @@ function DeliveryDetail() {
           <div><div className="eyebrow">DETALHE DA SOLICITAÇÃO</div><div className="mt-1 flex flex-wrap items-center gap-3"><h1 className="text-[30px] font-bold tracking-[-.05em]">{data.code}</h1><StatusBadge status={data.status}/>{data.priority === 'urgent' && <span className="priority-tag">URGENTE</span>}</div><p className="mt-1 text-sm text-muted-foreground">Pedido {data.orderNumber || '—'} <span className="mx-1.5">·</span> Criado {fmtTime(data.createdAt)}</p></div>
           <div className="flex flex-wrap gap-2">{['REQUESTED','AWAITING_COURIER'].includes(data.status) && <button className="button-primary" onClick={() => setDispatchOpen(true)}><Truck size={16}/>Despachar</button>}
             <select className="filter-select" value={nextStatus} onChange={e => setNextStatus(e.target.value)} aria-label="Novo status"><option value="">Atualizar status</option>{(statusOptions[data.status] ?? []).map(s => <option key={s} value={s}>{statusNames[s]}</option>)}</select>
-            <button className="button-secondary" disabled={!nextStatus || updateStatus.isPending} onClick={applyStatus}>{updateStatus.isPending ? 'Salvando…' : 'Aplicar'}</button>
+            {nextStatus !== "COMPLETED" && <button className="button-secondary" disabled={!nextStatus || updateStatus.isPending} onClick={applyStatus}>{updateStatus.isPending ? 'Salvando…' : 'Aplicar'}</button>}
           </div>
         </div>
+        {nextStatus === "COMPLETED" && <div className="mt-4 max-w-md"><EvidencePhotoAction deliveryId={id} label="Enviar foto e concluir entrega" onComplete={async (evidencePath) => {
+          await updateStatus.mutateAsync({ deliveryId: id, data: { status: "COMPLETED", evidencePath } });
+          refresh();
+          setNextStatus("");
+        }} /></div>}
         {actionError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
         <div className="detail-grid mt-6">
           <div className="space-y-4">
@@ -790,6 +821,12 @@ function DeliveryDetail() {
                 <Info label="Endereço de entrega" value={data.destination} wide icon={<MapPin size={14}/>}/><Info label="Unidade de origem" value={data.storeName}/><Info label="Número do pedido" value={data.orderNumber || '—'}/>
                 <Info label="Distância informada" value={data.distanceKm != null ? `${data.distanceKm} km` : 'Não disponível'}/><Info label="Previsão" value={data.estimatedMinutes != null ? `${data.estimatedMinutes} min` : 'Não informada'}/>
               </div>
+              <div className="mt-5 grid gap-3 rounded-lg bg-[#f7f6f4] p-3 sm:grid-cols-3">
+                <Info label="Chegada à loja" value={fmtTime(data.events.find(event => /arriv|chegad|at_store/i.test(`${event.kind} ${event.label}`))?.timestamp)} />
+                <Info label="Saída da loja" value={fmtTime(data.events.find(event => /depart|sa[ií]d|in_transit/i.test(`${event.kind} ${event.label}`))?.timestamp)} />
+                <Info label="Entrega concluída" value={fmtTime(data.events.find(event => /complet|conclu[ií]d/i.test(`${event.kind} ${event.label}`))?.timestamp)} />
+              </div>
+              {data.evidenceAvailable && <a className="button-secondary mt-4 min-h-10" href={`${basePath}/api/deliveries/${data.id}/evidence`} target="_blank" rel="noreferrer" data-testid={`link-evidence-${data.id}`}><PackageCheck size={15}/>Abrir foto de comprovação</a>}
               {data.notes && <div className="mt-4 rounded-lg bg-[#f7f6f4] p-3"><div className="eyebrow">OBSERVAÇÕES</div><p className="mt-1 text-sm leading-relaxed">{data.notes}</p></div>}
             </section>
             <section className="panel p-5">
@@ -926,6 +963,7 @@ function ClerkRoutes() {
           <Route path="/deliveries/:deliveryId" component={() => <CentralRoute><DeliveryDetail/></CentralRoute>}/>
           <Route path="/access" component={() => <CentralRoute adminOnly><AccessManagement/></CentralRoute>}/>
           <Route path="/filiais" component={() => <CentralRoute adminOnly><StoreManagement/></CentralRoute>}/>
+          <Route path="/reports" component={() => <CentralRoute><Reports/></CentralRoute>}/>
           <Route path="/sign-in/*?" component={SignInPage}/>
           <Route path="/sign-up/*?" component={SignUpPage}/>
           <Route component={NotFound}/>

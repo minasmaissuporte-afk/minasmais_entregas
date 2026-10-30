@@ -13,6 +13,7 @@ export type MapMarker = MapCoordinate & {
   detail: string;
   kind: "courier" | "stop" | "current" | "store";
   sequence?: number;
+  label?: string;
   completed?: boolean;
   stale?: boolean;
   draggable?: boolean;
@@ -88,6 +89,7 @@ export default function LiveMap({
     const markerPoints = markers.map(({ latitude, longitude }) => L.latLng(latitude, longitude));
     const linePoints = (routeGeometry?.length ? routeGeometry : markers.filter((marker) => marker.kind === "stop"))
       .map(({ latitude, longitude }) => L.latLng(latitude, longitude));
+    const fitPoints = markerPoints.length ? markerPoints : linePoints;
 
     if (linePoints.length > 1) {
       if (routeLineRef.current) routeLineRef.current.setLatLngs(linePoints);
@@ -117,7 +119,9 @@ export default function LiveMap({
             ? "#6b7280"
             : "#b91c2c";
       const label =
-        marker.kind === "stop"
+        marker.label
+          ? marker.label
+          : marker.kind === "stop"
           ? String(marker.sequence ?? "")
           : marker.kind === "current"
             ? "M"
@@ -126,11 +130,15 @@ export default function LiveMap({
               : marker.kind === "courier"
                 ? "M"
                 : "•";
+      const safeLabel = label.replace(/[&<>"']/g, (character) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      })[character] ?? character);
+      const courierLabel = Boolean(marker.label);
       const icon = L.divIcon({
         className: "",
-        html: `<span style="display:grid;place-items:center;width:32px;height:32px;border:3px solid #fff;border-radius:50%;background:${color};color:#fff;font:700 13px/1 system-ui;box-shadow:0 2px 8px #1115">${label}</span>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        html: `<span style="display:grid;place-items:center;min-width:${courierLabel ? 52 : 32}px;height:32px;padding:0 ${courierLabel ? 8 : 0}px;border:3px solid #fff;border-radius:18px;background:${color};color:#fff;font:700 ${courierLabel ? 11 : 13}px/1 system-ui;white-space:nowrap;box-shadow:0 2px 8px #1115">${safeLabel}</span>`,
+        iconSize: [courierLabel ? 74 : 32, 32],
+        iconAnchor: [courierLabel ? 37 : 16, 16],
       });
       const popup = document.createElement("div");
       const title = document.createElement("strong");
@@ -170,10 +178,10 @@ export default function LiveMap({
       (marker) => marker.kind === "courier" || marker.kind === "current",
     );
     if (
-      markerPoints.length &&
+      fitPoints.length &&
       (!initialViewSetRef.current || (hasCourierMarker && !courierViewSetRef.current))
     ) {
-      const bounds = L.latLngBounds(markerPoints);
+      const bounds = L.latLngBounds(fitPoints);
       if (linePoints.length) linePoints.forEach((point) => bounds.extend(point));
       if (bounds.getNorthEast().equals(bounds.getSouthWest())) {
         map.setView(bounds.getCenter(), 15);

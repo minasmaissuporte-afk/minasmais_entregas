@@ -30,6 +30,9 @@ export interface DeliveryInput {
   notes?: string;
   storeId: string;
   priority: DeliveryInputPriority;
-  /** @exclusiveMinimum 0 */
-  deliveryAmount: number;
+  /**
+     * Deprecated; server uses the selected branch's configured fee
+     * @minimum 0
+     */
+  deliveryAmount?: number;
 }

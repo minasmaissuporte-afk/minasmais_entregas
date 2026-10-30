@@ -53,6 +53,7 @@ const emptyForm = (): BranchForm => ({
   assistantManagerPhone: "",
   latitude: null,
   longitude: null,
+  deliveryFee: 0,
 });
 
 function errorMessage(error: unknown, fallback: string) {
@@ -126,12 +127,13 @@ export default function StoreManagement() {
       assistantManagerPhone: store.assistantManagerPhone ?? "",
       latitude: store.latitude,
       longitude: store.longitude,
+      deliveryFee: store.deliveryFee,
     });
     setFormOpen(true);
   };
 
   const updateField = (key: TextField, value: string) => {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => ({ ...current, [key]: key === "deliveryFee" ? Number(value) : value }));
   };
 
   const selectAddress = (suggestion: AddressSuggestion) => {
@@ -364,6 +366,20 @@ export default function StoreManagement() {
                   onChange={(event) => updateField("name", event.target.value)}
                   placeholder="Ex.: Minas Mais Centro"
                 />
+              </label>
+              <label className="field-label sm:col-span-2">
+                Tarifa individual por entrega (R$)
+                <input
+                  required
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.deliveryFee}
+                  onChange={(event) => updateField("deliveryFee", event.target.value)}
+                  placeholder="0,00"
+                  data-testid="input-branch-delivery-fee"
+                />
+                <span className="text-[10px] font-normal text-muted-foreground">Esta tarifa será aplicada automaticamente a cada nova entrega desta unidade.</span>
               </label>
               <label className="field-label sm:col-span-2">
                 Endereço
@@ -605,6 +621,9 @@ export default function StoreManagement() {
                     <h3 className="font-semibold">{store.name}</h3>
                     <span className="rounded-md bg-[#f5f4f2] px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                       {store.code}
+                    </span>
+                    <span className="rounded-md bg-[#f9eded] px-2 py-0.5 text-[10px] font-semibold text-[#a91d2a]">
+                      {store.deliveryFee.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} / entrega
                     </span>
                   </div>
                   <p className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">

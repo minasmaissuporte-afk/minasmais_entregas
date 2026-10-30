@@ -6,13 +6,14 @@ import {
   getListDeliveriesQueryKey,
   useAcceptCourierRoute,
   useCompleteCourierRouteStop,
+  useRecordCourierStopArrival,
   useUpdateCourierLocation,
   type CourierLocationInput,
   type CourierDeliveryRoute,
 } from "@workspace/api-client-react";
 import { Check, Clock3, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
 import LiveMap, { type MapCoordinate, type MapMarker } from "@/components/live-map";
-import SwipeToConfirm from "@/components/swipe-to-confirm";
+import EvidencePhotoAction from "@/components/evidence-photo-action";
 
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -56,6 +57,7 @@ export default function CourierRoutesSection({
   const queryClient = useQueryClient();
   const acceptRoute = useAcceptCourierRoute();
   const completeStop = useCompleteCourierRouteStop();
+  const recordArrival = useRecordCourierStopArrival();
   const updateLocation = useUpdateCourierLocation();
   const updateLocationRef = useRef(updateLocation.mutateAsync);
   updateLocationRef.current = updateLocation.mutateAsync;
@@ -63,6 +65,7 @@ export default function CourierRoutesSection({
   const [errorMessage, setErrorMessage] = useState("");
   const [locationMessage, setLocationMessage] = useState("");
   const [currentPosition, setCurrentPosition] = useState<MapCoordinate | null>(null);
+  const [arrivedStoreStopId, setArrivedStoreStopId] = useState<string | null>(null);
   const activeRoute = routes.find((route) => route.status === "ACCEPTED");
   const offeredRoutes = routes.filter((route) => route.status === "OFFERED");
 
@@ -191,14 +194,28 @@ export default function CourierRoutesSection({
     }
   };
 
-  const handleCompleteStop = async (routeId: string, stopId: string) => {
+  const handleCompleteStop = async (routeId: string, stopId: string, evidencePath?: string) => {
     setErrorMessage("");
     setBusyRouteId(routeId);
     try {
-      await completeStop.mutateAsync({ routeId, stopId });
+      await completeStop.mutateAsync({ routeId, stopId, data: evidencePath ? { evidencePath } : {} });
       await refreshRouteData();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Não foi possível concluir esta parada.");
+    } finally {
+      setBusyRouteId(null);
+    }
+  };
+
+  const handleStoreArrival = async (routeId: string, stopId: string) => {
+    setErrorMessage("");
+    setBusyRouteId(routeId);
+    try {
+      await recordArrival.mutateAsync({ routeId, stopId });
+      setArrivedStoreStopId(stopId);
+      await refreshRouteData();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Não foi possível registrar a chegada à loja.");
     } finally {
       setBusyRouteId(null);
     }
@@ -239,7 +256,9 @@ export default function CourierRoutesSection({
               busy={busyRouteId === activeRoute.id}
               currentPosition={currentPosition}
               locationMessage={locationMessage}
-              onComplete={(stopId) => void handleCompleteStop(activeRoute.id, stopId)}
+              arrivedStoreStopId={arrivedStoreStopId}
+              onArrive={(stopId) => void handleStoreArrival(activeRoute.id, stopId)}
+              onComplete={(stopId, evidencePath) => void handleCompleteStop(activeRoute.id, stopId, evidencePath)}
             />
           )}
 
@@ -299,16 +318,21 @@ function ActiveRouteCard({
   busy,
   currentPosition,
   locationMessage,
+  arrivedStoreStopId,
+  onArrive,
   onComplete,
 }: {
   route: CourierDeliveryRoute;
   busy: boolean;
   currentPosition: MapCoordinate | null;
   locationMessage: string;
-  onComplete: (stopId: string) => void;
+  arrivedStoreStopId: string | null;
+  onArrive: (stopId: string) => void;
+  onComplete: (stopId: string, evidencePath?: string) => void;
 }) {
   const completedStops = route.stops.filter((stop) => stop.status === "DONE").length;
   const nextStop = route.stops.find((stop) => stop.status === "PENDING");
+  const hasArrivedAtNextStore = Boolean(nextStop && nextStop.id === arrivedStoreStopId);
   const progress = route.stops.length ? Math.round((completedStops / route.stops.length) * 100) : 0;
   const mapMarkers: MapMarker[] = [
     ...route.stops.map((stop) => ({
@@ -398,11 +422,21 @@ function ActiveRouteCard({
               <Navigation size={15} /> Navegar
             </a>
             {nextStop.kind === "delivery" ? (
-              <SwipeToConfirm
+              <EvidencePhotoAction
+                deliveryId={nextStop.deliveryId}
                 disabled={busy}
-                label="Deslize para confirmar a entrega"
-                onConfirm={() => onComplete(nextStop.id)}
+                label="Enviar foto e concluir entrega"
+                onComplete={async (evidencePath) => onComplete(nextStop.id, evidencePath)}
               />
+            ) : !hasArrivedAtNextStore ? (
+              <button
+                className="button-primary min-h-10 justify-center"
+                type="button"
+                disabled={busy}
+                onClick={() => onArrive(nextStop.id)}
+              >
+                <MapPin size={15} />{busy ? "Registrando chegada…" : "Registrar chegada à loja"}
+              </button>
             ) : (
               <button
                 className="button-primary min-h-10 justify-center"
@@ -410,7 +444,7 @@ function ActiveRouteCard({
                 disabled={busy}
                 onClick={() => onComplete(nextStop.id)}
               >
-                <Check size={15} />{busy ? "Salvando…" : "Confirmar retirada"}
+                <Check size={15} />{busy ? "Confirmando saída…" : "Confirmar saída da loja"}
               </button>
             )}
           </div>

@@ -72,10 +72,14 @@ async function storeRecords(storeId?: string) {
     counts.map((row) => [row.storeId, Number(row.count)]),
   );
 
-  return rows.map((store) => ({
-    ...store,
-    deliveryCount: deliveryCounts.get(store.id) ?? 0,
-  }));
+  return rows.map((store) => {
+    const { deliveryFeeCents, ...record } = store;
+    return {
+      ...record,
+      deliveryFee: deliveryFeeCents / 100,
+      deliveryCount: deliveryCounts.get(store.id) ?? 0,
+    };
+  });
 }
 
 function storeValues(input: ReturnType<typeof CreateStoreBody.parse>) {
@@ -96,6 +100,7 @@ function storeValues(input: ReturnType<typeof CreateStoreBody.parse>) {
     managerPhone: trimmed(input.managerPhone),
     assistantManagerName: trimmed(input.assistantManagerName),
     assistantManagerPhone: trimmed(input.assistantManagerPhone),
+    deliveryFeeCents: Math.round(input.deliveryFee * 100),
     latitude: input.latitude,
     longitude: input.longitude,
   };

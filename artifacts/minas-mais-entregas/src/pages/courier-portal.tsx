@@ -4,6 +4,10 @@ import {
   getGetCourierEarningsQueryKey,
   getListCourierRoutesQueryKey,
   getListDeliveriesQueryKey,
+  getGetPushConfigQueryKey,
+  useGetPushConfig,
+  useSavePushSubscription,
+  useRemovePushSubscription,
   useGetCourierEarnings,
   useListCourierRoutes,
   useListDeliveries,
@@ -12,11 +16,11 @@ import {
   type AppUser,
 } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
-import { Bike, CheckCircle2, Clock3, LogOut, PackageCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Bike, CheckCircle2, Clock3, LogOut, PackageCheck, Bell, BellOff } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
-import SwipeToConfirm from "@/components/swipe-to-confirm";
 import CourierRoutesSection from "@/pages/courier-routes-section";
+import EvidencePhotoAction from "@/components/evidence-photo-action";
 
 type Period = "day" | "week" | "month";
 const periodNames: Record<Period, string> = {
@@ -49,11 +53,20 @@ const statusLabel: Record<string, string> = {
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+function decodeVapidKey(value: string) {
+  const padding = "=".repeat((4 - value.length % 4) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  return Uint8Array.from(raw, (character) => character.charCodeAt(0));
+}
+
 export default function CourierPortal({ profile }: { profile: AppUser }) {
   const { signOut } = useClerk();
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState<Period>("day");
   const [actionError, setActionError] = useState("");
+  const [pushMessage, setPushMessage] = useState("");
+  const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
   const earnings = useGetCourierEarnings(
     { period },
     { query: { queryKey: getGetCourierEarningsQueryKey({ period }), refetchInterval: 15000 } },
@@ -71,6 +84,49 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   });
   const updateStatus = useUpdateDeliveryStatus();
   const updateLocation = useUpdateCourierLocation();
+  const pushConfig = useGetPushConfig({ query: { queryKey: getGetPushConfigQueryKey() } });
+  const savePush = useSavePushSubscription();
+  const removePush = useRemovePushSubscription();
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    void navigator.serviceWorker.ready
+      .then((registration) => registration.pushManager.getSubscription())
+      .then((subscription) => setPushSubscription(subscription));
+  }, []);
+  const togglePush = async () => {
+    setPushMessage("");
+    if (!pushConfig.data?.enabled || !pushConfig.data.publicKey) {
+      setPushMessage("Notificações push não estão configuradas nesta instalação. Avise a central para habilitar o serviço.");
+      return;
+    }
+    try {
+      if (pushSubscription) {
+        const json = pushSubscription.toJSON();
+        if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("A assinatura atual não contém as chaves necessárias.");
+        await removePush.mutateAsync({ data: { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth } });
+        await pushSubscription.unsubscribe();
+        setPushSubscription(null);
+        setPushMessage("Notificações desativadas neste aparelho.");
+      } else {
+        if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("Este navegador não oferece notificações push.");
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") throw new Error("Permita notificações nas configurações do navegador para ativar os avisos.");
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: decodeVapidKey(pushConfig.data.publicKey),
+        });
+        const json = subscription.toJSON();
+        if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("Não foi possível obter os dados da assinatura.");
+        await savePush.mutateAsync({ data: { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth } });
+        setPushSubscription(subscription);
+        setPushMessage("Notificações ativadas neste aparelho.");
+      }
+      await queryClient.invalidateQueries({ queryKey: getGetPushConfigQueryKey() });
+    } catch (error) {
+      setPushMessage(error instanceof Error ? error.message : "Não foi possível atualizar as notificações.");
+    }
+  };
   const groupedDeliveryIds = useMemo(
     () => new Set((routes.data ?? []).flatMap((route) => route.deliveries.map((delivery) => delivery.id))),
     [routes.data],
@@ -79,7 +135,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     () => (routes.isLoading ? [] : (deliveries.data ?? []).filter((delivery) => !groupedDeliveryIds.has(delivery.id))),
     [deliveries.data, groupedDeliveryIds, routes.isLoading],
   );
-  const updateDelivery = (deliveryId: string, status: string) => {
+  const updateDelivery = async (deliveryId: string, status: string, evidencePath?: string) => {
     setActionError("");
     if (["ACCEPTED", "TO_STORE", "IN_TRANSIT"].includes(status) && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -98,26 +154,23 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
         { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
       );
     }
-    updateStatus.mutate(
-      {
+    try {
+      await updateStatus.mutateAsync({
         deliveryId,
         data: {
           status: status as "ACCEPTED" | "TO_STORE" | "AT_STORE" | "IN_TRANSIT" | "COMPLETED" | "CANCELLED",
+          ...(evidencePath ? { evidencePath } : {}),
         },
-      },
-      {
-        onSuccess: async () => {
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
-            queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period }) }),
-            queryClient.invalidateQueries({
-              queryKey: getGetCourierDeliveryNavigationQueryKey(deliveryId),
-            }),
-          ]);
-        },
-        onError: () => setActionError("Não foi possível atualizar esta entrega. Tente novamente."),
-      },
-    );
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period }) }),
+        queryClient.invalidateQueries({ queryKey: getGetCourierDeliveryNavigationQueryKey(deliveryId) }),
+      ]);
+    } catch {
+      setActionError("Não foi possível atualizar esta entrega. Tente novamente.");
+      throw new Error("Não foi possível concluir a entrega.");
+    }
   };
 
   return (
@@ -175,6 +228,24 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           </p>
         </section>
 
+        <section className="panel mt-4 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="metric-icon metric-icon-red mt-0.5">{pushSubscription ? <Bell size={16} /> : <BellOff size={16} />}</span>
+            <div>
+              <h2 className="text-sm font-bold">Avisos de novas entregas</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {pushConfig.isLoading ? "Consultando configuração…" : pushConfig.isError ? "Não foi possível consultar a configuração de notificações." : !pushConfig.data?.enabled || !pushConfig.data.publicKey ? "Notificações push não estão configuradas para esta operação." : pushSubscription ? "Notificações ativadas neste aparelho." : "Ative para receber notificações neste aparelho."}
+              </p>
+              {pushConfig.isError && <button type="button" className="mt-1 text-xs font-semibold text-primary" onClick={() => void pushConfig.refetch()}>Tentar consultar novamente</button>}
+              {pushMessage && <p role="status" className="mt-2 text-xs text-[#8b3d45]">{pushMessage}</p>}
+            </div>
+          </div>
+          <button type="button" className={pushSubscription ? "button-secondary min-h-10" : "button-primary min-h-10"} onClick={() => void togglePush()} disabled={pushConfig.isLoading || savePush.isPending || removePush.isPending || (!pushSubscription && (!pushConfig.data?.enabled || !pushConfig.data.publicKey))} data-testid="button-toggle-push">
+            {pushSubscription ? <BellOff size={15} /> : <Bell size={15} />}
+            {savePush.isPending || removePush.isPending ? "Atualizando…" : pushSubscription ? "Desativar avisos" : "Ativar avisos"}
+          </button>
+        </section>
+
         {earnings.isError && (
           <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             Não foi possível consultar seu resumo financeiro.
@@ -227,10 +298,10 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                     {delivery.status === "IN_TRANSIT" && nextStatus ? (
                       <div className="mt-3 space-y-3 border-t border-border pt-3">
                         <div className="text-sm font-semibold">{money(delivery.deliveryAmount)}</div>
-                        <SwipeToConfirm
+                        <EvidencePhotoAction
+                          deliveryId={delivery.id}
                           disabled={updateStatus.isPending}
-                          label="Deslize para confirmar a entrega"
-                          onConfirm={() => updateDelivery(delivery.id, nextStatus)}
+                          onComplete={async (evidencePath) => updateDelivery(delivery.id, nextStatus, evidencePath)}
                         />
                       </div>
                     ) : (

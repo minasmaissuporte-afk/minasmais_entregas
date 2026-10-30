@@ -29,6 +29,7 @@ export const storesTable = pgTable("stores", {
   managerPhone: text("manager_phone"),
   assistantManagerName: text("assistant_manager_name"),
   assistantManagerPhone: text("assistant_manager_phone"),
+  deliveryFeeCents: integer("delivery_fee_cents").notNull().default(0),
   latitude: real("latitude"),
   longitude: real("longitude"),
   active: boolean("active").notNull().default(true),
@@ -97,6 +98,7 @@ export const deliveriesTable = pgTable(
     deliveryAmountCents: integer("delivery_amount_cents")
       .notNull()
       .default(0),
+    evidencePath: text("evidence_path"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

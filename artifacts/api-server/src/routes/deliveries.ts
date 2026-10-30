@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { clerkClient, getAuth } from "@clerk/express";
-import { and, desc, eq, gte, ilike, inArray, or } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lt, or } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   GetCourierEarningsQueryParams,
   GetCourierEarningsResponse,
+  GetDeliveryAnalyticsQueryParams,
+  GetDeliveryAnalyticsResponse,
   CreateDeliveryBody,
   CreateDeliveryResponse,
   DeleteDeliveryParams,
@@ -13,6 +15,7 @@ import {
   DispatchDeliveryParams,
   DispatchDeliveryResponse,
   GetDashboardSummaryResponse,
+  RequestDeliveryEvidenceUploadUrlBody,
   GetDeliveryParams,
   GetDeliveryResponse,
   GetMyProfileResponse,
@@ -31,6 +34,7 @@ import {
   appUsersTable,
   couriersTable,
   db,
+  deliveryEvidenceUploadsTable,
   deliveriesTable,
   deliveryEventsTable,
   deliveryRoutesTable,
@@ -43,6 +47,9 @@ import {
   type AppRole,
   type AppUserProfile,
 } from "../middlewares/accessControl";
+import { ObjectStorageService } from "../lib/objectStorage";
+import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
+import { notifyCouriers } from "../lib/webPush";
 
 const router: IRouter = Router();
 
@@ -424,7 +431,7 @@ async function deliveryView(deliveryId: string) {
     .limit(1);
 
   if (!row) return null;
-  const { deliveryAmountCents, ...deliveryData } = row.delivery;
+  const { deliveryAmountCents, evidencePath, ...deliveryData } = row.delivery;
 
   const events = await db
     .select()
@@ -435,6 +442,7 @@ async function deliveryView(deliveryId: string) {
   return {
     ...deliveryData,
     deliveryAmount: deliveryAmountCents / 100,
+    evidenceAvailable: Boolean(evidencePath),
     storeName: row.storeName,
     courierName: row.courierName,
     courierInitials: row.courierInitials,
@@ -456,6 +464,208 @@ async function addEvent(
     actor,
   });
 }
+
+function saoPauloDate(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function saoPauloDayBoundary(value: string | Date) {
+  const date = value instanceof Date ? value.toISOString().slice(0, 10) : value;
+  return new Date(`${date}T03:00:00.000Z`);
+}
+
+router.get(
+  "/reports/analytics",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
+  async (req, res): Promise<void> => {
+    const query = GetDeliveryAnalyticsQueryParams.safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: query.error.message });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    const conditions = [];
+    let selectedStoreId = query.data.storeId;
+    if (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") {
+      if (selectedStoreId && selectedStoreId !== profile.storeId) {
+        res.status(403).json({ error: "Esta conta só pode consultar relatórios da própria filial." });
+        return;
+      }
+      selectedStoreId = profile.storeId ?? undefined;
+      if (!selectedStoreId) {
+        res.status(403).json({ error: "Esta conta não está vinculada a uma filial." });
+        return;
+      }
+    }
+    if (selectedStoreId) {
+      conditions.push(eq(deliveriesTable.storeId, selectedStoreId));
+    }
+    if (query.data.courierId) {
+      conditions.push(eq(deliveriesTable.courierId, query.data.courierId));
+    }
+    if (query.data.status) {
+      conditions.push(eq(deliveriesTable.status, query.data.status));
+    }
+    if (query.data.from) {
+      conditions.push(gte(
+        deliveriesTable.createdAt,
+        saoPauloDayBoundary(query.data.from),
+      ));
+    }
+    if (query.data.to) {
+      const until = saoPauloDayBoundary(query.data.to);
+      until.setUTCDate(until.getUTCDate() + 1);
+      conditions.push(lt(deliveriesTable.createdAt, until));
+    }
+    const rows = await db
+      .select({
+        delivery: deliveriesTable,
+        storeName: storesTable.name,
+        courierName: couriersTable.name,
+      })
+      .from(deliveriesTable)
+      .innerJoin(storesTable, eq(deliveriesTable.storeId, storesTable.id))
+      .leftJoin(couriersTable, eq(deliveriesTable.courierId, couriersTable.id))
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(deliveriesTable.createdAt));
+    const ids = rows.map(({ delivery }) => delivery.id);
+    const events = ids.length
+      ? await db
+          .select()
+          .from(deliveryEventsTable)
+          .where(inArray(deliveryEventsTable.deliveryId, ids))
+          .orderBy(deliveryEventsTable.timestamp)
+      : [];
+    const eventsByDelivery = new Map<string, typeof events>();
+    for (const event of events) {
+      const list = eventsByDelivery.get(event.deliveryId) ?? [];
+      list.push(event);
+      eventsByDelivery.set(event.deliveryId, list);
+    }
+    const firstEvent = (deliveryId: string, kinds: string[]) =>
+      eventsByDelivery
+        .get(deliveryId)
+        ?.find((event) => kinds.includes(event.kind))?.timestamp ?? null;
+    const reportRows = rows.map(({ delivery, storeName, courierName }) => ({
+      id: delivery.id,
+      code: delivery.code,
+      customerName: delivery.customerName,
+      destination: delivery.destination,
+      storeName,
+      courierName,
+      status: delivery.status,
+      deliveryAmount: delivery.deliveryAmountCents / 100,
+      createdAt: delivery.createdAt.toISOString(),
+      storeArrivedAt: firstEvent(delivery.id, ["at_store", "store_arrived"])?.toISOString() ?? null,
+      storeDepartedAt: firstEvent(delivery.id, ["in_transit"])?.toISOString() ?? null,
+      completedAt: firstEvent(delivery.id, ["completed"])?.toISOString() ?? null,
+      evidenceAvailable: Boolean(delivery.evidencePath),
+    }));
+    const completedRows = reportRows.filter((row) => row.completedAt);
+    const minutes = (start: string | null, end: string | null) =>
+      start && end
+        ? (Date.parse(end) - Date.parse(start)) / 60_000
+        : null;
+    const averages = (values: Array<number | null>) => {
+      const valid = values.filter((value): value is number => value != null && Number.isFinite(value) && value >= 0);
+      return valid.length
+        ? Number((valid.reduce((sum, value) => sum + value, 0) / valid.length).toFixed(1))
+        : 0;
+    };
+    const dailyMap = new Map<string, { date: string; created: number; completed: number }>();
+    const courierMap = new Map<string, {
+      courierId: string;
+      courierName: string;
+      completedDeliveries: number;
+      courierAmount: number;
+      totalMinutes: number[];
+    }>();
+    for (const row of reportRows) {
+      const createdDate = saoPauloDate(new Date(row.createdAt));
+      const createdDay = dailyMap.get(createdDate) ?? {
+        date: createdDate,
+        created: 0,
+        completed: 0,
+      };
+      createdDay.created += 1;
+      dailyMap.set(createdDate, createdDay);
+      if (row.completedAt) {
+        const completedDate = saoPauloDate(new Date(row.completedAt));
+        const completedDay = dailyMap.get(completedDate) ?? {
+          date: completedDate,
+          created: 0,
+          completed: 0,
+        };
+        completedDay.completed += 1;
+        dailyMap.set(completedDate, completedDay);
+      }
+    }
+    for (const { delivery, courierName } of rows) {
+      if (delivery.status !== "COMPLETED" || !delivery.courierId) continue;
+      const completedAt = firstEvent(delivery.id, ["completed"]);
+      const record = courierMap.get(delivery.courierId) ?? {
+        courierId: delivery.courierId,
+        courierName: courierName ?? "Motoboy",
+        completedDeliveries: 0,
+        courierAmount: 0,
+        totalMinutes: [],
+      };
+      record.completedDeliveries += 1;
+      record.courierAmount += delivery.deliveryAmountCents / 100;
+      if (completedAt) {
+        record.totalMinutes.push(
+          (completedAt.getTime() - delivery.createdAt.getTime()) / 60_000,
+        );
+      }
+      courierMap.set(delivery.courierId, record);
+    }
+    const averageTotalMinutes = averages(
+      completedRows.map((row) => minutes(row.createdAt, row.completedAt)),
+    );
+    res.json(
+      GetDeliveryAnalyticsResponse.parse({
+        summary: {
+          total: reportRows.length,
+          completed: completedRows.length,
+          cancelled: reportRows.filter((row) => row.status === "CANCELLED").length,
+          averageTotalMinutes,
+          averageStoreMinutes: averages(
+            completedRows.map((row) =>
+              minutes(row.storeArrivedAt, row.storeDepartedAt),
+            ),
+          ),
+          averageDeliveryMinutes: averages(
+            completedRows.map((row) =>
+              minutes(row.storeDepartedAt, row.completedAt),
+            ),
+          ),
+          courierAmount: completedRows.reduce(
+            (sum, row) => sum + row.deliveryAmount,
+            0,
+          ),
+        },
+        daily: [...dailyMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
+        couriers: [...courierMap.values()]
+          .map((courier) => ({
+            courierId: courier.courierId,
+            courierName: courier.courierName,
+            completedDeliveries: courier.completedDeliveries,
+            courierAmount: Number(courier.courierAmount.toFixed(2)),
+            averageTotalMinutes: averages(courier.totalMinutes),
+          }))
+          .sort((a, b) => b.completedDeliveries - a.completedDeliveries),
+        deliveries: reportRows,
+      }),
+    );
+  },
+);
 
 router.get(
   "/dashboard/summary",
@@ -650,6 +860,12 @@ router.post(
     res.status(400).json({ error: "Loja não encontrada ou inativa." });
     return;
   }
+  if (store.deliveryFeeCents <= 0) {
+    res.status(409).json({
+      error: "Configure a tarifa do motoboy nesta filial antes de registrar uma entrega.",
+    });
+    return;
+  }
 
   const id = randomUUID();
   const code = `MM-${randomUUID().slice(0, 6).toUpperCase()}`;
@@ -668,7 +884,7 @@ router.post(
       storeId,
       status: "REQUESTED",
       priority: body.data.priority,
-      deliveryAmountCents: Math.round(body.data.deliveryAmount * 100),
+      deliveryAmountCents: store.deliveryFeeCents,
     })
     .returning();
   await addEvent(created.id, "REQUESTED", eventLabels.REQUESTED);
@@ -697,6 +913,97 @@ router.get(
     return;
   }
   res.json(GetDeliveryResponse.parse(delivery));
+  },
+);
+
+router.post(
+  "/deliveries/:deliveryId/evidence/upload-url",
+  requireRole("COURIER"),
+  async (req, res): Promise<void> => {
+    const params = GetDeliveryParams.safeParse(req.params);
+    const body = RequestDeliveryEvidenceUploadUrlBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({ error: "Dados inválidos para a foto de comprovação." });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+    const [delivery] = await db
+      .select()
+      .from(deliveriesTable)
+      .where(eq(deliveriesTable.id, params.data.deliveryId))
+      .limit(1);
+    if (!delivery || delivery.courierId !== profile.courierId) {
+      res.status(404).json({ error: "Entrega não encontrada para esta conta." });
+      return;
+    }
+    if (delivery.status !== "IN_TRANSIT" || delivery.evidencePath) {
+      res.status(409).json({ error: "A foto só pode ser enviada ao finalizar uma entrega em trânsito." });
+      return;
+    }
+    try {
+      const storage = new ObjectStorageService();
+      const uploadURL = await storage.getObjectEntityUploadURL();
+      const objectPath = storage.normalizeObjectEntityPath(uploadURL);
+      await db.insert(deliveryEvidenceUploadsTable).values({
+        objectPath,
+        deliveryId: delivery.id,
+        courierId: profile.courierId,
+      });
+      res.json({ uploadURL, objectPath });
+    } catch (error) {
+      req.log.error({ err: error }, "Failed to prepare delivery evidence upload");
+      res.status(503).json({ error: "Não foi possível preparar o envio da foto. Tente novamente." });
+    }
+  },
+);
+
+router.get(
+  "/deliveries/:deliveryId/evidence",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"),
+  async (req, res): Promise<void> => {
+    const params = GetDeliveryParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const [delivery] = await db
+      .select()
+      .from(deliveriesTable)
+      .where(eq(deliveriesTable.id, params.data.deliveryId))
+      .limit(1);
+    if (!delivery) {
+      res.status(404).json({ error: "Entrega não encontrada." });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!canAccessDelivery(profile, delivery)) {
+      res.status(403).json({ error: "Esta entrega não pertence à sua área de acesso." });
+      return;
+    }
+    if (!delivery.evidencePath) {
+      res.status(404).json({ error: "Esta entrega ainda não tem foto de comprovação." });
+      return;
+    }
+    try {
+      const file = await new ObjectStorageService().getObjectEntityFile(
+        delivery.evidencePath,
+      );
+      const [metadata] = await file.getMetadata();
+      res.setHeader(
+        "Content-Type",
+        String(metadata.contentType ?? "application/octet-stream"),
+      );
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      file.createReadStream().pipe(res);
+    } catch (error) {
+      req.log.error({ err: error }, "Failed to read private delivery evidence");
+      res.status(404).json({ error: "A foto de comprovação não está disponível." });
+    }
   },
 );
 
@@ -808,6 +1115,24 @@ router.post(
       return;
     }
 
+    const profile = res.locals.appUser as AppUserProfile;
+    if (body.data.status === "COMPLETED" && profile.role === "COURIER") {
+      if (
+        !profile.courierId ||
+        !body.data.evidencePath ||
+        !(await verifyEvidenceUpload(
+          params.data.deliveryId,
+          profile.courierId,
+          body.data.evidencePath,
+        ))
+      ) {
+        res.status(422).json({
+          error: "Envie uma foto válida de comprovação antes de concluir a entrega.",
+        });
+        return;
+      }
+    }
+
     const result = await db.transaction(async (tx) => {
       const [delivery] = await tx
         .select()
@@ -904,6 +1229,32 @@ router.post(
       return;
     }
     const view = await deliveryView(result.deliveryId);
+    if (view) {
+      if (view.courierId) {
+        await notifyCouriers([view.courierId], {
+          title: "Nova entrega disponível",
+          body: `A entrega ${view.code} foi enviada para você.`,
+        });
+      } else if (body.data.mode === "group") {
+        const linkedCouriers = await db
+          .select({ courierId: appUsersTable.courierId })
+          .from(appUsersTable)
+          .innerJoin(couriersTable, eq(appUsersTable.courierId, couriersTable.id))
+          .where(
+            and(
+              eq(appUsersTable.role, "COURIER"),
+              inArray(couriersTable.status, ["AVAILABLE", "OFFLINE"]),
+            ),
+          );
+        await notifyCouriers(
+          [...new Set(linkedCouriers.flatMap((courier) => courier.courierId ?? []))],
+          {
+            title: "Nova entrega disponível",
+            body: `A entrega ${view.code} aguarda aceite.`,
+          },
+        );
+      }
+    }
     res.json(DispatchDeliveryResponse.parse(view));
   },
 );
@@ -933,7 +1284,6 @@ router.patch(
         .for("update");
       if (!delivery) return { error: "not_found" as const };
 
-      const profile = res.locals.appUser as AppUserProfile;
       if (!canAccessDelivery(profile, delivery)) {
         return { error: "forbidden" as const };
       }
@@ -1024,9 +1374,29 @@ router.patch(
         .set({
           status: nextStatus,
           courierId,
+          ...(nextStatus === "COMPLETED" && body.data.evidencePath
+            ? { evidencePath: body.data.evidencePath }
+            : {}),
           updatedAt: new Date(),
         })
         .where(eq(deliveriesTable.id, delivery.id));
+      if (nextStatus === "COMPLETED" && body.data.evidencePath) {
+        await tx
+          .delete(deliveryEvidenceUploadsTable)
+          .where(
+            and(
+              eq(
+                deliveryEvidenceUploadsTable.objectPath,
+                body.data.evidencePath,
+              ),
+              eq(deliveryEvidenceUploadsTable.deliveryId, delivery.id),
+              eq(
+                deliveryEvidenceUploadsTable.courierId,
+                courierId ?? "",
+              ),
+            ),
+          );
+      }
 
       if (["COMPLETED", "CANCELLED"].includes(nextStatus) && courierId) {
         await tx

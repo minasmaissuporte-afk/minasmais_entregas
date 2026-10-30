@@ -5,21 +5,27 @@ import {
   AcceptCourierRouteBody,
   AcceptCourierRouteParams,
   AcceptCourierRouteResponse,
+  CompleteCourierRouteStopBody,
   CompleteCourierRouteStopParams,
   CompleteCourierRouteStopResponse,
   CreateDeliveryRouteBody,
   CreateDeliveryRouteResponse,
   GetCourierDeliveryNavigationParams,
   GetCourierDeliveryNavigationResponse,
+  ListActiveRoutesResponse,
   ListCourierRoutesResponse,
+  RecordCourierStopArrivalParams,
+  RecordCourierStopArrivalResponse,
   UpdateCourierLocationBody,
   UpdateCourierLocationResponse,
   type CourierDeliveryRoute,
 } from "@workspace/api-zod";
 import {
   couriersTable,
+  appUsersTable,
   db,
   deliveriesTable,
+  deliveryEvidenceUploadsTable,
   deliveryEventsTable,
   deliveryRouteStopsTable,
   deliveryRoutesTable,
@@ -37,6 +43,8 @@ import {
   mapboxOptimizeShipments,
   type MapboxOptimizationSolution,
 } from "../lib/mapbox";
+import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
+import { notifyCouriers } from "../lib/webPush";
 
 const router: IRouter = Router();
 router.use(requireAuthentication);
@@ -483,7 +491,59 @@ router.post(
       res.status(500).json({ error: "Não foi possível carregar a rota criada." });
       return;
     }
+    const linkedCouriers = await db
+      .select({ courierId: appUsersTable.courierId })
+      .from(appUsersTable)
+      .innerJoin(couriersTable, eq(appUsersTable.courierId, couriersTable.id))
+      .where(
+        and(
+          eq(appUsersTable.role, "COURIER"),
+          inArray(couriersTable.status, ["AVAILABLE", "OFFLINE"]),
+        ),
+      );
+    await notifyCouriers(
+      [...new Set(linkedCouriers.flatMap((courier) => courier.courierId ?? []))],
+      {
+        title: "Nova rota disponível",
+        body: `${route.deliveryIds.length} entregas aguardam aceite.`,
+      },
+    );
     res.status(201).json(CreateDeliveryRouteResponse.parse(await routeView(route)));
+  },
+);
+
+router.get(
+  "/operations/active-routes",
+  requireRole("ADMIN", "CENTRAL"),
+  async (_req, res): Promise<void> => {
+    const routes = await db
+      .select({
+        id: deliveryRoutesTable.id,
+        courierId: deliveryRoutesTable.courierId,
+        routeGeometry: deliveryRoutesTable.routeGeometry,
+        courierName: couriersTable.name,
+      })
+      .from(deliveryRoutesTable)
+      .innerJoin(
+        couriersTable,
+        eq(deliveryRoutesTable.courierId, couriersTable.id),
+      )
+      .where(eq(deliveryRoutesTable.status, "ACCEPTED"));
+    res.json(
+      ListActiveRoutesResponse.parse(
+        routes.flatMap((route) =>
+          route.routeGeometry
+            ? [{
+                id: route.id,
+                courierId: route.courierId!,
+                courierFirstName:
+                  route.courierName.trim().split(/\s+/)[0] || route.courierName,
+                routeGeometry: route.routeGeometry,
+              }]
+            : [],
+        ),
+      ),
+    );
   },
 );
 
@@ -841,11 +901,92 @@ router.post(
 );
 
 router.post(
+  "/courier/routes/:routeId/stops/:stopId/arrive",
+  requireRole("COURIER"),
+  async (req, res): Promise<void> => {
+    const params = RecordCourierStopArrivalParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+    const result = await db.transaction(async (tx) => {
+      const [route] = await tx
+        .select()
+        .from(deliveryRoutesTable)
+        .where(eq(deliveryRoutesTable.id, params.data.routeId))
+        .for("update");
+      if (
+        !route ||
+        route.status !== "ACCEPTED" ||
+        route.courierId !== profile.courierId
+      ) {
+        return { error: "route_not_owned" as const };
+      }
+      const stops = await tx
+        .select()
+        .from(deliveryRouteStopsTable)
+        .where(eq(deliveryRouteStopsTable.routeId, route.id))
+        .orderBy(asc(deliveryRouteStopsTable.sequence))
+        .for("update");
+      const nextStop = stops.find((stop) => stop.status === "PENDING");
+      if (!nextStop || nextStop.id !== params.data.stopId || nextStop.kind !== "pickup") {
+        return { error: "wrong_stop" as const };
+      }
+      const [arrival] = await tx
+        .select({ id: deliveryEventsTable.id })
+        .from(deliveryEventsTable)
+        .where(
+          and(
+            eq(deliveryEventsTable.deliveryId, nextStop.deliveryId),
+            eq(deliveryEventsTable.kind, "store_arrived"),
+          ),
+        )
+        .limit(1);
+      if (!arrival) {
+        await tx.insert(deliveryEventsTable).values({
+          id: randomUUID(),
+          deliveryId: nextStop.deliveryId,
+          kind: "store_arrived",
+          label: "Motoboy chegou à loja",
+          actor: "Motoboy",
+        });
+      }
+      return { routeId: route.id };
+    });
+    if ("error" in result) {
+      res.status(result.error === "route_not_owned" ? 403 : 409).json({
+        error:
+          result.error === "route_not_owned"
+            ? "Esta rota não pertence à sua conta ou já foi encerrada."
+            : "Registre a chegada somente na próxima parada de loja da rota.",
+      });
+      return;
+    }
+    const [route] = await db
+      .select()
+      .from(deliveryRoutesTable)
+      .where(eq(deliveryRoutesTable.id, result.routeId))
+      .limit(1);
+    if (!route) {
+      res.status(404).json({ error: "Rota não encontrada." });
+      return;
+    }
+    res.json(RecordCourierStopArrivalResponse.parse(await routeView(route)));
+  },
+);
+
+router.post(
   "/courier/routes/:routeId/stops/:stopId/complete",
   requireRole("COURIER"),
   async (req, res): Promise<void> => {
     const params = CompleteCourierRouteStopParams.safeParse(req.params);
-    if (!params.success) {
+    const body = CompleteCourierRouteStopBody.safeParse(req.body ?? {});
+    if (!params.success || !body.success) {
       res.status(400).json({ error: "Parada inválida." });
       return;
     }
@@ -853,6 +994,32 @@ router.post(
     if (!profile.courierId) {
       res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
       return;
+    }
+
+    const [targetStop] = await db
+      .select()
+      .from(deliveryRouteStopsTable)
+      .where(
+        and(
+          eq(deliveryRouteStopsTable.routeId, params.data.routeId),
+          eq(deliveryRouteStopsTable.id, params.data.stopId),
+        ),
+      )
+      .limit(1);
+    if (targetStop?.kind === "delivery") {
+      if (
+        !body.data.evidencePath ||
+        !(await verifyEvidenceUpload(
+          targetStop.deliveryId,
+          profile.courierId,
+          body.data.evidencePath,
+        ))
+      ) {
+        res.status(422).json({
+          error: "Envie uma foto válida de comprovação antes de concluir a entrega.",
+        });
+        return;
+      }
     }
 
     const result = await db.transaction(async (tx) => {
@@ -895,6 +1062,21 @@ router.post(
       if (delivery.status !== expectedStatus) {
         return { error: "delivery_status_changed" as const };
       }
+      if (nextStop.kind === "pickup") {
+        const [arrival] = await tx
+          .select({ id: deliveryEventsTable.id })
+          .from(deliveryEventsTable)
+          .where(
+            and(
+              eq(deliveryEventsTable.deliveryId, delivery.id),
+              eq(deliveryEventsTable.kind, "store_arrived"),
+            ),
+          )
+          .limit(1);
+        if (!arrival) return { error: "store_arrival_missing" as const };
+      } else if (!body.data.evidencePath) {
+        return { error: "evidence_missing" as const };
+      }
 
       const now = new Date();
       await tx
@@ -903,16 +1085,39 @@ router.post(
         .where(eq(deliveryRouteStopsTable.id, nextStop.id));
       await tx
         .update(deliveriesTable)
-        .set({ status: nextDeliveryStatus, updatedAt: now })
+        .set({
+          status: nextDeliveryStatus,
+          ...(nextStop.kind === "delivery" && body.data.evidencePath
+            ? { evidencePath: body.data.evidencePath }
+            : {}),
+          updatedAt: now,
+        })
         .where(eq(deliveriesTable.id, delivery.id));
+      if (nextStop.kind === "delivery" && body.data.evidencePath) {
+        await tx
+          .delete(deliveryEvidenceUploadsTable)
+          .where(
+            and(
+              eq(
+                deliveryEvidenceUploadsTable.objectPath,
+                body.data.evidencePath,
+              ),
+              eq(deliveryEvidenceUploadsTable.deliveryId, delivery.id),
+              eq(
+                deliveryEvidenceUploadsTable.courierId,
+                profile.courierId!,
+              ),
+            ),
+          );
+      }
       await tx.insert(deliveryEventsTable).values({
         id: randomUUID(),
         deliveryId: delivery.id,
         kind: nextDeliveryStatus.toLowerCase(),
         label:
           nextStop.kind === "pickup"
-            ? "Retirada confirmada na rota"
-            : "Entrega concluída na rota",
+            ? "Saída da loja confirmada na rota"
+            : "Entrega concluída com foto de comprovação",
         actor: "Motoboy",
         timestamp: now,
       });
@@ -945,6 +1150,10 @@ router.post(
           ? "Esta rota não pertence à sua conta ou já foi encerrada."
           : result.error === "wrong_stop_order"
             ? "Siga a sequência travada da rota e conclua a próxima parada."
+            : result.error === "store_arrival_missing"
+              ? "Registre a chegada à loja antes de confirmar a saída."
+              : result.error === "evidence_missing"
+                ? "Envie a foto de comprovação antes de concluir a entrega."
             : result.error === "delivery_not_owned"
               ? "A entrega não está vinculada a esta rota."
               : "O status da entrega mudou. Atualize a rota antes de continuar.";

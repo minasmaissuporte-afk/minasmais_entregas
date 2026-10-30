@@ -48,6 +48,87 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DashboardSummary"
+  /operations/active-routes:
+    get:
+      operationId: listActiveRoutes
+      tags: [routes]
+      summary: List active route geometry for operations maps
+      responses:
+        "200":
+          description: Accepted routes with assigned courier names and route geometry
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActiveOperationsRoute"
+  /reports/analytics:
+    get:
+      operationId: getDeliveryAnalytics
+      tags: [dashboard]
+      summary: Get filtered delivery analytics and report rows
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+        - in: query
+          name: storeId
+          schema: { type: string }
+        - in: query
+          name: courierId
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        "200":
+          description: Filtered metrics, daily totals, courier totals and report rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryAnalytics"
+  /push/config:
+    get:
+      operationId: getPushConfig
+      tags: [courier]
+      summary: Get web push setup status and the public VAPID key
+      responses:
+        "200":
+          description: Push permission and subscription configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushConfig"
+  /push/subscription:
+    post:
+      operationId: savePushSubscription
+      tags: [courier]
+      summary: Save the signed-in courier's web push subscription
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushSubscriptionInput"
+      responses:
+        "204":
+          description: Subscription saved
+    delete:
+      operationId: removePushSubscription
+      tags: [courier]
+      summary: Remove the signed-in courier's web push subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushSubscriptionInput"
+      responses:
+        "204":
+          description: Subscription removed
   /deliveries:
     get:
       operationId: listDeliveries
@@ -178,6 +259,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Delivery"
+  /deliveries/{deliveryId}/evidence/upload-url:
+    post:
+      operationId: requestDeliveryEvidenceUploadUrl
+      tags: [deliveries]
+      summary: Request a private upload URL for delivery proof
+      parameters:
+        - in: path
+          name: deliveryId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryEvidenceUploadInput"
+      responses:
+        "200":
+          description: Private upload URL and object path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryEvidenceUploadUrl"
+  /deliveries/{deliveryId}/evidence:
+    get:
+      operationId: getDeliveryEvidence
+      tags: [deliveries]
+      summary: Open a delivery's private proof photo
+      parameters:
+        - in: path
+          name: deliveryId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Private image stream for authorized delivery users
+        "404":
+          description: No proof photo is available
   /stores:
     get:
       operationId: listStores
@@ -529,9 +648,36 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteCourierRouteStopInput"
       responses:
         "200":
           description: Stop completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourierDeliveryRoute"
+  /courier/routes/{routeId}/stops/{stopId}/arrive:
+    post:
+      operationId: recordCourierStopArrival
+      tags: [routes]
+      summary: Record the courier's arrival at a store route stop
+      parameters:
+        - in: path
+          name: routeId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: stopId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Arrival time recorded
           content:
             application/json:
               schema:
@@ -547,7 +693,7 @@ components:
         - status
     Delivery:
       type: object
-      required: [id, code, customerName, destination, storeId, storeName, status, priority, deliveryAmount, createdAt, events, customerLatitude, customerLongitude]
+      required: [id, code, customerName, destination, storeId, storeName, status, priority, deliveryAmount, createdAt, events, customerLatitude, customerLongitude, evidenceAvailable]
       properties:
         id: { type: string }
         code: { type: string }
@@ -571,6 +717,7 @@ components:
         estimatedMinutes: { type: ["integer", "null"] }
         distanceKm: { type: ["number", "null"] }
         deliveryAmount: { type: number, minimum: 0 }
+        evidenceAvailable: { type: boolean }
         events:
           type: array
           items:
@@ -586,7 +733,7 @@ components:
         actor: { type: ["string", "null"] }
     DeliveryInput:
       type: object
-      required: [customerName, destination, orderNumber, storeId, priority, deliveryAmount]
+      required: [customerName, destination, orderNumber, storeId, priority]
       properties:
         customerName: { type: string, minLength: 2 }
         customerPhone: { type: string }
@@ -597,7 +744,7 @@ components:
         notes: { type: string }
         storeId: { type: string }
         priority: { type: string, enum: [normal, urgent] }
-        deliveryAmount: { type: number, exclusiveMinimum: 0 }
+        deliveryAmount: { type: number, minimum: 0, description: Deprecated; server uses the selected branch's configured fee }
     DispatchInput:
       type: object
       required: [mode]
@@ -612,9 +759,10 @@ components:
           type: string
           enum: [ACCEPTED, TO_STORE, AT_STORE, IN_TRANSIT, COMPLETED, CANCELLED]
         note: { type: string }
+        evidencePath: { type: string }
     Store:
       type: object
-      required: [id, name, code, city, address, active, street, number, complement, neighborhood, stateCode, postalCode, phone, managerName, managerPhone, assistantManagerName, assistantManagerPhone, latitude, longitude, deliveryCount]
+      required: [id, name, code, city, address, active, street, number, complement, neighborhood, stateCode, postalCode, phone, managerName, managerPhone, assistantManagerName, assistantManagerPhone, latitude, longitude, deliveryCount, deliveryFee]
       properties:
         id: { type: string }
         name: { type: string }
@@ -636,9 +784,10 @@ components:
         latitude: { type: ["number", "null"] }
         longitude: { type: ["number", "null"] }
         deliveryCount: { type: integer, minimum: 0 }
+        deliveryFee: { type: number, minimum: 0 }
     StoreInput:
       type: object
-      required: [name, address, street, number, city, stateCode, managerName, latitude, longitude]
+      required: [name, address, street, number, city, stateCode, managerName, latitude, longitude, deliveryFee]
       properties:
         name: { type: string, minLength: 2 }
         address: { type: string, minLength: 5 }
@@ -656,6 +805,110 @@ components:
         assistantManagerPhone: { type: string }
         latitude: { type: number, minimum: -90, maximum: 90 }
         longitude: { type: number, minimum: -180, maximum: 180 }
+        deliveryFee: { type: number, minimum: 0 }
+    PushConfig:
+      type: object
+      required: [enabled, publicKey]
+      properties:
+        enabled: { type: boolean }
+        publicKey: { type: ["string", "null"] }
+    PushSubscriptionInput:
+      type: object
+      required: [endpoint, p256dh, auth]
+      properties:
+        endpoint: { type: string, format: uri, minLength: 10 }
+        p256dh: { type: string, minLength: 16 }
+        auth: { type: string, minLength: 8 }
+    DeliveryEvidenceUploadInput:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 255 }
+        size: { type: integer, minimum: 1, maximum: 8388608 }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+    DeliveryEvidenceUploadUrl:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL: { type: string, format: uri }
+        objectPath: { type: string }
+    CompleteCourierRouteStopInput:
+      type: object
+      properties:
+        evidencePath: { type: string }
+    ActiveOperationsRoute:
+      type: object
+      required: [id, courierId, courierFirstName, routeGeometry]
+      properties:
+        id: { type: string }
+        courierId: { type: string }
+        courierFirstName: { type: string }
+        routeGeometry:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouteCoordinate"
+    DeliveryAnalytics:
+      type: object
+      required: [summary, daily, couriers, deliveries]
+      properties:
+        summary:
+          $ref: "#/components/schemas/DeliveryAnalyticsSummary"
+        daily:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryAnalyticsDay"
+        couriers:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryAnalyticsCourier"
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryAnalyticsRow"
+    DeliveryAnalyticsSummary:
+      type: object
+      required: [total, completed, cancelled, averageTotalMinutes, averageStoreMinutes, averageDeliveryMinutes, courierAmount]
+      properties:
+        total: { type: integer }
+        completed: { type: integer }
+        cancelled: { type: integer }
+        averageTotalMinutes: { type: number }
+        averageStoreMinutes: { type: number }
+        averageDeliveryMinutes: { type: number }
+        courierAmount: { type: number }
+    DeliveryAnalyticsDay:
+      type: object
+      required: [date, created, completed]
+      properties:
+        date: { type: string, format: date }
+        created: { type: integer }
+        completed: { type: integer }
+    DeliveryAnalyticsCourier:
+      type: object
+      required: [courierId, courierName, completedDeliveries, courierAmount, averageTotalMinutes]
+      properties:
+        courierId: { type: string }
+        courierName: { type: string }
+        completedDeliveries: { type: integer }
+        courierAmount: { type: number }
+        averageTotalMinutes: { type: number }
+    DeliveryAnalyticsRow:
+      type: object
+      required: [id, code, customerName, destination, storeName, courierName, status, deliveryAmount, createdAt, storeArrivedAt, storeDepartedAt, completedAt, evidenceAvailable]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        customerName: { type: string }
+        destination: { type: string }
+        storeName: { type: string }
+        courierName: { type: ["string", "null"] }
+        status: { type: string }
+        deliveryAmount: { type: number }
+        createdAt: { type: string, format: date-time }
+        storeArrivedAt: { type: ["string", "null"], format: date-time }
+        storeDepartedAt: { type: ["string", "null"], format: date-time }
+        completedAt: { type: ["string", "null"], format: date-time }
+        evidenceAvailable: { type: boolean }
     AddressSuggestion:
       type: object
       required: [formatted, street, houseNumber, suburb, district, city, stateCode, postcode, latitude, longitude]

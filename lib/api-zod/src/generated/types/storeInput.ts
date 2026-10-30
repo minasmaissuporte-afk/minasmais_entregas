@@ -41,4 +41,6 @@ export interface StoreInput {
      * @maximum 180
      */
   longitude: number;
+  /** @minimum 0 */
+  deliveryFee: number;
 }

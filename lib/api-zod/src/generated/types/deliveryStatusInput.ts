@@ -10,4 +10,5 @@ import type { DeliveryStatusInputStatus } from './deliveryStatusInputStatus';
 export interface DeliveryStatusInput {
   status: DeliveryStatusInputStatus;
   note?: string;
+  evidencePath?: string;
 }

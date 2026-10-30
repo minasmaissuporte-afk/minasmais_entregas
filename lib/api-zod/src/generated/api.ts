@@ -39,6 +39,129 @@ export const GetDashboardSummaryResponse = zod.object({
 
 
 /**
+ * @summary List active route geometry for operations maps
+ */
+export const listActiveRoutesResponseRouteGeometryItemLatitudeMin = -90;
+export const listActiveRoutesResponseRouteGeometryItemLatitudeMax = 90;
+
+export const listActiveRoutesResponseRouteGeometryItemLongitudeMin = -180;
+export const listActiveRoutesResponseRouteGeometryItemLongitudeMax = 180;
+
+
+
+export const ListActiveRoutesResponseItem = zod.object({
+  "id": zod.string(),
+  "courierId": zod.string(),
+  "courierFirstName": zod.string(),
+  "routeGeometry": zod.array(zod.object({
+  "latitude": zod.number().min(listActiveRoutesResponseRouteGeometryItemLatitudeMin).max(listActiveRoutesResponseRouteGeometryItemLatitudeMax),
+  "longitude": zod.number().min(listActiveRoutesResponseRouteGeometryItemLongitudeMin).max(listActiveRoutesResponseRouteGeometryItemLongitudeMax)
+}))
+})
+export const ListActiveRoutesResponse = zod.array(ListActiveRoutesResponseItem)
+
+
+/**
+ * @summary Get filtered delivery analytics and report rows
+ */
+export const GetDeliveryAnalyticsQueryParams = zod.object({
+  "from": zod.date().optional(),
+  "to": zod.date().optional(),
+  "storeId": zod.coerce.string().optional(),
+  "courierId": zod.coerce.string().optional(),
+  "status": zod.coerce.string().optional()
+})
+
+export const GetDeliveryAnalyticsResponse = zod.object({
+  "summary": zod.object({
+  "total": zod.number().int(),
+  "completed": zod.number().int(),
+  "cancelled": zod.number().int(),
+  "averageTotalMinutes": zod.number(),
+  "averageStoreMinutes": zod.number(),
+  "averageDeliveryMinutes": zod.number(),
+  "courierAmount": zod.number()
+}),
+  "daily": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "created": zod.number().int(),
+  "completed": zod.number().int()
+})),
+  "couriers": zod.array(zod.object({
+  "courierId": zod.string(),
+  "courierName": zod.string(),
+  "completedDeliveries": zod.number().int(),
+  "courierAmount": zod.number(),
+  "averageTotalMinutes": zod.number()
+})),
+  "deliveries": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "destination": zod.string(),
+  "storeName": zod.string(),
+  "courierName": zod.string().nullable(),
+  "status": zod.string(),
+  "deliveryAmount": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "storeArrivedAt": zod.coerce.date().nullable(),
+  "storeDepartedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "evidenceAvailable": zod.boolean()
+}))
+})
+
+
+/**
+ * @summary Get web push setup status and the public VAPID key
+ */
+export const GetPushConfigResponse = zod.object({
+  "enabled": zod.boolean(),
+  "publicKey": zod.string().nullable()
+})
+
+
+/**
+ * @summary Save the signed-in courier's web push subscription
+ */
+export const savePushSubscriptionBodyEndpointMin = 10;
+
+export const savePushSubscriptionBodyP256dhMin = 16;
+
+export const savePushSubscriptionBodyAuthMin = 8;
+
+
+
+export const SavePushSubscriptionBody = zod.object({
+  "endpoint": zod.string().url().min(savePushSubscriptionBodyEndpointMin),
+  "p256dh": zod.string().min(savePushSubscriptionBodyP256dhMin),
+  "auth": zod.string().min(savePushSubscriptionBodyAuthMin)
+})
+
+export const SavePushSubscriptionResponse = zod.void()
+
+
+/**
+ * @summary Remove the signed-in courier's web push subscription
+ */
+export const removePushSubscriptionBodyEndpointMin = 10;
+
+export const removePushSubscriptionBodyP256dhMin = 16;
+
+export const removePushSubscriptionBodyAuthMin = 8;
+
+
+
+export const RemovePushSubscriptionBody = zod.object({
+  "endpoint": zod.string().url().min(removePushSubscriptionBodyEndpointMin),
+  "p256dh": zod.string().min(removePushSubscriptionBodyP256dhMin),
+  "auth": zod.string().min(removePushSubscriptionBodyAuthMin)
+})
+
+export const RemovePushSubscriptionResponse = zod.void()
+
+
+/**
  * @summary List and filter deliveries
  */
 export const ListDeliveriesQueryParams = zod.object({
@@ -74,6 +197,7 @@ export const ListDeliveriesResponseItem = zod.object({
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
   "deliveryAmount": zod.number().min(listDeliveriesResponseDeliveryAmountMin),
+  "evidenceAvailable": zod.boolean(),
   "events": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -99,7 +223,7 @@ export const createDeliveryBodyCustomerLongitudeMin = -180;
 export const createDeliveryBodyCustomerLongitudeMax = 180;
 
 
-export const createDeliveryBodyDeliveryAmountExclusiveMin = 0;
+export const createDeliveryBodyDeliveryAmountMin = 0;
 
 
 
@@ -113,7 +237,7 @@ export const CreateDeliveryBody = zod.object({
   "notes": zod.string().optional(),
   "storeId": zod.string(),
   "priority": zod.enum(['normal', 'urgent']),
-  "deliveryAmount": zod.number().gt(createDeliveryBodyDeliveryAmountExclusiveMin)
+  "deliveryAmount": zod.number().min(createDeliveryBodyDeliveryAmountMin).optional().describe('Deprecated; server uses the selected branch\'s configured fee')
 })
 
 export const createDeliveryResponseDeliveryAmountMin = 0;
@@ -143,6 +267,7 @@ export const CreateDeliveryResponse = zod.object({
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
   "deliveryAmount": zod.number().min(createDeliveryResponseDeliveryAmountMin),
+  "evidenceAvailable": zod.boolean(),
   "events": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -187,6 +312,7 @@ export const GetDeliveryResponse = zod.object({
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
   "deliveryAmount": zod.number().min(getDeliveryResponseDeliveryAmountMin),
+  "evidenceAvailable": zod.boolean(),
   "events": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -247,6 +373,7 @@ export const DispatchDeliveryResponse = zod.object({
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
   "deliveryAmount": zod.number().min(dispatchDeliveryResponseDeliveryAmountMin),
+  "evidenceAvailable": zod.boolean(),
   "events": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -266,7 +393,8 @@ export const UpdateDeliveryStatusParams = zod.object({
 
 export const UpdateDeliveryStatusBody = zod.object({
   "status": zod.enum(['ACCEPTED', 'TO_STORE', 'AT_STORE', 'IN_TRANSIT', 'COMPLETED', 'CANCELLED']),
-  "note": zod.string().optional()
+  "note": zod.string().optional(),
+  "evidencePath": zod.string().optional()
 })
 
 export const updateDeliveryStatusResponseDeliveryAmountMin = 0;
@@ -296,6 +424,7 @@ export const UpdateDeliveryStatusResponse = zod.object({
   "estimatedMinutes": zod.number().int().nullish(),
   "distanceKm": zod.number().nullish(),
   "deliveryAmount": zod.number().min(updateDeliveryStatusResponseDeliveryAmountMin),
+  "evidenceAvailable": zod.boolean(),
   "events": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -307,9 +436,46 @@ export const UpdateDeliveryStatusResponse = zod.object({
 
 
 /**
+ * @summary Request a private upload URL for delivery proof
+ */
+export const RequestDeliveryEvidenceUploadUrlParams = zod.object({
+  "deliveryId": zod.coerce.string()
+})
+
+export const requestDeliveryEvidenceUploadUrlBodyNameMax = 255;
+
+export const requestDeliveryEvidenceUploadUrlBodySizeMax = 8388608;
+
+
+
+export const RequestDeliveryEvidenceUploadUrlBody = zod.object({
+  "name": zod.string().min(1).max(requestDeliveryEvidenceUploadUrlBodyNameMax),
+  "size": zod.number().int().min(1).max(requestDeliveryEvidenceUploadUrlBodySizeMax),
+  "contentType": zod.enum(['image/jpeg', 'image/png', 'image/webp'])
+})
+
+export const RequestDeliveryEvidenceUploadUrlResponse = zod.object({
+  "uploadURL": zod.string().url(),
+  "objectPath": zod.string()
+})
+
+
+/**
+ * @summary Open a delivery's private proof photo
+ */
+export const GetDeliveryEvidenceParams = zod.object({
+  "deliveryId": zod.coerce.string()
+})
+
+export const GetDeliveryEvidenceResponse = zod.unknown()
+
+
+/**
  * @summary List stores available to the central team
  */
 export const listStoresResponseDeliveryCountMin = 0;
+
+export const listStoresResponseDeliveryFeeMin = 0;
 
 
 
@@ -333,7 +499,8 @@ export const ListStoresResponseItem = zod.object({
   "assistantManagerPhone": zod.string().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
-  "deliveryCount": zod.number().int().min(listStoresResponseDeliveryCountMin)
+  "deliveryCount": zod.number().int().min(listStoresResponseDeliveryCountMin),
+  "deliveryFee": zod.number().min(listStoresResponseDeliveryFeeMin)
 })
 export const ListStoresResponse = zod.array(ListStoresResponseItem)
 
@@ -360,6 +527,8 @@ export const createStoreBodyLatitudeMax = 90;
 export const createStoreBodyLongitudeMin = -180;
 export const createStoreBodyLongitudeMax = 180;
 
+export const createStoreBodyDeliveryFeeMin = 0;
+
 
 
 export const CreateStoreBody = zod.object({
@@ -378,10 +547,13 @@ export const CreateStoreBody = zod.object({
   "assistantManagerName": zod.string().optional(),
   "assistantManagerPhone": zod.string().optional(),
   "latitude": zod.number().min(createStoreBodyLatitudeMin).max(createStoreBodyLatitudeMax),
-  "longitude": zod.number().min(createStoreBodyLongitudeMin).max(createStoreBodyLongitudeMax)
+  "longitude": zod.number().min(createStoreBodyLongitudeMin).max(createStoreBodyLongitudeMax),
+  "deliveryFee": zod.number().min(createStoreBodyDeliveryFeeMin)
 })
 
 export const createStoreResponseDeliveryCountMin = 0;
+
+export const createStoreResponseDeliveryFeeMin = 0;
 
 
 
@@ -405,7 +577,8 @@ export const CreateStoreResponse = zod.object({
   "assistantManagerPhone": zod.string().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
-  "deliveryCount": zod.number().int().min(createStoreResponseDeliveryCountMin)
+  "deliveryCount": zod.number().int().min(createStoreResponseDeliveryCountMin),
+  "deliveryFee": zod.number().min(createStoreResponseDeliveryFeeMin)
 })
 
 
@@ -435,6 +608,8 @@ export const updateStoreBodyLatitudeMax = 90;
 export const updateStoreBodyLongitudeMin = -180;
 export const updateStoreBodyLongitudeMax = 180;
 
+export const updateStoreBodyDeliveryFeeMin = 0;
+
 
 
 export const UpdateStoreBody = zod.object({
@@ -453,10 +628,13 @@ export const UpdateStoreBody = zod.object({
   "assistantManagerName": zod.string().optional(),
   "assistantManagerPhone": zod.string().optional(),
   "latitude": zod.number().min(updateStoreBodyLatitudeMin).max(updateStoreBodyLatitudeMax),
-  "longitude": zod.number().min(updateStoreBodyLongitudeMin).max(updateStoreBodyLongitudeMax)
+  "longitude": zod.number().min(updateStoreBodyLongitudeMin).max(updateStoreBodyLongitudeMax),
+  "deliveryFee": zod.number().min(updateStoreBodyDeliveryFeeMin)
 })
 
 export const updateStoreResponseDeliveryCountMin = 0;
+
+export const updateStoreResponseDeliveryFeeMin = 0;
 
 
 
@@ -480,7 +658,8 @@ export const UpdateStoreResponse = zod.object({
   "assistantManagerPhone": zod.string().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
-  "deliveryCount": zod.number().int().min(updateStoreResponseDeliveryCountMin)
+  "deliveryCount": zod.number().int().min(updateStoreResponseDeliveryCountMin),
+  "deliveryFee": zod.number().min(updateStoreResponseDeliveryFeeMin)
 })
 
 
@@ -943,6 +1122,10 @@ export const CompleteCourierRouteStopParams = zod.object({
   "stopId": zod.coerce.string()
 })
 
+export const CompleteCourierRouteStopBody = zod.object({
+  "evidencePath": zod.string().optional()
+})
+
 export const completeCourierRouteStopResponseRouteGeometryItemLatitudeMin = -90;
 export const completeCourierRouteStopResponseRouteGeometryItemLatitudeMax = 90;
 
@@ -986,6 +1169,61 @@ export const CompleteCourierRouteStopResponse = zod.object({
   "routeGeometry": zod.array(zod.object({
   "latitude": zod.number().min(completeCourierRouteStopResponseRouteGeometryItemLatitudeMin).max(completeCourierRouteStopResponseRouteGeometryItemLatitudeMax),
   "longitude": zod.number().min(completeCourierRouteStopResponseRouteGeometryItemLongitudeMin).max(completeCourierRouteStopResponseRouteGeometryItemLongitudeMax)
+})).nullable()
+})
+
+
+/**
+ * @summary Record the courier's arrival at a store route stop
+ */
+export const RecordCourierStopArrivalParams = zod.object({
+  "routeId": zod.coerce.string(),
+  "stopId": zod.coerce.string()
+})
+
+export const recordCourierStopArrivalResponseRouteGeometryItemLatitudeMin = -90;
+export const recordCourierStopArrivalResponseRouteGeometryItemLatitudeMax = 90;
+
+export const recordCourierStopArrivalResponseRouteGeometryItemLongitudeMin = -180;
+export const recordCourierStopArrivalResponseRouteGeometryItemLongitudeMax = 180;
+
+
+
+export const RecordCourierStopArrivalResponse = zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['OFFERED', 'ACCEPTED', 'COMPLETED']),
+  "courierId": zod.string().nullable(),
+  "deliveryCount": zod.number().int(),
+  "amountToReceive": zod.number(),
+  "distanceKm": zod.number().nullable(),
+  "estimatedMinutes": zod.number().int().nullable(),
+  "lockedAt": zod.coerce.date().nullable(),
+  "deliveries": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "destination": zod.string(),
+  "storeName": zod.string(),
+  "deliveryAmount": zod.number(),
+  "status": zod.string()
+})),
+  "stops": zod.array(zod.object({
+  "id": zod.string(),
+  "sequence": zod.number().int(),
+  "deliveryId": zod.string(),
+  "kind": zod.enum(['pickup', 'delivery']),
+  "address": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "status": zod.enum(['PENDING', 'DONE']),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "storeName": zod.string(),
+  "deliveryAmount": zod.number()
+})),
+  "routeGeometry": zod.array(zod.object({
+  "latitude": zod.number().min(recordCourierStopArrivalResponseRouteGeometryItemLatitudeMin).max(recordCourierStopArrivalResponseRouteGeometryItemLatitudeMax),
+  "longitude": zod.number().min(recordCourierStopArrivalResponseRouteGeometryItemLongitudeMin).max(recordCourierStopArrivalResponseRouteGeometryItemLongitudeMax)
 })).nullable()
 })
 

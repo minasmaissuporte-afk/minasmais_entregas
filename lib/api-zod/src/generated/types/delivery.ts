@@ -41,5 +41,6 @@ export interface Delivery {
   distanceKm?: number | null;
   /** @minimum 0 */
   deliveryAmount: number;
+  evidenceAvailable: boolean;
   events: DeliveryEvent[];
 }
