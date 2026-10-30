@@ -11,6 +11,8 @@ export type MapCoordinate = {
   longitude: number;
 };
 
+export type MapSize = "default" | "compact" | "full-screen";
+
 export type MapMarker = MapCoordinate & {
   id: string;
   title: string;
@@ -263,7 +265,7 @@ export default function LiveMapbox({
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
   ariaLabel: string;
-  size?: "default" | "compact";
+  size?: MapSize;
   showCenterControls?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -362,6 +364,7 @@ export default function LiveMapbox({
         `Erro no Mapbox${error.status ? ` (${error.status})` : ""}: ${safeMessage}`,
       );
     };
+    const onMapLoad = () => map!.resize();
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
@@ -370,7 +373,7 @@ export default function LiveMapbox({
 
     map.on("style.load", onStyleLoad);
     map.on("error", onMapError);
-    map.on("load", scheduleResize);
+    map.on("load", onMapLoad);
     window.addEventListener("resize", scheduleResize);
     scheduleResize();
 
@@ -380,7 +383,7 @@ export default function LiveMapbox({
       window.removeEventListener("resize", scheduleResize);
       map!.off("style.load", onStyleLoad);
       map!.off("error", onMapError);
-      map!.off("load", scheduleResize);
+      map!.off("load", onMapLoad);
       userLocationMarkerRef.current?.remove();
       map!.remove();
       mapRef.current = null;
@@ -460,16 +463,15 @@ export default function LiveMapbox({
 
   return (
     <div
-      className={`relative w-full overflow-hidden bg-[#f3f2ef] ${
-        size === "compact"
-          ? "h-48 min-h-48 sm:h-56"
-          : "h-[400px] min-h-[400px] sm:h-[460px]"
-      }`}
+      className="relative w-full overflow-hidden bg-[#f3f2ef]"
       role="region"
       aria-label={ariaLabel}
       data-testid="map-live"
     >
-      <div ref={containerRef} className="absolute inset-0" />
+      <div
+        ref={containerRef}
+        className={`live-mapbox-frame live-mapbox-frame--${size}`}
+      />
       {!mapboxToken && (
         <div
           className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-[#f3f2ef]/90 p-4 text-center text-sm text-muted-foreground"

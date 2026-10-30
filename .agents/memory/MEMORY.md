@@ -3,4 +3,4 @@
 - [Empacotamento Expo de produção](expo-production-builds.md) — Libere a porta Metro 8081 antes do build local; previews concorrentes podem fazer o Metro mudar de porta enquanto o script segue usando 8081.
 - [Bootstrap e papéis de acesso](role-bootstrap-and-account-removal.md) — A conta inicial de administrador não deve sobrescrever papéis atribuídos posteriormente; exclusões preservam histórico.
 - [Mapbox e rotas](mapbox-routing-access.md) — Optimization v2 Beta e geocodificação permanente estão habilitados; coordenadas persistidas exigem resultados permanentes.
-- [Estilo dos mapas Mapbox](mapbox-style-choice.md) — Todos os mapas do app usam `streets-v12` e idioma nativo `pt`, sem estilo customizado ou fallback.
+- [Estilo e tamanho dos mapas Mapbox](mapbox-style-choice.md) — Preserve `streets-v12`/`pt` e dê altura responsiva explícita ao elemento entregue ao Mapbox.

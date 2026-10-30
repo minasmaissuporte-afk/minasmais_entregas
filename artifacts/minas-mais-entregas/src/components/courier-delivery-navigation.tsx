@@ -72,6 +72,7 @@ export default function CourierDeliveryNavigation({
             markers={markers}
             routeGeometry={data.routeGeometry}
             ariaLabel={`Rota do motoboy até ${data.targetLabel.toLowerCase()}`}
+            size="full-screen"
           />
           <div className="space-y-3 px-4 py-3">
             <div className="flex items-start gap-2 text-xs">

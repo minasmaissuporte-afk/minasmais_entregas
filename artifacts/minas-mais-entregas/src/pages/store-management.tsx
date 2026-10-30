@@ -534,7 +534,7 @@ export default function StoreManagement() {
                   size="compact"
                 />
               ) : (
-                <div className="grid h-48 place-items-center bg-[#f3f2ef] px-5 text-center text-sm text-muted-foreground">
+                <div className="grid h-[220px] place-items-center bg-[#f3f2ef] px-5 text-center text-sm text-muted-foreground">
                   Selecione um endereço sugerido para posicionar o pino.
                 </div>
               )}
