@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FocusEvent, type FormEvent, type ReactNode } from 'react';
 import { ClerkProvider, Show, SignIn, SignUp, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
@@ -284,6 +284,22 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState('');
   const [form, setForm] = useState({ customerName: '', customerPhone: '', destination: '', orderNumber: '', notes: '', storeId: '', priority: 'normal', deliveryAmount: '' });
   const update = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
+  const hasUnsavedChanges = Boolean(
+    form.customerName.trim() ||
+    form.customerPhone.trim() ||
+    form.destination.trim() ||
+    form.orderNumber.trim() ||
+    form.notes.trim() ||
+    form.storeId ||
+    form.deliveryAmount ||
+    form.priority !== 'normal',
+  );
+  const requestClose = () => {
+    if (create.isPending) return;
+    if (hasUnsavedChanges && !window.confirm('Os dados preenchidos serão descartados. Deseja fechar o formulário?')) return;
+    onClose();
+  };
+  useModalBehavior(requestClose);
   const submit = (e: FormEvent) => {
     e.preventDefault(); setError('');
     create.mutate({ data: { ...form, deliveryAmount: Number(form.deliveryAmount), priority: form.priority as 'normal' | 'urgent' } }, {
@@ -295,12 +311,12 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
       onError: () => setError('Não foi possível registrar. Confira os dados e tente novamente.'),
     });
   };
-  return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <section className="modal-card soft-enter" role="dialog" aria-modal="true" aria-labelledby="new-delivery-title">
-      <div className="modal-header flex items-start justify-between border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div><div className="eyebrow">NOVO PEDIDO</div><h2 id="new-delivery-title" className="mt-1 text-xl font-bold tracking-tight">Registrar entrega</h2><p className="mt-1 text-sm text-muted-foreground">Inclua os dados recebidos da unidade.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={18}/></button></div>
+  return <div className="modal-backdrop" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) requestClose(); }}>
+    <section className="modal-card soft-enter" role="dialog" aria-modal="true" aria-labelledby="new-delivery-title" data-modal-active="true" onFocusCapture={keepModalFieldVisible}>
+      <div className="modal-header flex items-start justify-between gap-3 border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div className="min-w-0"><div className="eyebrow">NOVO PEDIDO</div><h2 id="new-delivery-title" className="mt-1 text-xl font-bold tracking-tight">Registrar entrega</h2><p className="mt-1 text-sm text-muted-foreground">Inclua os dados recebidos da unidade.</p></div><button type="button" className="icon-button modal-close-button" onClick={requestClose} aria-label="Fechar" disabled={create.isPending}><X size={18}/></button></div>
       <form onSubmit={submit} className="modal-form space-y-4 px-5 py-4 sm:px-6 sm:py-5">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Nome do cliente"><input required minLength={2} value={form.customerName} onChange={e => update('customerName', e.target.value)} placeholder="Nome completo" data-testid="input-customer-name"/></Field>
+          <Field label="Nome do cliente"><input required minLength={2} value={form.customerName} onChange={e => update('customerName', e.target.value)} placeholder="Nome completo" data-modal-initial-focus data-testid="input-customer-name"/></Field>
           <Field label="Telefone"><input type="tel" value={form.customerPhone} onChange={e => update('customerPhone', e.target.value)} placeholder="(31) 99999-0000" data-testid="input-customer-phone"/></Field>
         </div>
         <Field label="Endereço de entrega"><input required minLength={5} value={form.destination} onChange={e => update('destination', e.target.value)} placeholder="Rua, número, bairro e complemento" data-testid="input-destination"/></Field>
@@ -314,11 +330,72 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
         <Field label="Observações"><textarea rows={2} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Referências úteis para a entrega" data-testid="input-notes"/></Field>
         <Field label="Prioridade"><select value={form.priority} onChange={e => update('priority', e.target.value)} data-testid="select-priority"><option value="normal">Normal</option><option value="urgent">Urgente</option></select></Field>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><button type="button" className="button-secondary" onClick={onClose}>Cancelar</button><button type="submit" className="button-primary" disabled={create.isPending || storesQuery.isLoading || !storesQuery.data?.some(s => s.active)}><Plus size={16}/>{create.isPending ? 'Registrando…' : 'Registrar pedido'}</button></div>
+        <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><button type="button" className="button-secondary" onClick={requestClose} disabled={create.isPending}>Cancelar</button><button type="submit" className="button-primary" disabled={create.isPending || storesQuery.isLoading || !storesQuery.data?.some(s => s.active)}><Plus size={16}/>{create.isPending ? 'Registrando…' : 'Registrar pedido'}</button></div>
       </form>
     </section>
   </div>;
 }
+
+function useModalBehavior(onRequestClose: () => void) {
+  const closeRef = useRef(onRequestClose);
+  closeRef.current = onRequestClose;
+
+  useEffect(() => {
+    const body = document.body;
+    const root = document.documentElement;
+    const scrollY = window.scrollY;
+    const previousBodyStyles = {
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+      overflow: body.style.overflow,
+    };
+    const previousRootOverflow = root.style.overflow;
+
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+    body.style.overflow = 'hidden';
+    root.style.overflow = 'hidden';
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      const initialField = document.querySelector<HTMLElement>('[data-modal-active="true"] [data-modal-initial-focus]');
+      initialField?.focus({ preventScroll: true });
+      initialField?.scrollIntoView({ block: 'nearest' });
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeRef.current();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener('keydown', handleKeyDown);
+      body.style.position = previousBodyStyles.position;
+      body.style.top = previousBodyStyles.top;
+      body.style.left = previousBodyStyles.left;
+      body.style.right = previousBodyStyles.right;
+      body.style.width = previousBodyStyles.width;
+      body.style.overflow = previousBodyStyles.overflow;
+      root.style.overflow = previousRootOverflow;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+}
+
+function keepModalFieldVisible(event: FocusEvent<HTMLElement>) {
+  const field = event.target;
+  if (!(field instanceof HTMLElement) || !field.matches('input, select, textarea')) return;
+  window.requestAnimationFrame(() => field.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block"><span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.08em] text-muted-foreground">{label}</span>{children}</label>;
 }
@@ -329,6 +406,12 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
   const [courierId, setCourierId] = useState('');
   const [error, setError] = useState('');
   const selectableCouriers = (couriersQuery.data ?? []).filter(c => c.status !== 'BUSY');
+  const requestClose = () => {
+    if (dispatch.isPending) return;
+    if (courierId && !window.confirm('A seleção do motoboy será descartada. Deseja fechar?')) return;
+    onClose();
+  };
+  useModalBehavior(requestClose);
   const go = () => {
     setError('');
     dispatch.mutate({ deliveryId, data: { mode: 'single', courierId } }, {
@@ -341,16 +424,16 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
       }, onError: () => setError('Não foi possível enviar a oferta. O motoboy pode ter iniciado outra entrega; atualize a lista e tente novamente.'),
     });
   };
-  return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <section className="modal-card soft-enter" role="dialog" aria-modal="true" aria-labelledby="dispatch-title">
-      <div className="modal-header flex items-start justify-between border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div><div className="eyebrow">DESPACHO INDIVIDUAL</div><h2 id="dispatch-title" className="mt-1 text-xl font-bold">Escolher motoboy</h2><p className="mt-1 text-sm text-muted-foreground">Todos os cadastros aparecem. Motoboys em atendimento não podem receber outra entrega; os offline verão a oferta quando entrarem no PWA.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={18}/></button></div>
+  return <div className="modal-backdrop" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) requestClose(); }}>
+    <section className="modal-card soft-enter" role="dialog" aria-modal="true" aria-labelledby="dispatch-title" data-modal-active="true" onFocusCapture={keepModalFieldVisible}>
+      <div className="modal-header flex items-start justify-between gap-3 border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div className="min-w-0"><div className="eyebrow">DESPACHO INDIVIDUAL</div><h2 id="dispatch-title" className="mt-1 text-xl font-bold">Escolher motoboy</h2><p className="mt-1 text-sm text-muted-foreground">Todos os cadastros aparecem. Motoboys em atendimento não podem receber outra entrega; os offline verão a oferta quando entrarem no PWA.</p></div><button type="button" className="icon-button modal-close-button" onClick={requestClose} aria-label="Fechar" disabled={dispatch.isPending}><X size={18}/></button></div>
       <div className="modal-body space-y-4 px-5 py-4 sm:px-6 sm:py-5">
-        <Field label="Motoboy cadastrado"><select value={courierId} onChange={e => setCourierId(e.target.value)} data-testid="select-courier"><option value="">Selecione um motoboy</option>{(couriersQuery.data ?? []).map(c => <option key={c.id} value={c.id} disabled={c.status === 'BUSY'}>{c.name} · {c.status === 'AVAILABLE' ? 'Disponível' : c.status === 'OFFLINE' ? 'Offline' : 'Em atendimento'}</option>)}</select></Field>
+        <Field label="Motoboy cadastrado"><select value={courierId} onChange={e => setCourierId(e.target.value)} data-modal-initial-focus data-testid="select-courier"><option value="">Selecione um motoboy</option>{(couriersQuery.data ?? []).map(c => <option key={c.id} value={c.id} disabled={c.status === 'BUSY'}>{c.name} · {c.status === 'AVAILABLE' ? 'Disponível' : c.status === 'OFFLINE' ? 'Offline' : 'Em atendimento'}</option>)}</select></Field>
         {couriersQuery.isLoading && <Skeleton rows={2}/>}
         {couriersQuery.isError && <p className="text-sm text-destructive">Não foi possível consultar os motoboys cadastrados.</p>}
         {!couriersQuery.isLoading && selectableCouriers.length === 0 && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Todos os motoboys cadastrados estão em atendimento. Aguarde alguém concluir a entrega.</div>}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><button className="button-secondary" onClick={onClose}>Cancelar</button><button className="button-primary" disabled={dispatch.isPending || couriersQuery.isLoading || !selectableCouriers.some(courier => courier.id === courierId)} onClick={go}><Truck size={16}/>{dispatch.isPending ? 'Enviando…' : 'Enviar oferta'}</button></div>
+        <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><button type="button" className="button-secondary" onClick={requestClose} disabled={dispatch.isPending}>Cancelar</button><button type="button" className="button-primary" disabled={dispatch.isPending || couriersQuery.isLoading || !selectableCouriers.some(courier => courier.id === courierId)} onClick={go}><Truck size={16}/>{dispatch.isPending ? 'Enviando…' : 'Enviar oferta'}</button></div>
       </div>
     </section>
   </div>;
