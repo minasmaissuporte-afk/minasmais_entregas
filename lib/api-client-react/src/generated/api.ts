@@ -1318,6 +1318,80 @@ export const useUpdateAccessUser = <TError = ErrorType<unknown>,
       return useMutation(getUpdateAccessUserMutationOptions(options), queryClient);
     }
 
+export const getDeleteAccessUserUrl = (userId: string,) => {
+
+
+
+
+  return `/api/access/users/${userId}`
+}
+
+/**
+ * @summary Delete an application account and its Clerk login
+ */
+export const deleteAccessUser = async (userId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteAccessUserUrl(userId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteAccessUserMutationKey = () => ['deleteAccessUser'] as const;
+
+export const getDeleteAccessUserMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAccessUser>>, TError,DeleteAccessUserMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAccessUser>>, TError,DeleteAccessUserMutationVariables, TContext> => {
+
+const mutationKey = getDeleteAccessUserMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAccessUser>>, DeleteAccessUserMutationVariables> = (props) => {
+          const {userId} = props ?? {};
+
+          return  deleteAccessUser(userId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAccessUserMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAccessUser>>>
+
+    export type DeleteAccessUserMutationError = ErrorType<void>
+    export type DeleteAccessUserMutationVariables = {userId: string}
+
+    /**
+ * @summary Delete an application account and its Clerk login
+ */
+export const useDeleteAccessUser = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAccessUser>>, TError,DeleteAccessUserMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAccessUser>>,
+        TError,
+        DeleteAccessUserMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteAccessUserMutationOptions(options), queryClient);
+    }
+
 export const getGetCourierEarningsUrl = (params?: GetCourierEarningsParams,) => {
   const normalizedParams = new URLSearchParams();
 

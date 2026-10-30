@@ -31,6 +31,16 @@ export const requireAuthentication: RequestHandler = (req, res, next) => {
   next();
 };
 
+async function getInitialRole(email: string): Promise<AppRole> {
+  if (!bootstrapAdminEmails.has(email.trim().toLowerCase())) return "PENDING";
+  const [administrator] = await db
+    .select({ id: appUsersTable.id })
+    .from(appUsersTable)
+    .where(eq(appUsersTable.role, "ADMIN"))
+    .limit(1);
+  return administrator ? "PENDING" : "ADMIN";
+}
+
 export async function resolveAppUser(clerkUserId: string) {
   const [linkedProfile] = await db
     .select()
@@ -38,12 +48,9 @@ export async function resolveAppUser(clerkUserId: string) {
     .where(eq(appUsersTable.clerkUserId, clerkUserId))
     .limit(1);
   if (linkedProfile) {
-    const isConfiguredAdmin = bootstrapAdminEmails.has(
-      linkedProfile.email.trim().toLowerCase(),
-    );
-    if (!isConfiguredAdmin || linkedProfile.role === "ADMIN") {
-      return linkedProfile;
-    }
+    if (linkedProfile.role !== "PENDING") return linkedProfile;
+    const initialRole = await getInitialRole(linkedProfile.email);
+    if (initialRole !== "ADMIN") return linkedProfile;
     const [promoted] = await db
       .update(appUsersTable)
       .set({ role: "ADMIN", updatedAt: new Date() })
@@ -65,7 +72,7 @@ export async function resolveAppUser(clerkUserId: string) {
   const name =
     [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim() ||
     email;
-  const initialRole = bootstrapAdminEmails.has(email) ? "ADMIN" : "PENDING";
+  const initialRole = await getInitialRole(email);
   const [emailProfile] = await db
     .select()
     .from(appUsersTable)

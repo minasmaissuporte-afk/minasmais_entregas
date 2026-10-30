@@ -258,6 +258,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppUser"
+    delete:
+      operationId: deleteAccessUser
+      tags: [access]
+      summary: Delete an application account and its Clerk login
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Account and linked login deleted; delivery history is preserved
+        "400":
+          description: Cannot delete the current administrator
+        "404":
+          description: Account not found
+        "409":
+          description: Last administrator or account has active courier work
+        "502":
+          description: App access was revoked but the Clerk login could not be deleted
   /courier/earnings:
     get:
       operationId: getCourierEarnings

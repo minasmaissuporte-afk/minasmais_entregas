@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getAuth } from "@clerk/express";
+import { clerkClient, getAuth } from "@clerk/express";
 import { and, desc, eq, gte, ilike, inArray, or } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
@@ -8,6 +8,7 @@ import {
   CreateDeliveryBody,
   CreateDeliveryResponse,
   DeleteDeliveryParams,
+  DeleteAccessUserParams,
   DispatchDeliveryBody,
   DispatchDeliveryParams,
   DispatchDeliveryResponse,
@@ -114,7 +115,7 @@ router.patch(
   "/access/users/:userId",
   requireRole("ADMIN"),
   async (req, res): Promise<void> => {
-    const params = UpdateAccessUserParams.safeParse(req.params);
+    const params = DeleteAccessUserParams.safeParse(req.params);
     const body = UpdateAccessUserBody.safeParse(req.body);
     if (!params.success || !body.success) {
       res.status(400).json({ error: "Dados de acesso inválidos." });
@@ -140,6 +141,49 @@ router.patch(
     }
 
     const role = body.data.role as AppRole;
+    if (target.role === "COURIER" && role !== "COURIER" && target.courierId) {
+      const [activeDelivery] = await db
+        .select({ id: deliveriesTable.id })
+        .from(deliveriesTable)
+        .where(
+          and(
+            eq(deliveriesTable.courierId, target.courierId),
+            inArray(deliveriesTable.status, [
+              "ACCEPTED",
+              "TO_STORE",
+              "AT_STORE",
+              "IN_TRANSIT",
+            ]),
+          ),
+        )
+        .limit(1);
+      const [activeRoute] = await db
+        .select({ id: deliveryRoutesTable.id })
+        .from(deliveryRoutesTable)
+        .where(
+          and(
+            eq(deliveryRoutesTable.courierId, target.courierId),
+            eq(deliveryRoutesTable.status, "ACCEPTED"),
+          ),
+        )
+        .limit(1);
+      if (activeDelivery || activeRoute) {
+        res.status(409).json({
+          error: "Conclua ou cancele as entregas e rotas do motoboy antes de alterar seu perfil.",
+        });
+        return;
+      }
+    }
+    if (target.role === "ADMIN" && role !== "ADMIN") {
+      const administrators = await db
+        .select({ id: appUsersTable.id })
+        .from(appUsersTable)
+        .where(eq(appUsersTable.role, "ADMIN"));
+      if (administrators.length <= 1) {
+        res.status(409).json({ error: "Não é possível remover o último administrador." });
+        return;
+      }
+    }
     const storeId = ["STORE_MANAGER", "STORE_STAFF"].includes(role)
       ? body.data.storeId ?? null
       : null;
@@ -181,6 +225,128 @@ router.patch(
       .where(eq(appUsersTable.id, target.id))
       .returning();
     res.json(UpdateAccessUserResponse.parse(updated));
+  },
+);
+
+router.delete(
+  "/access/users/:userId",
+  requireRole("ADMIN"),
+  async (req, res): Promise<void> => {
+    const params = UpdateAccessUserParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "Conta inválida." });
+      return;
+    }
+
+    const profile = res.locals.appUser as AppUserProfile;
+    const result = await db.transaction(async (tx) => {
+      const [target] = await tx
+        .select()
+        .from(appUsersTable)
+        .where(eq(appUsersTable.id, params.data.userId))
+        .for("update")
+        .limit(1);
+      if (!target) return { error: "not_found" as const };
+      if (target.clerkUserId && target.clerkUserId === profile.clerkUserId) {
+        return { error: "self" as const };
+      }
+
+      if (target.role === "ADMIN") {
+        const administrators = await tx
+          .select({ id: appUsersTable.id })
+          .from(appUsersTable)
+          .where(eq(appUsersTable.role, "ADMIN"))
+          .for("update");
+        if (administrators.length <= 1) {
+          return { error: "last_admin" as const };
+        }
+      }
+
+      if (target.courierId) {
+        const [activeDelivery] = await tx
+          .select({ id: deliveriesTable.id })
+          .from(deliveriesTable)
+          .where(
+            and(
+              eq(deliveriesTable.courierId, target.courierId),
+              inArray(deliveriesTable.status, [
+                "ACCEPTED",
+                "TO_STORE",
+                "AT_STORE",
+                "IN_TRANSIT",
+              ]),
+            ),
+          )
+          .limit(1);
+        const [activeRoute] = await tx
+          .select({ id: deliveryRoutesTable.id })
+          .from(deliveryRoutesTable)
+          .where(
+            and(
+              eq(deliveryRoutesTable.courierId, target.courierId),
+              eq(deliveryRoutesTable.status, "ACCEPTED"),
+            ),
+          )
+          .limit(1);
+        if (activeDelivery || activeRoute) {
+          return { error: "active_courier_work" as const };
+        }
+      }
+
+      await tx
+        .update(appUsersTable)
+        .set({
+          role: "PENDING",
+          storeId: null,
+          courierId: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(appUsersTable.id, target.id));
+      return { target };
+    });
+
+    if ("error" in result) {
+      if (result.error === "not_found") {
+        res.status(404).json({ error: "Conta não encontrada." });
+        return;
+      }
+      if (result.error === "self") {
+        res.status(400).json({ error: "Não é possível excluir a própria conta de administrador." });
+        return;
+      }
+      if (result.error === "last_admin") {
+        res.status(409).json({ error: "Não é possível excluir o último administrador." });
+        return;
+      }
+      res.status(409).json({
+        error: "Conclua ou cancele as entregas e rotas deste motoboy antes de excluir a conta.",
+      });
+      return;
+    }
+
+    if (result.target.clerkUserId) {
+      try {
+        await clerkClient.users.deleteUser(result.target.clerkUserId);
+      } catch (error) {
+        const status =
+          error && typeof error === "object" && "status" in error
+            ? Number(error.status)
+            : null;
+        if (status !== 404) {
+          req.log?.error(
+            { err: error, accountId: result.target.id },
+            "Failed to delete Clerk login after revoking application access",
+          );
+          res.status(502).json({
+            error: "O acesso ao sistema foi bloqueado, mas não foi possível excluir o login. Tente novamente.",
+          });
+          return;
+        }
+      }
+    }
+
+    await db.delete(appUsersTable).where(eq(appUsersTable.id, result.target.id));
+    res.status(204).end();
   },
 );
 

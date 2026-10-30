@@ -4,10 +4,12 @@ import {
   useListAccessUsers,
   useListCouriers,
   useListStores,
+  useDeleteAccessUser,
   useUpdateAccessUser,
   type AppUser,
 } from "@workspace/api-client-react";
-import { Check, ShieldCheck, UsersRound } from "lucide-react";
+import { Check, ShieldCheck, Trash2, UsersRound } from "lucide-react";
+import { useUser } from "@clerk/react";
 import { useEffect, useState } from "react";
 
 const roles: { value: AppUser["role"]; label: string }[] = [
@@ -20,9 +22,11 @@ const roles: { value: AppUser["role"]; label: string }[] = [
 ];
 
 export default function AccessManagement() {
+  const { user: signedInUser } = useUser();
   const users = useListAccessUsers();
   const stores = useListStores();
   const couriers = useListCouriers();
+  const adminCount = users.data?.filter((user) => user.role === "ADMIN").length ?? 0;
 
   return (
     <div className="soft-enter">
@@ -34,6 +38,9 @@ export default function AccessManagement() {
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           Novas contas começam sem permissão. Aprove usuários e vincule cada
           perfil à unidade ou ao cadastro de motoboy correto.
+        </p>
+        <p className="mt-2 max-w-3xl text-xs text-muted-foreground">
+          Excluir uma conta também apaga o login. O histórico das entregas é preservado; o último administrador e motoboys com trabalho ativo não podem ser excluídos.
         </p>
       </div>
 
@@ -68,6 +75,12 @@ export default function AccessManagement() {
                 user={user}
                 stores={stores.data ?? []}
                 couriers={couriers.data ?? []}
+                isCurrentUser={Boolean(user.clerkUserId && user.clerkUserId === signedInUser?.id)}
+                isLastAdmin={user.role === "ADMIN" && adminCount <= 1}
+                hasActiveWork={Boolean(
+                  user.role === "COURIER" &&
+                    couriers.data?.some((courier) => courier.id === user.courierId && courier.status === "BUSY"),
+                )}
               />
             ))}
           </div>
@@ -86,13 +99,20 @@ function UserAccessRow({
   user,
   stores,
   couriers,
+  isCurrentUser,
+  isLastAdmin,
+  hasActiveWork,
 }: {
   user: AppUser;
   stores: { id: string; name: string; city: string; active: boolean }[];
   couriers: { id: string; name: string; status: string }[];
+  isCurrentUser: boolean;
+  isLastAdmin: boolean;
+  hasActiveWork: boolean;
 }) {
   const queryClient = useQueryClient();
   const update = useUpdateAccessUser();
+  const deleteAccount = useDeleteAccessUser();
   const [role, setRole] = useState<AppUser["role"]>(user.role);
   const [storeId, setStoreId] = useState(user.storeId ?? "");
   const [courierId, setCourierId] = useState(user.courierId ?? "");
@@ -132,6 +152,43 @@ function UserAccessRow({
       },
     );
   };
+  const removeAccount = () => {
+    if (isCurrentUser || isLastAdmin || hasActiveWork) return;
+    const loginNote = user.clerkUserId
+      ? "O login também será excluído."
+      : "Não há um login vinculado a este cadastro.";
+    const confirmed = window.confirm(
+      `Excluir o cadastro de ${user.email}?\n\n${loginNote} O histórico de entregas será mantido. Esta ação não pode ser desfeita.`,
+    );
+    if (!confirmed) return;
+
+    setMessage("");
+    deleteAccount.mutate(
+      { userId: user.id },
+      {
+        onSuccess: async () => {
+          await queryClient.invalidateQueries({
+            queryKey: getListAccessUsersQueryKey(),
+          });
+        },
+        onError: (error) => {
+          const apiError = error as Error & { data?: { error?: string } };
+          setMessage(
+            apiError.data?.error ??
+              (error instanceof Error ? error.message : "Não foi possível excluir a conta."),
+          );
+        },
+      },
+    );
+  };
+  const deleteDisabled = isCurrentUser || isLastAdmin || hasActiveWork || deleteAccount.isPending;
+  const deleteTitle = isCurrentUser
+    ? "Não é possível excluir a própria conta"
+    : isLastAdmin
+      ? "O último administrador não pode ser excluído"
+      : hasActiveWork
+        ? "Conclua ou cancele o trabalho ativo do motoboy"
+        : "Excluir cadastro e login";
 
   return (
     <div className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(180px,1fr)_220px_220px_auto] lg:items-center">
@@ -177,7 +234,7 @@ function UserAccessRow({
       ) : (
         <span className="text-xs text-muted-foreground">Sem vínculo de unidade</span>
       )}
-      <div className="flex items-center justify-between gap-3 lg:justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2 lg:justify-end">
         {message && (
           <span className={`text-[11px] ${message.startsWith("Acesso") ? "text-green-700" : "text-red-700"}`}>
             {message}
@@ -191,6 +248,17 @@ function UserAccessRow({
         >
           <Check size={14} />
           {update.isPending ? "Salvando…" : "Salvar"}
+        </button>
+        <button
+          className="button-secondary button-red-outline"
+          type="button"
+          onClick={removeAccount}
+          disabled={deleteDisabled}
+          title={deleteTitle}
+          aria-label={`Excluir cadastro e login de ${user.email}`}
+        >
+          <Trash2 size={14} />
+          {deleteAccount.isPending ? "Excluindo…" : "Excluir"}
         </button>
       </div>
     </div>

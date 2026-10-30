@@ -98,7 +98,7 @@ export default function CourierAccessPage() {
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <Link href="/sign-in" className="button-primary min-h-11 justify-center">Entrar na minha conta</Link>
-            <Link href="/sign-up" className="button-secondary min-h-11 justify-center">Solicitar cadastro</Link>
+            <Link href="/sign-up" className="button-secondary min-h-11 justify-center">Solicitar acesso</Link>
           </div>
 
           <div className="mt-6 rounded-xl border border-border bg-[#faf9f7] p-4">

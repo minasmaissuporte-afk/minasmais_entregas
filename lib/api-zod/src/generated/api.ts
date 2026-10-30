@@ -370,6 +370,16 @@ export const UpdateAccessUserResponse = zod.object({
 
 
 /**
+ * @summary Delete an application account and its Clerk login
+ */
+export const DeleteAccessUserParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const DeleteAccessUserResponse = zod.void()
+
+
+/**
  * @summary Get completed deliveries and payable total for a period
  */
 export const GetCourierEarningsQueryParams = zod.object({

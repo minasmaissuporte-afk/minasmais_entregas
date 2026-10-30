@@ -396,8 +396,12 @@ input::placeholder,textarea::placeholder { color:#a1a1a3; }
 textarea { resize:vertical; }
 .skeleton { border-radius:6px; background:linear-gradient(90deg,#f1f0ee,#f8f7f5,#f1f0ee); background-size:200% 100%; animation:skeleton-shift 1.4s ease infinite; }
 @keyframes skeleton-shift { to { background-position:-200% 0; } }
-.modal-backdrop { position:fixed; z-index:50; inset:0; display:grid; place-items:center; padding:16px; background:rgba(28,29,32,.42); backdrop-filter:blur(3px); }
-.modal-card { width:min(100%,560px); max-height:min(92dvh,760px); overflow:auto; border:1px solid #e8e5e1; border-radius:13px; background:#fff; box-shadow:0 22px 65px #16161b30; }
+.modal-backdrop { position:fixed; z-index:50; inset:0; display:grid; place-items:center; overflow-y:auto; overscroll-behavior:contain; padding:16px; background:rgba(28,29,32,.42); backdrop-filter:blur(3px); }
+.modal-card { display:flex; width:min(100%,640px); max-height:min(92dvh,760px); min-height:0; flex-direction:column; overflow:hidden; border:1px solid #e8e5e1; border-radius:13px; background:#fff; box-shadow:0 22px 65px #16161b30; }
+.modal-header { flex:none; background:#fff; }
+.modal-form { min-height:0; flex:1; overflow-y:auto; overscroll-behavior:contain; }
+.modal-body { min-height:0; flex:1; overflow-y:auto; overscroll-behavior:contain; }
+.modal-form-actions { position:sticky; bottom:0; margin-top:auto; padding-bottom:2px; background:linear-gradient(to bottom,#fff 80%,#fff); }
 .choice-card { display:flex; align-items:center; gap:10px; min-height:68px; border:1px solid #e5e3e0; border-radius:8px; padding:10px; color:#64676d; text-align:left; }
 .choice-card span { display:grid; gap:3px; }
 .choice-card b { color:#30343a; font-size:12px; }
@@ -420,6 +424,7 @@ textarea { resize:vertical; }
 @media (max-width:900px) { .metric-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .detail-grid { grid-template-columns:1fr; } }
 @media (max-width:767px) { .ops-sidebar { min-height:0; } .topbar { padding:0 16px; } .metric-grid { gap:8px; } .metric-card { padding:13px; } .metric-card .mono { font-size:25px; } }
 @media (max-width:480px) { .metric-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .info-grid { grid-template-columns:1fr; } .info-grid > .info-wide { grid-column:span 1; } }
+@media (max-width:480px) { .modal-backdrop { padding:10px; } .modal-card { max-height:calc(100dvh - 20px); border-radius:10px; } }
 
 /**
  * Using the elevate system.

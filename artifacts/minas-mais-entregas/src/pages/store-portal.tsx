@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import {
   getListCouriersQueryKey,
   getListDeliveriesQueryKey,
@@ -14,6 +15,7 @@ import LiveMap, { type MapMarker } from "@/components/live-map";
 export default function StorePortal({ profile }: { profile: AppUser }) {
   const { signOut } = useClerk();
   const queryClient = useQueryClient();
+  const [selectedCourierId, setSelectedCourierId] = useState("");
   const deliveries = useListDeliveries(
     {},
     { query: { queryKey: getListDeliveriesQueryKey(), refetchInterval: 15000 } },
@@ -21,10 +23,17 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
   const couriers = useListCouriers({
     query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000 },
   });
-  const trackingMarkers: MapMarker[] = (couriers.data ?? [])
+  const activeCouriers = useMemo(
+    () => (couriers.data ?? []).filter((courier) => courier.status === "BUSY"),
+    [couriers.data],
+  );
+  const effectiveSelectedCourierId = activeCouriers.some(
+    (courier) => courier.id === selectedCourierId,
+  ) ? selectedCourierId : "";
+  const trackingMarkers: MapMarker[] = activeCouriers
     .filter(
       (courier) =>
-        courier.status === "BUSY" &&
+        (!effectiveSelectedCourierId || courier.id === effectiveSelectedCourierId) &&
         courier.currentLatitude != null &&
         courier.currentLongitude != null,
     )
@@ -80,9 +89,25 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
           </p>
         </div>
         <section className="panel mb-5 overflow-hidden" aria-label="Rastreamento dos motoboys da unidade">
-          <div className="border-b border-border px-4 py-4 sm:px-5">
-            <div className="eyebrow">ACOMPANHAMENTO</div>
-            <h2 className="mt-1 text-sm font-bold">Motoboys com entregas da unidade</h2>
+          <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
+            <div>
+              <div className="eyebrow">ACOMPANHAMENTO</div>
+              <h2 className="mt-1 text-sm font-bold">Motoboys com entregas da unidade</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Acompanhe todos ou selecione um motoboy.</p>
+            </div>
+            <label className="sr-only" htmlFor="store-track-courier">Selecionar motoboy para acompanhar</label>
+            <select
+              id="store-track-courier"
+              className="filter-select w-full sm:w-auto"
+              value={effectiveSelectedCourierId}
+              onChange={(event) => setSelectedCourierId(event.target.value)}
+              aria-label="Selecionar motoboy para acompanhar"
+            >
+              <option value="">Todos os motoboys em atendimento</option>
+              {activeCouriers.map((courier) => (
+                <option key={courier.id} value={courier.id}>{courier.name}</option>
+              ))}
+            </select>
           </div>
           {couriers.isLoading ? (
             <div className="skeleton m-4 h-[280px]" />
@@ -93,7 +118,9 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
             />
           ) : (
             <div className="p-5 text-sm text-muted-foreground">
-              Nenhuma posição GPS recebida para entregas ativas desta unidade. O mapa será atualizado quando o motoboy permitir a localização no PWA.
+              {effectiveSelectedCourierId
+                ? `Aguardando uma posição GPS real de ${activeCouriers.find((courier) => courier.id === effectiveSelectedCourierId)?.name ?? "motoboy selecionado"}. O PWA precisa estar aberto com a localização permitida.`
+                : "Nenhuma posição GPS recebida para entregas ativas desta unidade. O mapa será atualizado quando o motoboy permitir a localização no PWA."}
             </div>
           )}
         </section>
