@@ -30,24 +30,33 @@ type MarkerEntry = {
   onDrag?: MapMarker["onDrag"];
 };
 
-const STYLE_URL = "mapbox://styles/caiosuportemhl/cmvvbmxjy003601qs0z004xq0";
-const FALLBACK_STYLE_URL = "mapbox://styles/mapbox/standard";
+const STYLE_URL = "mapbox://styles/mapbox/streets-v12";
 const ROUTE_SOURCE_ID = "minas-mais-active-route";
 const ROUTE_LAYER_ID = "minas-mais-active-route-line";
 const INITIAL_CENTER: [number, number] = [-43.9386, -19.9191];
 
-function logMapError(context: string, error: unknown) {
-  const details = error as { message?: unknown; status?: unknown } | null;
+function logMapError(context: string, error: unknown, requestUrl?: string) {
+  const details = error as {
+    message?: unknown;
+    status?: unknown;
+    url?: unknown;
+  } | null;
   const rawMessage =
     typeof details?.message === "string" ? details.message : "Erro Mapbox sem detalhes";
   const safeMessage = rawMessage.replace(
     /(access_token=)[^&\s]+/gi,
     "$1[redigido]",
   );
-  console.error(`[Mapbox GL] ${context}`, {
-    message: safeMessage,
+  const rawUrl =
+    requestUrl ??
+    (typeof details?.url === "string" ? details.url : undefined);
+  const safeUrl = rawUrl
+    ? rawUrl.replace(/([?&](?:access_token|token)=)[^&\s]+/gi, "$1[redigido]")
+    : "URL não informada pelo Mapbox";
+  console.error(`[Mapbox GL] ${context}: ${safeMessage}; URL: ${safeUrl}`, {
     status: typeof details?.status === "number" ? details.status : undefined,
   });
+  return safeMessage;
 }
 
 function markerColor(marker: MapMarker) {
@@ -303,10 +312,6 @@ export default function LiveMapbox({
     if (!map) return;
 
     mapRef.current = map;
-    let primaryStyleLoaded = false;
-    let fallbackRequested = false;
-    let styleLoadTimer: number | undefined;
-    let fallbackLoadTimer: number | undefined;
     let resizeFrame = 0;
 
     const syncAfterStyleLoad = () => {
@@ -338,68 +343,24 @@ export default function LiveMapbox({
       if (resizeFrame) window.cancelAnimationFrame(resizeFrame);
       resizeFrame = window.requestAnimationFrame(() => map!.resize());
     };
-    const fallbackToStandardStyle = (force = false) => {
-      if (fallbackRequested || (!force && primaryStyleLoaded)) return;
-      fallbackRequested = true;
-      setMapMessage(
-        "O estilo personalizado falhou; tentando o estilo padrão do Mapbox.",
-      );
-      try {
-        map!.setStyle(FALLBACK_STYLE_URL);
-        fallbackLoadTimer = window.setTimeout(() => {
-          if (!map!.isStyleLoaded()) {
-            setMapMessage(
-              "O estilo padrão também não carregou. Verifique o token Mapbox e a conexão.",
-            );
-          }
-        }, 12_000);
-      } catch (error) {
-        logMapError("Falha ao aplicar o estilo padrão.", error);
-        setMapMessage(
-          "Não foi possível carregar o estilo personalizado nem o mapa padrão.",
-        );
-      }
-    };
     const onStyleLoad = () => {
-      try {
-        map!.setLanguage("pt");
-      } catch (error) {
-        logMapError("Não foi possível aplicar os rótulos em português.", error);
-      }
-      if (fallbackRequested) {
-        if (styleLoadTimer) window.clearTimeout(styleLoadTimer);
-        if (fallbackLoadTimer) window.clearTimeout(fallbackLoadTimer);
-        setMapMessage("O estilo personalizado falhou; exibindo o mapa padrão do Mapbox.");
-      } else {
-        primaryStyleLoaded = true;
-        if (styleLoadTimer) window.clearTimeout(styleLoadTimer);
-        setMapMessage(null);
-      }
+      setMapMessage(null);
       syncAfterStyleLoad();
       scheduleResize();
     };
-    const onMapError = (event: { error: Error }) => {
+    const onMapError = (event: { error: Error & { status?: number; url?: string } }) => {
       const error = event.error as Error & {
         status?: number;
         url?: string;
       };
-      logMapError("Erro ao carregar mapa, estilo ou tiles.", error);
-      const styleRequestFailed =
-        /style|sprite|glyph|tile/i.test(`${error.message} ${error.url ?? ""}`) ||
-        [401, 403, 404].includes(error.status ?? 0);
-      if (!fallbackRequested && styleRequestFailed) {
-        fallbackToStandardStyle(true);
-      } else if (fallbackRequested && !map!.isStyleLoaded()) {
-        setMapMessage(
-          "O estilo padrão do Mapbox também não carregou. Verifique o token e o acesso à rede.",
-        );
-      } else if (fallbackRequested) {
-        setMapMessage(
-          "O mapa padrão do Mapbox também encontrou erros. Verifique o token e o acesso à rede.",
-        );
-      } else if (!primaryStyleLoaded) {
-        setMapMessage("O Mapbox encontrou um erro ao carregar o estilo personalizado.");
-      }
+      const safeMessage = logMapError(
+        "Erro ao carregar mapa, estilo ou tiles",
+        error,
+        error.url,
+      );
+      setMapMessage(
+        `Erro no Mapbox${error.status ? ` (${error.status})` : ""}: ${safeMessage}`,
+      );
     };
     const resizeObserver =
       typeof ResizeObserver === "undefined"
@@ -412,14 +373,8 @@ export default function LiveMapbox({
     map.on("load", scheduleResize);
     window.addEventListener("resize", scheduleResize);
     scheduleResize();
-    styleLoadTimer = window.setTimeout(
-      () => fallbackToStandardStyle(),
-      12_000,
-    );
 
     return () => {
-      if (styleLoadTimer) window.clearTimeout(styleLoadTimer);
-      if (fallbackLoadTimer) window.clearTimeout(fallbackLoadTimer);
       if (resizeFrame) window.cancelAnimationFrame(resizeFrame);
       resizeObserver?.disconnect();
       window.removeEventListener("resize", scheduleResize);
