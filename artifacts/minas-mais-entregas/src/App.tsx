@@ -8,11 +8,13 @@ import {
   getGetMyProfileQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetDeliveryQueryKey,
+  getListCourierRoutesQueryKey,
   getListCouriersQueryKey,
   getListDeliveriesQueryKey,
   getListStoresQueryKey,
   useCreateDelivery,
   useCreateDeliveryRoute,
+  useDeleteDelivery,
   useDispatchDelivery,
   useGetDashboardSummary,
   useGetDelivery,
@@ -27,6 +29,7 @@ import {
   ArrowLeft, ArrowRight, Bike, Clock3, FilePlus2, Filter,
   History, MapPin, PackageCheck, Phone, Plus, Search, ShieldCheck,
   Truck, UserRound, X, AlertTriangle, RefreshCw,
+  Trash2,
 } from 'lucide-react';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -35,6 +38,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import AccessManagement from '@/pages/access-management';
 import CourierPortal from '@/pages/courier-portal';
+import CourierAccessPage from '@/pages/courier-access';
 import StorePortal from '@/pages/store-portal';
 
 const queryClient = new QueryClient();
@@ -140,6 +144,7 @@ function LandingPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Link href="/motoboy-pwa" className="button-quiet hidden sm:inline-flex">Área do motoboy</Link>
           <Link href="/sign-in" className="button-secondary">Entrar</Link>
           <Link href="/sign-up" className="button-primary">Solicitar acesso</Link>
         </div>
@@ -155,6 +160,7 @@ function LandingPage() {
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link href="/sign-in" className="button-primary min-h-11 px-5">Acessar o painel</Link>
+            <Link href="/motoboy-pwa" className="button-secondary min-h-11 px-5">Área do motoboy</Link>
             <Link href="/sign-up" className="button-secondary min-h-11 px-5">Criar uma conta</Link>
           </div>
           <p className="mt-4 text-xs text-muted-foreground">
@@ -255,7 +261,7 @@ function AppShell({ children, profile }: { children: ReactNode; profile: AppUser
     <main className="min-w-0 flex-1">
       <header className="topbar">
         <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="hidden sm:inline">Rede Minas Mais</span><span className="hidden sm:inline">/</span><span className="font-semibold text-foreground">{location.startsWith('/deliveries/') ? 'Detalhe da entrega' : 'Central de entregas'}</span></div>
-         <div className="ml-auto flex items-center gap-2"><span className="hidden text-[11px] text-muted-foreground sm:inline">Painel operacional</span><span className="online-indicator"><i /> Ambiente demonstrativo</span><button className="button-quiet" onClick={() => void signOut({ redirectUrl: basePath || '/' })}>Sair</button></div>
+          <div className="ml-auto flex items-center gap-2"><span className="hidden text-[11px] text-muted-foreground sm:inline">Painel operacional</span><button className="button-quiet" onClick={() => void signOut({ redirectUrl: basePath || '/' })}>Sair</button></div>
       </header>
       <div className="ops-content mx-auto w-full px-4 pb-10 pt-7 sm:px-6 lg:px-9">{children}</div>
     </main>
@@ -341,7 +347,7 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
   </div>;
 }
 
-function Dashboard() {
+function Dashboard({ isAdmin }: { isAdmin: boolean }) {
   const [showCreate, setShowCreate] = useState(false);
   const [dispatchId, setDispatchId] = useState<string | null>(null);
   const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<string[]>([]);
@@ -350,8 +356,10 @@ function Dashboard() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [storeId, setStoreId] = useState('');
+  const [deleteFeedback, setDeleteFeedback] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const qc = useQueryClient();
   const createDeliveryRoute = useCreateDeliveryRoute();
+  const deleteDelivery = useDeleteDelivery();
   const summary = useGetDashboardSummary({ query: { refetchInterval: 15000, refetchOnWindowFocus: true } });
   const stores = useListStores({ query: { queryKey: getListStoresQueryKey() } });
   const couriers = useListCouriers({ query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000 } });
@@ -384,10 +392,40 @@ function Dashboard() {
       onError: error => setRouteFeedback(error instanceof Error ? error.message : 'Não foi possível criar a rota. Atualize a fila e tente novamente.'),
     });
   };
+  const removeDelivery = (deliveryId: string, code: string) => {
+    if (!isAdmin) return;
+    const confirmed = window.confirm(
+      `Excluir permanentemente a entrega ${code} e seu histórico de eventos? Esta ação não pode ser desfeita.`,
+    );
+    if (!confirmed) return;
+    setDeleteFeedback(null);
+    deleteDelivery.mutate(
+      { deliveryId },
+      {
+        onSuccess: async () => {
+          setSelectedDeliveryIds((current) => current.filter((id) => id !== deliveryId));
+          setDeleteFeedback({ kind: 'success', text: `Entrega ${code} excluída.` });
+          await Promise.all([
+            qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
+            qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
+            qc.invalidateQueries({ queryKey: getListCourierRoutesQueryKey() }),
+          ]);
+          qc.removeQueries({ queryKey: getGetDeliveryQueryKey(deliveryId) });
+        },
+        onError: (error) => {
+          const apiError = error as Error & { data?: { error?: string } };
+          setDeleteFeedback({
+            kind: 'error',
+            text: apiError.data?.error ?? (error instanceof Error ? error.message : 'Não foi possível excluir a entrega.'),
+          });
+        },
+      },
+    );
+  };
   const counts = summary.data;
   return <div className="soft-enter">
     <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-       <div><div className="eyebrow">VISÃO GERAL · REDE MINAS MAIS</div><h1 className="mt-2 text-[28px] font-bold tracking-[-.045em] sm:text-[34px]">Central de entregas</h1><p className="mt-1 text-sm text-muted-foreground">Acompanhe pedidos, disponibilidade e despacho em um só lugar.</p><p className="mt-2 text-[11px] font-medium text-amber-800">Dados demonstrativos fictícios · atualização automática a cada 15 segundos</p></div>
+        <div><div className="eyebrow">VISÃO GERAL · REDE MINAS MAIS</div><h1 className="mt-2 text-[28px] font-bold tracking-[-.045em] sm:text-[34px]">Central de entregas</h1><p className="mt-1 text-sm text-muted-foreground">Acompanhe pedidos, disponibilidade e despacho em um só lugar.</p><p className="mt-2 text-[11px] text-muted-foreground">Atualização automática a cada 15 segundos.</p></div>
       <div className="flex flex-wrap gap-2 self-start sm:self-auto">
         {selectedDeliveryIds.length >= 2 && <button className="button-secondary h-10" onClick={offerGroupedRoute} disabled={createDeliveryRoute.isPending} data-testid="button-create-route"><Bike size={16}/>{createDeliveryRoute.isPending ? 'Criando rota…' : `Agrupar ${selectedDeliveryIds.length} entregas`}</button>}
         {selectedDeliveryIds.length > 0 && <button className="button-quiet h-10" onClick={() => { setSelectedDeliveryIds([]); setRouteFeedback(''); }}>Limpar seleção ({selectedDeliveryIds.length})</button>}
@@ -442,6 +480,7 @@ function Dashboard() {
         </div>
       </div>
       {routeFeedback && <p className={`mx-4 mb-3 rounded-lg px-3 py-2 text-sm ${routeFeedback.startsWith('Rota ') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`} role="status">{routeFeedback}</p>}
+      {deleteFeedback && <p className={`mx-4 mb-3 rounded-lg px-3 py-2 text-sm ${deleteFeedback.kind === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`} role="status">{deleteFeedback.text}</p>}
       {selectedDeliveryIds.length > 0 && <p className="mx-4 mb-3 text-xs text-muted-foreground">Selecione de 2 a 10 solicitações novas. A melhor sequência será calculada quando o motoboy aceitar a rota.</p>}
       {deliveries.isLoading ? <Skeleton rows={5}/> : deliveries.isError ? <div className="p-8 text-center"><AlertTriangle className="mx-auto mb-2 text-amber-600"/><p className="font-semibold">Falha ao carregar solicitações</p><p className="mb-3 mt-1 text-sm text-muted-foreground">A fila permanece disponível para nova tentativa.</p><button className="button-secondary mx-auto" onClick={() => void deliveries.refetch()}><RefreshCw size={14}/>Tentar novamente</button></div> :
         !deliveries.data?.length ? <EmptyState title="Nenhuma solicitação nesta fila" detail={search || status || storeId ? 'Ajuste os filtros ou registre uma nova entrega.' : 'Quando uma solicitação chegar, ela aparecerá aqui para análise e despacho.'} action={<button className="button-primary" onClick={() => setShowCreate(true)}><Plus size={15}/>Registrar entrega</button>}/> :
@@ -455,7 +494,7 @@ function Dashboard() {
               <td><StatusBadge status={d.status}/></td>
               <td>{d.courierName ? <div className="flex items-center gap-2"><span className="avatar">{d.courierInitials || d.courierName.slice(0,2).toUpperCase()}</span><div><div className="text-xs font-semibold">{d.courierName}</div><div className="text-[10px] text-muted-foreground">{timeAgo(d.lastLocationAt)}</div></div></div> : <span className="text-xs text-muted-foreground">Não atribuído</span>}</td>
               <td className="text-xs text-muted-foreground">{fmtTime(d.updatedAt || d.createdAt)}</td>
-              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
+              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{isAdmin && <button className="icon-button-sm text-red-700" type="button" disabled={deleteDelivery.isPending} onClick={() => removeDelivery(d.id, d.code)} aria-label={`Excluir ${d.code}`} title="Excluir registro"><Trash2 size={15}/></button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
             </tr>)}</tbody>
           </table></div>}
     </section>
@@ -600,7 +639,7 @@ function UserPortalRoute() {
   if (profile.data.role === 'STORE_MANAGER' || profile.data.role === 'STORE_STAFF') {
     return <StorePortal profile={profile.data} />;
   }
-  return <RoutedErrorBoundary><AppShell profile={profile.data}><Dashboard /></AppShell></RoutedErrorBoundary>;
+  return <RoutedErrorBoundary><AppShell profile={profile.data}><Dashboard isAdmin={profile.data.role === 'ADMIN'} /></AppShell></RoutedErrorBoundary>;
 }
 
 function CentralRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
@@ -651,6 +690,7 @@ function ClerkRoutes() {
         <Switch>
           <Route path="/" component={HomeRedirect}/>
           <Route path="/user-portal" component={UserPortalRoute}/>
+          <Route path="/motoboy-pwa" component={CourierAccessPage}/>
           <Route path="/deliveries/:deliveryId" component={() => <CentralRoute><DeliveryDetail/></CentralRoute>}/>
           <Route path="/access" component={() => <CentralRoute adminOnly><AccessManagement/></CentralRoute>}/>
           <Route path="/sign-in/*?" component={SignInPage}/>

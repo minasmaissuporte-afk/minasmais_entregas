@@ -1,0 +1,260 @@
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getGetCourierEarningsQueryKey,
+  getListCourierRoutesQueryKey,
+  getListDeliveriesQueryKey,
+  useAcceptCourierRoute,
+  useCompleteCourierRouteStop,
+  type CourierDeliveryRoute,
+} from "@workspace/api-client-react";
+import { Check, Clock3, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
+
+const money = (amount: number) =>
+  amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+function requestCurrentLocation() {
+  return new Promise<{ latitude: number; longitude: number }>((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Este navegador não oferece localização."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => resolve({ latitude: coords.latitude, longitude: coords.longitude }),
+      () => reject(new Error("Permita o acesso à localização para calcular a melhor rota.")),
+      { enableHighAccuracy: true, timeout: 15_000 },
+    );
+  });
+}
+
+function navigateToStop(latitude: number, longitude: number) {
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=driving`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+export default function CourierRoutesSection({
+  routes,
+  isLoading,
+  isError,
+  onRetry,
+}: {
+  routes: CourierDeliveryRoute[];
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const acceptRoute = useAcceptCourierRoute();
+  const completeStop = useCompleteCourierRouteStop();
+  const [busyRouteId, setBusyRouteId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState("");
+  const activeRoute = routes.find((route) => route.status === "ACCEPTED");
+  const offeredRoutes = routes.filter((route) => route.status === "OFFERED");
+
+  const refreshRouteData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: getListCourierRoutesQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period: "day" }) }),
+      queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period: "week" }) }),
+      queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period: "month" }) }),
+    ]);
+  };
+
+  const handleAccept = async (route: CourierDeliveryRoute) => {
+    setErrorMessage("");
+    setBusyRouteId(route.id);
+    try {
+      const location = await requestCurrentLocation();
+      await acceptRoute.mutateAsync({ routeId: route.id, data: location });
+      await refreshRouteData();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Não foi possível aceitar a rota.");
+    } finally {
+      setBusyRouteId(null);
+    }
+  };
+
+  const handleCompleteStop = async (routeId: string, stopId: string) => {
+    setErrorMessage("");
+    setBusyRouteId(routeId);
+    try {
+      await completeStop.mutateAsync({ routeId, stopId });
+      await refreshRouteData();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Não foi possível concluir esta parada.");
+    } finally {
+      setBusyRouteId(null);
+    }
+  };
+
+  return (
+    <section className="mt-6 space-y-4" aria-label="Rotas do motoboy">
+      <div className="flex items-end justify-between">
+        <div>
+          <div className="eyebrow">ROTAS AGRUPADAS</div>
+          <h2 className="mt-1 text-lg font-bold">Rotas e sequência de paradas</h2>
+        </div>
+        <button className="button-quiet" type="button" onClick={onRetry} aria-label="Atualizar rotas">
+          <RefreshCw size={15} /> Atualizar
+        </button>
+      </div>
+
+      {errorMessage && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{errorMessage}</div>}
+
+      {isLoading ? (
+        <div className="panel p-5 text-sm text-muted-foreground">Carregando rotas…</div>
+      ) : isError ? (
+        <div className="panel p-5">
+          <p className="text-sm text-red-700">Não foi possível carregar as rotas.</p>
+          <button className="button-secondary mt-3" type="button" onClick={onRetry}>Tentar novamente</button>
+        </div>
+      ) : (
+        <>
+          {activeRoute && (
+            <ActiveRouteCard
+              route={activeRoute}
+              busy={busyRouteId === activeRoute.id}
+              onComplete={(stopId) => void handleCompleteStop(activeRoute.id, stopId)}
+            />
+          )}
+
+          {!activeRoute && offeredRoutes.map((route) => (
+            <article key={route.id} className="panel p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-bold"><RouteIcon size={17} className="text-primary" />{route.deliveryCount} {route.deliveryCount === 1 ? "entrega" : "entregas"}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">A sequência otimizada será travada quando você aceitar.</p>
+                </div>
+                <div className="text-right">
+                  <div className="eyebrow">TOTAL PREVISTO</div>
+                  <div className="mt-1 text-lg font-bold text-primary">{money(route.amountToReceive)}</div>
+                </div>
+              </div>
+              <div className="mt-4 divide-y divide-border border-y border-border">
+                {route.deliveries.map((delivery) => (
+                  <div key={delivery.id} className="flex items-start justify-between gap-3 py-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold">{delivery.code} · {delivery.storeName}</div>
+                      <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{delivery.destination}</div>
+                    </div>
+                    <div className="shrink-0 text-sm font-semibold">{money(delivery.deliveryAmount)}</div>
+                  </div>
+                ))}
+              </div>
+              <button
+                className="button-primary mt-4 min-h-11 w-full justify-center"
+                type="button"
+                disabled={busyRouteId !== null}
+                onClick={() => void handleAccept(route)}
+              >
+                <Navigation size={16} />
+                {busyRouteId === route.id ? "Calculando melhor rota…" : "Aceitar e calcular rota"}
+              </button>
+              <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                O navegador pedirá sua localização para ordenar as paradas a partir de onde você está.
+              </p>
+            </article>
+          ))}
+
+          {!activeRoute && offeredRoutes.length === 0 && (
+            <div className="panel p-5 text-center">
+              <PackageCheck className="mx-auto text-muted-foreground" size={22} />
+              <p className="mt-2 text-sm font-semibold">Nenhuma rota agrupada disponível</p>
+              <p className="mt-1 text-xs text-muted-foreground">Novas ofertas enviadas pela central aparecerão aqui.</p>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function ActiveRouteCard({
+  route,
+  busy,
+  onComplete,
+}: {
+  route: CourierDeliveryRoute;
+  busy: boolean;
+  onComplete: (stopId: string) => void;
+}) {
+  const completedStops = route.stops.filter((stop) => stop.status === "DONE").length;
+  const nextStop = route.stops.find((stop) => stop.status === "PENDING");
+  const progress = route.stops.length ? Math.round((completedStops / route.stops.length) * 100) : 0;
+
+  return (
+    <article className="overflow-hidden rounded-2xl bg-[#a91d2a] p-4 text-white shadow-sm sm:p-5">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[.12em] text-white/75">Rota aceita · sequência travada</div>
+          <h3 className="mt-1 text-xl font-bold">{route.deliveryCount} entregas</h3>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] font-semibold uppercase tracking-[.12em] text-white/75">A receber</div>
+          <div className="mt-1 text-lg font-bold">{money(route.amountToReceive)}</div>
+        </div>
+      </header>
+
+      <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/90">
+        {route.distanceKm != null && <span className="rounded-full bg-white/15 px-3 py-1">{route.distanceKm} km</span>}
+        {route.estimatedMinutes != null && <span className="rounded-full bg-white/15 px-3 py-1"><Clock3 className="mr-1 inline" size={13} />{route.estimatedMinutes} min</span>}
+        <span className="rounded-full bg-white/15 px-3 py-1">{completedStops}/{route.stops.length} paradas</span>
+      </div>
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/15">
+        <div className="h-full rounded-full bg-white transition-all" style={{ width: `${progress}%` }} />
+      </div>
+
+      {nextStop ? (
+        <div className="mt-4 rounded-xl bg-white p-4 text-[#24272d]">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold text-primary">{nextStop.sequence}. {nextStop.kind === "pickup" ? "Retirada na unidade" : "Entrega ao cliente"}</div>
+              <div className="mt-1 text-sm font-bold">{nextStop.code} · {nextStop.storeName}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{nextStop.customerName}</div>
+            </div>
+            {nextStop.kind === "delivery" && <span className="shrink-0 text-sm font-bold">{money(nextStop.deliveryAmount)}</span>}
+          </div>
+          <div className="mt-3 flex items-start gap-2 text-xs leading-relaxed">
+            <MapPin size={15} className="mt-0.5 shrink-0 text-primary" />
+            <span>{nextStop.address}</span>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <a
+              className="button-secondary min-h-10 justify-center"
+              href={`https://www.google.com/maps/dir/?api=1&destination=${nextStop.latitude},${nextStop.longitude}&travelmode=driving`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Navigation size={15} /> Navegar
+            </a>
+            <button
+              className="button-primary min-h-10 justify-center"
+              type="button"
+              disabled={busy}
+              onClick={() => onComplete(nextStop.id)}
+            >
+              <Check size={15} />{busy ? "Salvando…" : nextStop.kind === "pickup" ? "Confirmar retirada" : "Concluir entrega"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl bg-white p-4 text-sm font-semibold text-[#24272d]">Rota concluída. Todas as paradas foram finalizadas.</div>
+      )}
+
+      <ol className="mt-4 space-y-2" aria-label="Sequência fixa da rota">
+        {route.stops.map((stop) => (
+          <li key={stop.id} className="flex items-start gap-3 rounded-lg bg-white/10 px-3 py-2">
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white text-xs font-bold text-primary">
+              {stop.status === "DONE" ? <Check size={13} /> : stop.sequence}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold">{stop.sequence}. {stop.kind === "pickup" ? "Retirada" : "Entrega"} · {stop.code}</span>
+              <span className="mt-0.5 block truncate text-[11px] text-white/75">{stop.address}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </article>
+  );
+}

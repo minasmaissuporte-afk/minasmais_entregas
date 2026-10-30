@@ -1,3 +1,3 @@
 - [API client codegen](api-client-codegen.md) — Keep generated React Query hooks aligned with TanStack Query v5 and DOM iterable types.
-- [App do motoboy e repasses](courier-mobile-and-earnings.md) — A experiência do motoboy deve ser nativa em iOS/Android e exibir entregas e valor a receber.
+- [PWA do motoboy e repasses](courier-mobile-and-earnings.md) — O motoboy usa o PWA em iOS/Android e vê entregas e valor a receber.
 - [Empacotamento Expo de produção](expo-production-builds.md) — Libere a porta Metro 8081 antes do build local; previews concorrentes podem fazer o Metro mudar de porta enquanto o script segue usando 8081.

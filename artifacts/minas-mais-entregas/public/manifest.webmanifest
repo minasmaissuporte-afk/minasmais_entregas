@@ -1,0 +1,27 @@
+{
+  "id": "/motoboy-pwa",
+  "name": "Minas Mais Entregas",
+  "short_name": "Minas Mais",
+  "description": "Acesse suas entregas e rotas da Rede Minas Mais.",
+  "lang": "pt-BR",
+  "start_url": "/motoboy-pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f3f1",
+  "theme_color": "#a91d2a",
+  "categories": ["business", "navigation"],
+  "icons": [
+    {
+      "src": "/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,15 +1,18 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetCourierEarningsQueryKey,
+  getListCourierRoutesQueryKey,
   getListDeliveriesQueryKey,
   useGetCourierEarnings,
+  useListCourierRoutes,
   useListDeliveries,
   useUpdateDeliveryStatus,
   type AppUser,
 } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
 import { Bike, CheckCircle2, Clock3, LogOut, PackageCheck } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import CourierRoutesSection from "@/pages/courier-routes-section";
 
 type Period = "day" | "week" | "month";
 const periodNames: Record<Period, string> = {
@@ -55,7 +58,22 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     {},
     { query: { queryKey: getListDeliveriesQueryKey(), refetchInterval: 15000 } },
   );
+  const routes = useListCourierRoutes({
+    query: {
+      queryKey: getListCourierRoutesQueryKey(),
+      refetchInterval: 15000,
+      refetchOnWindowFocus: true,
+    },
+  });
   const updateStatus = useUpdateDeliveryStatus();
+  const groupedDeliveryIds = useMemo(
+    () => new Set((routes.data ?? []).flatMap((route) => route.deliveries.map((delivery) => delivery.id))),
+    [routes.data],
+  );
+  const individualDeliveries = useMemo(
+    () => (routes.isLoading ? [] : (deliveries.data ?? []).filter((delivery) => !groupedDeliveryIds.has(delivery.id))),
+    [deliveries.data, groupedDeliveryIds, routes.isLoading],
+  );
 
   const updateDelivery = (deliveryId: string, status: string) => {
     setActionError("");
@@ -144,21 +162,28 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           </div>
         )}
 
+        <CourierRoutesSection
+          routes={routes.data ?? []}
+          isLoading={routes.isLoading}
+          isError={routes.isError}
+          onRetry={() => void routes.refetch()}
+        />
+
         <section className="mt-6">
           <div className="mb-3 flex items-end justify-between">
             <div>
               <div className="eyebrow">SUA OPERAÇÃO</div>
               <h2 className="mt-1 text-lg font-bold">Entregas atribuídas</h2>
             </div>
-            <span className="text-xs text-muted-foreground">{deliveries.data?.length ?? 0} registros</span>
+            <span className="text-xs text-muted-foreground">{individualDeliveries.length} registros</span>
           </div>
-          {deliveries.isLoading ? (
+          {deliveries.isLoading || routes.isLoading ? (
             <div className="panel p-5 text-sm text-muted-foreground">Carregando suas entregas…</div>
-          ) : deliveries.isError ? (
+          ) : deliveries.isError || routes.isError ? (
             <div className="panel p-5 text-sm text-red-700">Não foi possível carregar as entregas.</div>
-          ) : deliveries.data?.length ? (
+          ) : individualDeliveries.length ? (
             <div className="space-y-3">
-              {deliveries.data.map((delivery) => {
+              {individualDeliveries.map((delivery) => {
                 const nextStatus = nextCourierStatus[delivery.status];
                 return (
                   <article key={delivery.id} className="panel p-4 sm:p-5">
@@ -197,7 +222,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
               <Clock3 className="mx-auto text-muted-foreground" size={22} />
               <p className="mt-2 text-sm font-semibold">Nenhuma entrega atribuída</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Quando a central enviar uma oferta para você, ela aparecerá aqui.
+                Ofertas individuais aparecem aqui. Rotas agrupadas ficam na seção acima.
               </p>
             </div>
           )}

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Minas Mais Entregas">
+  <rect width="512" height="512" rx="112" fill="#a91d2a"/>
+  <path d="M72 328V184h47l58 87 58-87h47v144h-44v-75l-61 88-61-88v75H72z" fill="#fff"/>
+  <path d="M300 328v-70c0-37 27-64 65-64s65 27 65 64v70h-43v-70c0-13-8-22-22-22s-22 9-22 22v70h-43z" fill="#ffe7e8"/>
+</svg>

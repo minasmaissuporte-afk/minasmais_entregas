@@ -1,12 +1,12 @@
 ---
-name: Requisitos do app do motoboy
-description: Requisitos permanentes para o app mobile de entregadores e cálculo de valores a receber.
+name: Requisitos do acesso PWA do motoboy
+description: Requisitos do PWA do entregador, login e cálculo de valores a receber.
 ---
 
 ## Regra
 
-O app do motoboy deve ser nativo para iOS e Android e mostrar a quantidade de entregas e o valor a receber, calculado a partir do valor cadastrado em cada entrega.
+O motoboy deve acessar o sistema por um PWA instalável em iOS e Android, sem depender das lojas de aplicativos. A área deve mostrar a quantidade de entregas e o valor a receber, calculado a partir do valor cadastrado em cada entrega.
 
-**Why:** o usuário definiu isso como requisito do produto.
+**Why:** o usuário definiu o PWA como caminho de acesso para evitar publicação na App Store e Google Play, mantendo o uso em iOS e Android e a visualização dos repasses.
 
-**How to apply:** ao criar o app nativo, consumir os dados autenticados do próprio motoboy. O cálculo atual considera entregas concluídas; confirme com o usuário antes de mudar a regra de repasse.
+**How to apply:** o login do PWA deve usar as mesmas contas e dados autenticados do webapp. O cálculo atual considera entregas concluídas; confirme com o usuário antes de mudar a regra de repasse.

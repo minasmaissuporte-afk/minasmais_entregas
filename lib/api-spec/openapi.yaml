@@ -112,6 +112,24 @@ paths:
                 $ref: "#/components/schemas/Delivery"
         "404":
           description: Delivery not found
+    delete:
+      operationId: deleteDelivery
+      tags: [deliveries]
+      summary: Delete an inactive delivery record
+      description: Administrators may remove selected test records. Deliveries in active progress or accepted routes cannot be deleted.
+      parameters:
+        - in: path
+          name: deliveryId
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Delivery and its event history deleted
+        "404":
+          description: Delivery not found
+        "409":
+          description: Delivery is active or belongs to a locked route
   /deliveries/{deliveryId}/dispatch:
     post:
       operationId: dispatchDelivery
