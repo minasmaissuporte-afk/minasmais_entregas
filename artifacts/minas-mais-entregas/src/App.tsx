@@ -328,7 +328,7 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
   const dispatch = useDispatchDelivery();
   const [courierId, setCourierId] = useState('');
   const [error, setError] = useState('');
-  const available = (couriersQuery.data ?? []).filter(c => c.status === 'AVAILABLE');
+  const selectableCouriers = (couriersQuery.data ?? []).filter(c => c.status !== 'BUSY');
   const go = () => {
     setError('');
     dispatch.mutate({ deliveryId, data: { mode: 'single', courierId } }, {
@@ -338,19 +338,19 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
         void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
         void qc.invalidateQueries({ queryKey: getListCouriersQueryKey() });
         onClose();
-      }, onError: () => setError('O despacho não foi concluído. Verifique a disponibilidade e tente novamente.'),
+      }, onError: () => setError('Não foi possível enviar a oferta. O motoboy pode ter iniciado outra entrega; atualize a lista e tente novamente.'),
     });
   };
   return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
     <section className="modal-card soft-enter" role="dialog" aria-modal="true" aria-labelledby="dispatch-title">
-      <div className="modal-header flex items-start justify-between border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div><div className="eyebrow">DESPACHO INDIVIDUAL</div><h2 id="dispatch-title" className="mt-1 text-xl font-bold">Escolher motoboy</h2><p className="mt-1 text-sm text-muted-foreground">Somente motoboys disponíveis aparecem aqui. Para agrupar entregas, selecione-as na fila.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={18}/></button></div>
+      <div className="modal-header flex items-start justify-between border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div><div className="eyebrow">DESPACHO INDIVIDUAL</div><h2 id="dispatch-title" className="mt-1 text-xl font-bold">Escolher motoboy</h2><p className="mt-1 text-sm text-muted-foreground">Todos os cadastros aparecem. Motoboys em atendimento não podem receber outra entrega; os offline verão a oferta quando entrarem no PWA.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={18}/></button></div>
       <div className="modal-body space-y-4 px-5 py-4 sm:px-6 sm:py-5">
-        <Field label="Motoboy disponível"><select value={courierId} onChange={e => setCourierId(e.target.value)} data-testid="select-courier"><option value="">Selecione um motoboy</option>{available.map(c => <option key={c.id} value={c.id}>{c.name} · localização {timeAgo(c.lastLocationAt)}</option>)}</select></Field>
+        <Field label="Motoboy cadastrado"><select value={courierId} onChange={e => setCourierId(e.target.value)} data-testid="select-courier"><option value="">Selecione um motoboy</option>{(couriersQuery.data ?? []).map(c => <option key={c.id} value={c.id} disabled={c.status === 'BUSY'}>{c.name} · {c.status === 'AVAILABLE' ? 'Disponível' : c.status === 'OFFLINE' ? 'Offline' : 'Em atendimento'}</option>)}</select></Field>
         {couriersQuery.isLoading && <Skeleton rows={2}/>}
-        {couriersQuery.isError && <p className="text-sm text-destructive">Não foi possível consultar os entregadores disponíveis.</p>}
-        {!couriersQuery.isLoading && available.length === 0 && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Nenhum motoboy disponível no momento.</div>}
+        {couriersQuery.isError && <p className="text-sm text-destructive">Não foi possível consultar os motoboys cadastrados.</p>}
+        {!couriersQuery.isLoading && selectableCouriers.length === 0 && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Todos os motoboys cadastrados estão em atendimento. Aguarde alguém concluir a entrega.</div>}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><button className="button-secondary" onClick={onClose}>Cancelar</button><button className="button-primary" disabled={dispatch.isPending || couriersQuery.isLoading || !courierId || !available.length} onClick={go}><Truck size={16}/>{dispatch.isPending ? 'Enviando…' : 'Enviar oferta'}</button></div>
+        <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><button className="button-secondary" onClick={onClose}>Cancelar</button><button className="button-primary" disabled={dispatch.isPending || couriersQuery.isLoading || !selectableCouriers.some(courier => courier.id === courierId)} onClick={go}><Truck size={16}/>{dispatch.isPending ? 'Enviando…' : 'Enviar oferta'}</button></div>
       </div>
     </section>
   </div>;
@@ -622,7 +622,7 @@ function DeliveryDetail() {
             <section className="panel p-5">
               <div className="mb-4"><div className="eyebrow">ENTREGADOR</div><h2 className="mt-1 font-bold">Atribuição atual</h2></div>
               {data.courierName ? <div className="flex items-center gap-3 rounded-lg bg-[#f7f6f4] p-3"><span className="avatar avatar-large">{data.courierInitials || data.courierName.slice(0,2).toUpperCase()}</span><div className="min-w-0 flex-1"><div className="font-semibold">{data.courierName}</div><div className="mt-1 text-xs text-muted-foreground">Última localização: {timeAgo(data.lastLocationAt)}</div></div><Badge tone="blue">Atribuído</Badge></div> : <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center"><Bike size={22} className="mx-auto text-muted-foreground"/><p className="mt-2 text-sm font-semibold">Aguardando entregador</p><p className="mt-1 text-xs text-muted-foreground">Despache para iniciar o atendimento.</p></div>}
-              {['REQUESTED','AWAITING_COURIER'].includes(data.status) && <div className="mt-4"><label className="eyebrow" htmlFor="quick-courier">OFERTA INDIVIDUAL</label><div className="mt-2 flex gap-2"><select id="quick-courier" className="filter-select min-w-0 flex-1" defaultValue=""><option value="">Escolher disponível</option>{(couriers.data ?? []).filter(c => c.status === 'AVAILABLE').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><button className="button-secondary" onClick={e => { const select = e.currentTarget.previousElementSibling as HTMLSelectElement; if (select.value) singleDispatch(select.value); else setActionError('Selecione um entregador disponível.'); }} disabled={dispatch.isPending}>Enviar</button></div></div>}
+              {['REQUESTED','AWAITING_COURIER'].includes(data.status) && <div className="mt-4"><label className="eyebrow" htmlFor="quick-courier">OFERTA INDIVIDUAL</label><div className="mt-2 flex gap-2"><select id="quick-courier" className="filter-select min-w-0 flex-1" defaultValue=""><option value="">Escolher motoboy</option>{(couriers.data ?? []).map(c => <option key={c.id} value={c.id} disabled={c.status === 'BUSY'}>{c.name} · {c.status === 'AVAILABLE' ? 'Disponível' : c.status === 'OFFLINE' ? 'Offline' : 'Em atendimento'}</option>)}</select><button className="button-secondary" onClick={e => { const select = e.currentTarget.previousElementSibling as HTMLSelectElement; if (select.value) singleDispatch(select.value); else setActionError('Selecione um motoboy que não esteja em atendimento.'); }} disabled={dispatch.isPending}>Enviar</button></div></div>}
             </section>
             <section className="panel p-5">
               <div className="mb-5 flex items-center gap-2"><History size={16} className="text-primary"/><div><div className="eyebrow">AUDITORIA</div><h2 className="mt-0.5 font-bold">Histórico de eventos</h2></div></div>

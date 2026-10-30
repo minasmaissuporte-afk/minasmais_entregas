@@ -650,7 +650,7 @@ router.post(
         .from(couriersTable)
         .where(eq(couriersTable.id, profile.courierId!))
         .for("update");
-      if (!courier || courier.status !== "AVAILABLE") {
+      if (!courier || !["AVAILABLE", "OFFLINE"].includes(courier.status)) {
         return { error: "courier_busy" as const };
       }
 

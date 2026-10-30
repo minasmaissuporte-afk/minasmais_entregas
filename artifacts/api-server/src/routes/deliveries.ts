@@ -807,7 +807,7 @@ router.post(
               .where(
                 and(
                   eq(couriersTable.id, body.data.courierId),
-                  eq(couriersTable.status, "AVAILABLE"),
+                  inArray(couriersTable.status, ["AVAILABLE", "OFFLINE"]),
                 ),
               )
               .limit(1)
@@ -934,7 +934,7 @@ router.patch(
           .where(
             and(
               eq(couriersTable.id, courierId),
-              eq(couriersTable.status, "AVAILABLE"),
+                inArray(couriersTable.status, ["AVAILABLE", "OFFLINE"]),
             ),
           )
           .returning();
