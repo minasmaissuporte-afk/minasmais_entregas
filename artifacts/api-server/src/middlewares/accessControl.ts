@@ -16,6 +16,13 @@ export const appRoles = [
 export type AppRole = (typeof appRoles)[number];
 export type AppUserProfile = typeof appUsersTable.$inferSelect;
 
+const bootstrapAdminEmails = new Set(
+  [process.env.INITIAL_ADMIN_EMAIL, process.env.INITIAL_ADMIN_EMAILS]
+    .flatMap((value) => value?.split(/[;,\s]+/) ?? [])
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean),
+);
+
 export const requireAuthentication: RequestHandler = (req, res, next) => {
   if (!getAuth(req).userId) {
     res.status(401).json({ error: "Autenticação necessária." });
@@ -30,7 +37,20 @@ export async function resolveAppUser(clerkUserId: string) {
     .from(appUsersTable)
     .where(eq(appUsersTable.clerkUserId, clerkUserId))
     .limit(1);
-  if (linkedProfile) return linkedProfile;
+  if (linkedProfile) {
+    const isConfiguredAdmin = bootstrapAdminEmails.has(
+      linkedProfile.email.trim().toLowerCase(),
+    );
+    if (!isConfiguredAdmin || linkedProfile.role === "ADMIN") {
+      return linkedProfile;
+    }
+    const [promoted] = await db
+      .update(appUsersTable)
+      .set({ role: "ADMIN", updatedAt: new Date() })
+      .where(eq(appUsersTable.id, linkedProfile.id))
+      .returning();
+    return promoted ?? linkedProfile;
+  }
 
   const clerkUser = await clerkClient.users.getUser(clerkUserId);
   const email = (
@@ -45,8 +65,7 @@ export async function resolveAppUser(clerkUserId: string) {
   const name =
     [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim() ||
     email;
-  const bootstrapAdminEmail = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
-  const initialRole = email === bootstrapAdminEmail ? "ADMIN" : "PENDING";
+  const initialRole = bootstrapAdminEmails.has(email) ? "ADMIN" : "PENDING";
   const [emailProfile] = await db
     .select()
     .from(appUsersTable)
@@ -56,7 +75,12 @@ export async function resolveAppUser(clerkUserId: string) {
   if (emailProfile) {
     const [linked] = await db
       .update(appUsersTable)
-      .set({ clerkUserId, name, updatedAt: new Date() })
+      .set({
+        clerkUserId,
+        name,
+        role: initialRole === "ADMIN" ? "ADMIN" : emailProfile.role,
+        updatedAt: new Date(),
+      })
       .where(eq(appUsersTable.id, emailProfile.id))
       .returning();
     return linked ?? emailProfile;
