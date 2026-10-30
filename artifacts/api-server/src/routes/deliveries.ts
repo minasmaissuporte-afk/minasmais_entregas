@@ -485,7 +485,14 @@ router.get(
   "/reports/analytics",
   requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
   async (req, res): Promise<void> => {
-    const query = GetDeliveryAnalyticsQueryParams.safeParse(req.query);
+    const queryInput: Record<string, unknown> = { ...req.query };
+    for (const field of ["from", "to"] as const) {
+      const value = req.query[field];
+      if (typeof value === "string") {
+        queryInput[field] = new Date(`${value}T00:00:00.000Z`);
+      }
+    }
+    const query = GetDeliveryAnalyticsQueryParams.safeParse(queryInput);
     if (!query.success) {
       res.status(400).json({ error: query.error.message });
       return;
