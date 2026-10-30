@@ -10,18 +10,20 @@ export default function LiveMap({
   routeGeometry,
   ariaLabel,
   size = "default",
+  showCenterControls = false,
 }: {
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
   ariaLabel: string;
   size?: "default" | "compact";
+  showCenterControls?: boolean;
 }) {
   return (
     <Suspense
       fallback={
         <div
           className={`w-full bg-[#f3f2ef] ${
-            size === "compact" ? "h-48 sm:h-56" : "h-[280px] sm:h-[340px]"
+            size === "compact" ? "h-48 sm:h-56" : "h-[400px] sm:h-[460px]"
           }`}
           role="region"
           aria-label={ariaLabel}
@@ -35,6 +37,7 @@ export default function LiveMap({
         routeGeometry={routeGeometry}
         ariaLabel={ariaLabel}
         size={size}
+        showCenterControls={showCenterControls}
       />
     </Suspense>
   );

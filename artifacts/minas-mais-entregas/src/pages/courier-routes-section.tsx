@@ -391,6 +391,7 @@ function ActiveRouteCard({
             markers={mapMarkers}
             routeGeometry={route.routeGeometry}
             ariaLabel="Rota do motoboy com paradas numeradas e posição atual"
+            showCenterControls
           />
           <div className="px-4 py-2 text-[11px] text-muted-foreground">
             {locationMessage || "Aguardando posição GPS do aparelho."}

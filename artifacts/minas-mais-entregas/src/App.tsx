@@ -688,11 +688,11 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
             </select>}
             <div className="flex items-center gap-2">
               <span className="online-indicator"><i className={hasLiveLocation ? 'animate-pulse' : ''}/>{hasLiveLocation ? 'Ao vivo' : 'Sem sinal ao vivo'}</span>
-              <span className="text-[10px] text-muted-foreground">{latestLocationAge == null ? 'Aguardando GPS' : `Atualizado há ${formatAge(latestLocationAge)}`}</span>
+              <span className="text-[10px] text-muted-foreground">{latestLocationAge == null ? 'Aguardando GPS' : `GPS recebido há ${formatAge(latestLocationAge)}`}</span>
             </div>
           </div>
         </div>
-        {couriers.isLoading || stores.isLoading || activeRoutes.isLoading ? <div className="skeleton m-4 h-[280px] sm:h-[340px]"/> : mapMarkers.length || selectedRoute?.routeGeometry.length ? (
+        {couriers.isLoading || stores.isLoading || activeRoutes.isLoading ? <div className="skeleton m-4 h-[400px] sm:h-[460px]"/> : mapMarkers.length || selectedRoute?.routeGeometry.length ? (
           <>
             <div className="flex flex-wrap gap-4 px-4 pt-3 text-[11px] text-muted-foreground sm:px-5">
               <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#16804a] text-[10px] font-bold text-white">F</span>Filial</span>
@@ -702,7 +702,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
             {!trackingMarkers.length && !selectedRoute && <p className="mx-4 mt-3 rounded-lg border border-dashed border-[#dedbd7] bg-[#faf9f7] px-3 py-2 text-xs text-muted-foreground sm:mx-5">Sem GPS ou rota ativa no momento. O mapa está exibindo somente as filiais cadastradas.</p>}
             {selectedRoute && !selectedRoute.routeGeometry.length && <p className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:mx-5">Rota ativa de {selectedRoute.courierFirstName}, mas a geometria ainda não está disponível.</p>}
             {selectedRoute && <p className="px-4 pt-3 text-xs font-semibold text-[#a91d2a]">Rota ativa de {selectedRoute.courierFirstName} · {selectedRoute.routeGeometry.length} pontos</p>}
-            <LiveMap markers={mapMarkers} routeGeometry={selectedRoute?.routeGeometry} ariaLabel="Localização das filiais, motoboys e rota ativa"/>
+            <LiveMap markers={mapMarkers} routeGeometry={selectedRoute?.routeGeometry} ariaLabel="Localização das filiais, motoboys e rota ativa" showCenterControls/>
           </>
         ) : (
           <div className="grid min-h-[210px] place-items-center bg-[#f3f2ef] p-6 text-center">
