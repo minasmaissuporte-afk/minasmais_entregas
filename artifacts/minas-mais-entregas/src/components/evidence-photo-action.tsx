@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Camera, Check, Upload } from "lucide-react";
+import { Camera, Check } from "lucide-react";
 import { useRequestDeliveryEvidenceUploadUrl } from "@workspace/api-client-react";
+import SwipeToConfirm from "./swipe-to-confirm";
 
 const acceptedTypes = ["image/jpeg", "image/png", "image/webp"];
 const maxBytes = 8 * 1024 * 1024;
@@ -83,15 +84,17 @@ export default function EvidencePhotoAction({
         </div>
       )}
       {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-800">{error}</p>}
-      <button
-        type="button"
-        className="button-primary min-h-11 w-full justify-center"
-        onClick={() => void submit()}
-        disabled={disabled || submitting || requestUpload.isPending}
-        data-testid={`button-complete-evidenced-${deliveryId}`}
-      >
-        <Upload size={15} />{submitting ? "Enviando e registrando…" : label}
-      </button>
+      {file ? (
+        <SwipeToConfirm
+          disabled={disabled || submitting || requestUpload.isPending}
+          onConfirm={() => void submit()}
+          label="Deslize para enviar a foto e concluir"
+        />
+      ) : (
+        <p className="rounded-md bg-[#f7f4f1] px-3 py-2 text-center text-xs text-muted-foreground">
+          Anexe a foto para liberar a confirmação por deslize.
+        </p>
+      )}
     </div>
   );
 }

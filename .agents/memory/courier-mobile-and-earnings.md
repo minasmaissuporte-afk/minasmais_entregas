@@ -11,6 +11,14 @@ O motoboy deve acessar o sistema por um PWA instalável em iOS e Android, sem de
 
 **How to apply:** o login do PWA deve usar as mesmas contas e dados autenticados do webapp. O cálculo atual considera entregas concluídas; confirme com o usuário antes de mudar a regra de repasse.
 
+## Tarifa por filial
+
+A tarifa configurada por filial define o valor de novas entregas. Alterar a tarifa da filial não deve recalcular entregas já registradas.
+
+**Why:** cada registro precisa preservar o valor que foi acordado quando a entrega foi criada, para manter o histórico e os repasses consistentes.
+
+**How to apply:** ao criar uma entrega, copie a tarifa vigente da filial para o registro; mantenha valores históricos inalterados.
+
 ## Verificação de login
 
 O usuário confirmou em 30 de outubro de 2026 que o teste de login funcionou corretamente.

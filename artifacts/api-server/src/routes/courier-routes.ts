@@ -22,7 +22,6 @@ import {
 } from "@workspace/api-zod";
 import {
   couriersTable,
-  appUsersTable,
   db,
   deliveriesTable,
   deliveryEvidenceUploadsTable,
@@ -44,7 +43,7 @@ import {
   type MapboxOptimizationSolution,
 } from "../lib/mapbox";
 import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
-import { notifyCouriers } from "../lib/webPush";
+import { notifyAvailableCouriers } from "../lib/webPush";
 
 const router: IRouter = Router();
 router.use(requireAuthentication);
@@ -491,23 +490,10 @@ router.post(
       res.status(500).json({ error: "Não foi possível carregar a rota criada." });
       return;
     }
-    const linkedCouriers = await db
-      .select({ courierId: appUsersTable.courierId })
-      .from(appUsersTable)
-      .innerJoin(couriersTable, eq(appUsersTable.courierId, couriersTable.id))
-      .where(
-        and(
-          eq(appUsersTable.role, "COURIER"),
-          inArray(couriersTable.status, ["AVAILABLE", "OFFLINE"]),
-        ),
-      );
-    await notifyCouriers(
-      [...new Set(linkedCouriers.flatMap((courier) => courier.courierId ?? []))],
-      {
-        title: "Nova rota disponível",
-        body: `${route.deliveryIds.length} entregas aguardam aceite.`,
-      },
-    );
+    await notifyAvailableCouriers({
+      title: "Nova rota disponível",
+      body: `${route.deliveryIds.length} entregas aguardam aceite.`,
+    });
     res.status(201).json(CreateDeliveryRouteResponse.parse(await routeView(route)));
   },
 );

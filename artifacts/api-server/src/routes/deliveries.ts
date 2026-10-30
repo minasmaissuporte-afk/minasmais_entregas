@@ -49,7 +49,7 @@ import {
 } from "../middlewares/accessControl";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
-import { notifyCouriers } from "../lib/webPush";
+import { notifyAvailableCouriers, notifyCouriers } from "../lib/webPush";
 
 const router: IRouter = Router();
 
@@ -1116,23 +1116,6 @@ router.post(
     }
 
     const profile = res.locals.appUser as AppUserProfile;
-    if (body.data.status === "COMPLETED" && profile.role === "COURIER") {
-      if (
-        !profile.courierId ||
-        !body.data.evidencePath ||
-        !(await verifyEvidenceUpload(
-          params.data.deliveryId,
-          profile.courierId,
-          body.data.evidencePath,
-        ))
-      ) {
-        res.status(422).json({
-          error: "Envie uma foto válida de comprovação antes de concluir a entrega.",
-        });
-        return;
-      }
-    }
-
     const result = await db.transaction(async (tx) => {
       const [delivery] = await tx
         .select()
@@ -1236,23 +1219,10 @@ router.post(
           body: `A entrega ${view.code} foi enviada para você.`,
         });
       } else if (body.data.mode === "group") {
-        const linkedCouriers = await db
-          .select({ courierId: appUsersTable.courierId })
-          .from(appUsersTable)
-          .innerJoin(couriersTable, eq(appUsersTable.courierId, couriersTable.id))
-          .where(
-            and(
-              eq(appUsersTable.role, "COURIER"),
-              inArray(couriersTable.status, ["AVAILABLE", "OFFLINE"]),
-            ),
-          );
-        await notifyCouriers(
-          [...new Set(linkedCouriers.flatMap((courier) => courier.courierId ?? []))],
-          {
-            title: "Nova entrega disponível",
-            body: `A entrega ${view.code} aguarda aceite.`,
-          },
-        );
+        await notifyAvailableCouriers({
+          title: "Nova entrega disponível",
+          body: `A entrega ${view.code} aguarda aceite.`,
+        });
       }
     }
     res.json(DispatchDeliveryResponse.parse(view));
@@ -1274,6 +1244,24 @@ router.patch(
             : "Dados inválidos.",
       });
       return;
+    }
+
+    const profile = res.locals.appUser as AppUserProfile;
+    if (body.data.status === "COMPLETED" && profile.role === "COURIER") {
+      if (
+        !profile.courierId ||
+        !body.data.evidencePath ||
+        !(await verifyEvidenceUpload(
+          params.data.deliveryId,
+          profile.courierId,
+          body.data.evidencePath,
+        ))
+      ) {
+        res.status(422).json({
+          error: "Envie uma foto válida de comprovação antes de concluir a entrega.",
+        });
+        return;
+      }
     }
 
     const result = await db.transaction(async (tx) => {

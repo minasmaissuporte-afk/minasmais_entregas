@@ -3126,7 +3126,7 @@ export const getCompleteCourierRouteStopUrl = (routeId: string,
  */
 export const completeCourierRouteStop = async (routeId: string,
     stopId: string,
-    completeCourierRouteStopInput: CompleteCourierRouteStopInput, options?: Parameters<typeof customFetch>[1]): Promise<CourierDeliveryRoute> => {
+    completeCourierRouteStopInput?: CompleteCourierRouteStopInput, options?: Parameters<typeof customFetch>[1]): Promise<CourierDeliveryRoute> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -3185,9 +3185,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type CompleteCourierRouteStopMutationResult = NonNullable<Awaited<ReturnType<typeof completeCourierRouteStop>>>
-    export type CompleteCourierRouteStopMutationBody = BodyType<CompleteCourierRouteStopInput>
+    export type CompleteCourierRouteStopMutationBody = BodyType<CompleteCourierRouteStopInput> | undefined
     export type CompleteCourierRouteStopMutationError = ErrorType<unknown>
-    export type CompleteCourierRouteStopMutationVariables = {routeId: string;stopId: string;data: BodyType<CompleteCourierRouteStopInput>}
+    export type CompleteCourierRouteStopMutationVariables = {routeId: string;stopId: string;data?: BodyType<CompleteCourierRouteStopInput>}
 
     /**
  * @summary Complete the next stop on a locked route

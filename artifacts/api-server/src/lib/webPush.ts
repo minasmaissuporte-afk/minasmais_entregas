@@ -1,6 +1,11 @@
 import webpush from "web-push";
-import { eq, inArray } from "drizzle-orm";
-import { db, pushSubscriptionsTable } from "@workspace/db";
+import { and, eq, inArray } from "drizzle-orm";
+import {
+  appUsersTable,
+  couriersTable,
+  db,
+  pushSubscriptionsTable,
+} from "@workspace/db";
 import { logger } from "./logger";
 
 const configured = () =>
@@ -62,5 +67,30 @@ export async function notifyCouriers(
     );
   } catch (error) {
     logger.warn({ err: error }, "Could not load courier push subscriptions");
+  }
+}
+
+export async function notifyAvailableCouriers(payload: {
+  title: string;
+  body: string;
+  url?: string;
+}) {
+  try {
+    const linkedCouriers = await db
+      .select({ courierId: appUsersTable.courierId })
+      .from(appUsersTable)
+      .innerJoin(couriersTable, eq(appUsersTable.courierId, couriersTable.id))
+      .where(
+        and(
+          eq(appUsersTable.role, "COURIER"),
+          inArray(couriersTable.status, ["AVAILABLE", "OFFLINE"]),
+        ),
+      );
+    await notifyCouriers(
+      [...new Set(linkedCouriers.flatMap((courier) => courier.courierId ?? []))],
+      payload,
+    );
+  } catch (error) {
+    logger.warn({ err: error }, "Could not identify eligible couriers for push");
   }
 }
