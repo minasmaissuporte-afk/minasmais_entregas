@@ -257,9 +257,6 @@ importers:
       '@clerk/themes':
         specifier: ^2.4.57
         version: 2.4.57(react-dom@19.1.4(react@19.1.4))(react@19.1.4)
-      '@mapbox/mapbox-gl-language':
-        specifier: ^1.0.1
-        version: 1.0.1(mapbox-gl@3.34.1)
       mapbox-gl:
         specifier: ^3.34.1
         version: 3.34.1
@@ -1634,11 +1631,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
-
-  '@mapbox/mapbox-gl-language@1.0.1':
-    resolution: {integrity: sha512-gL58ojl7gaWLfbSISoB2QJEfTK3j+NKvPH9og0r+c3bd5BNqhY19Eb4OPfDc5+dGmjW03LhtZBc4n2b7Xn8kjA==}
-    peerDependencies:
-      mapbox-gl: '>=0.29.0'
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -7116,10 +7108,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
-
-  '@mapbox/mapbox-gl-language@1.0.1(mapbox-gl@3.34.1)':
-    dependencies:
-      mapbox-gl: 3.34.1
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true

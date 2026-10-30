@@ -4,7 +4,6 @@ import mapboxgl, {
   type Map as MapboxMap,
   type Marker,
 } from "mapbox-gl";
-import MapboxLanguage from "@mapbox/mapbox-gl-language";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 export type MapCoordinate = {
@@ -286,6 +285,7 @@ export default function LiveMapbox({
         style: STYLE_URL,
         center: INITIAL_CENTER,
         zoom: 12,
+        language: "pt",
         attributionControl: true,
         logoPosition: "bottom-left",
         cooperativeGestures: true,
@@ -294,7 +294,6 @@ export default function LiveMapbox({
         new mapboxgl.NavigationControl({ showCompass: false }),
         "top-right",
       );
-      map.addControl(new MapboxLanguage({ defaultLanguage: "pt" }));
     } catch (error) {
       logMapError("Não foi possível iniciar o mapa.", error);
       map?.remove();
@@ -362,6 +361,11 @@ export default function LiveMapbox({
       }
     };
     const onStyleLoad = () => {
+      try {
+        map!.setLanguage("pt");
+      } catch (error) {
+        logMapError("Não foi possível aplicar os rótulos em português.", error);
+      }
       if (fallbackRequested) {
         if (styleLoadTimer) window.clearTimeout(styleLoadTimer);
         if (fallbackLoadTimer) window.clearTimeout(fallbackLoadTimer);
