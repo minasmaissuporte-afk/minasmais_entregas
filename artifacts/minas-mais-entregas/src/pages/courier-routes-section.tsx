@@ -7,6 +7,7 @@ import {
   useAcceptCourierRoute,
   useCompleteCourierRouteStop,
   useUpdateCourierLocation,
+  type CourierLocationInput,
   type CourierDeliveryRoute,
 } from "@workspace/api-client-react";
 import { Check, Clock3, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
@@ -17,14 +18,20 @@ const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 function requestCurrentLocation() {
-  return new Promise<{ latitude: number; longitude: number }>((resolve, reject) => {
+  return new Promise<CourierLocationInput>((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(new Error("Este navegador não oferece localização."));
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      ({ coords }) => resolve({ latitude: coords.latitude, longitude: coords.longitude }),
-      () => reject(new Error("Permita o acesso à localização para calcular a melhor rota.")),
+      (position) => resolve({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracyMeters: position.coords.accuracy,
+        speedMetersPerSecond: position.coords.speed,
+        measuredAt: new Date(position.timestamp).toISOString(),
+      }),
+      () => reject(new Error("GPS bloqueado. Permita Localização nas configurações do navegador e tente novamente.")),
       { enableHighAccuracy: true, timeout: 15_000 },
     );
   });
@@ -39,13 +46,11 @@ export default function CourierRoutesSection({
   routes,
   isLoading,
   isError,
-  isWorking,
   onRetry,
 }: {
   routes: CourierDeliveryRoute[];
   isLoading: boolean;
   isError: boolean;
-  isWorking: boolean;
   onRetry: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -62,11 +67,6 @@ export default function CourierRoutesSection({
   const offeredRoutes = routes.filter((route) => route.status === "OFFERED");
 
   useEffect(() => {
-    if (!isWorking) {
-      setCurrentPosition(null);
-      setLocationMessage("");
-      return;
-    }
     if (!navigator.geolocation) {
       setLocationMessage("Este navegador não oferece localização GPS.");
       return;
@@ -75,43 +75,89 @@ export default function CourierRoutesSection({
     let watching = true;
     let lastDisplayedAt = 0;
     let lastSentAt = 0;
-    const watchId = navigator.geolocation.watchPosition(
-      ({ coords }) => {
+    let sending = false;
+    let wakeLock: { release: () => Promise<void> } | null = null;
+    const options: PositionOptions = {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 20_000,
+    };
+    const sendPosition = (gpsPosition: GeolocationPosition) => {
         if (!watching) return;
         const position = {
-          latitude: coords.latitude,
-          longitude: coords.longitude,
+          latitude: gpsPosition.coords.latitude,
+          longitude: gpsPosition.coords.longitude,
+          accuracyMeters: gpsPosition.coords.accuracy,
+          speedMetersPerSecond: gpsPosition.coords.speed,
+          measuredAt: new Date(gpsPosition.timestamp).toISOString(),
         };
         const now = Date.now();
         if (now - lastDisplayedAt >= 5_000) {
-          setCurrentPosition(position);
+          setCurrentPosition({ latitude: position.latitude, longitude: position.longitude });
           lastDisplayedAt = now;
         }
-        if (now - lastSentAt < 15_000) return;
+        if (sending || now - lastSentAt < 15_000) return;
         lastSentAt = now;
+        sending = true;
         void updateLocationRef.current({ data: position })
           .then(() => {
             if (watching) setLocationMessage("");
           })
           .catch(() => {
             if (watching) {
-              setLocationMessage("O GPS está ativo, mas não foi possível enviar a posição para a central.");
+              setLocationMessage("GPS ativo, mas sem conexão com a central. A próxima tentativa será automática.");
             }
-          });
-      },
-      () => {
-        if (watching) {
-          setLocationMessage("Permita o acesso à localização e mantenha o PWA aberto durante o atendimento.");
-        }
-      },
-      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 },
+          })
+          .finally(() => { sending = false; });
+    };
+    const handleLocationError = (error: GeolocationPositionError) => {
+      if (!watching) return;
+      if (error.code === error.PERMISSION_DENIED) {
+        setLocationMessage("GPS bloqueado. Permita Localização nas configurações do navegador; no iPhone, habilite para este site.");
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        setLocationMessage("GPS indisponível. Verifique a localização do aparelho e mantenha o PWA aberto.");
+      } else {
+        setLocationMessage("Aguardando GPS do aparelho. Mantenha o PWA aberto durante a entrega.");
+      }
+    };
+    const requestCurrentPosition = () => {
+      if (document.visibilityState !== "visible") return;
+      navigator.geolocation.getCurrentPosition(sendPosition, handleLocationError, options);
+    };
+    const watchId = navigator.geolocation.watchPosition(
+      sendPosition,
+      handleLocationError,
+      options,
     );
-    setLocationMessage("Compartilhamento de localização ativo durante o atendimento. Mantenha o PWA aberto.");
+    const wakeLockApi = navigator as Navigator & {
+      wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> };
+    };
+    const acquireWakeLock = async () => {
+      if (!wakeLockApi.wakeLock || document.visibilityState !== "visible" || wakeLock) return;
+      try {
+        wakeLock = await wakeLockApi.wakeLock.request("screen");
+      } catch {
+        // Browsers may not support Wake Lock or may reject it; GPS sharing remains active.
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        requestCurrentPosition();
+        void acquireWakeLock();
+      }
+    };
+    const heartbeat = window.setInterval(requestCurrentPosition, 15_000);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    void acquireWakeLock();
+    setLocationMessage("Compartilhando GPS a cada 15 segundos enquanto você estiver conectado. Mantenha o PWA aberto.");
     return () => {
       watching = false;
       navigator.geolocation.clearWatch(watchId);
+      window.clearInterval(heartbeat);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (wakeLock) void wakeLock.release();
     };
-  }, [isWorking]);
+  }, []);
 
   const refreshRouteData = async () => {
     await Promise.all([
@@ -128,7 +174,15 @@ export default function CourierRoutesSection({
     setBusyRouteId(route.id);
     try {
       const location = await requestCurrentLocation();
-      await acceptRoute.mutateAsync({ routeId: route.id, data: location });
+      try {
+        await updateLocation.mutateAsync({ data: location });
+      } catch {
+        setLocationMessage("A localização será reenviada automaticamente assim que a conexão voltar.");
+      }
+      await acceptRoute.mutateAsync({
+        routeId: route.id,
+        data: { latitude: location.latitude, longitude: location.longitude },
+      });
       await refreshRouteData();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Não foi possível aceitar a rota.");
@@ -160,6 +214,12 @@ export default function CourierRoutesSection({
         <button className="button-quiet" type="button" onClick={onRetry} aria-label="Atualizar rotas">
           <RefreshCw size={15} /> Atualizar
         </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900" role="status">
+        <MapPin size={14} className="mr-1 inline-block align-text-bottom" />
+        O GPS é compartilhado a cada 15 segundos enquanto você estiver conectado. Mantenha o PWA aberto.
+        {locationMessage && <span className="mt-1 block">{locationMessage}</span>}
       </div>
 
       {errorMessage && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{errorMessage}</div>}

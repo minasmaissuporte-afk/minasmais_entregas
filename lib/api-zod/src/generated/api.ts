@@ -29,8 +29,10 @@ export const GetDashboardSummaryResponse = zod.object({
   "completed": zod.number().int(),
   "delayed": zod.number().int(),
   "cancelled": zod.number().int(),
+  "totalCouriers": zod.number().int(),
   "availableCouriers": zod.number().int(),
   "busyCouriers": zod.number().int(),
+  "offlineCouriers": zod.number().int(),
   "averageAcceptanceMinutes": zod.number(),
   "averageTotalMinutes": zod.number()
 })
@@ -560,6 +562,12 @@ export const CleanupDemoDataResponse = zod.object({
 /**
  * @summary List couriers and current availability
  */
+export const listCouriersResponseCurrentAccuracyMetersMin = 0;
+
+export const listCouriersResponseCurrentSpeedMetersPerSecondMin = 0;
+
+
+
 export const ListCouriersResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -568,6 +576,9 @@ export const ListCouriersResponseItem = zod.object({
   "currentDeliveryCode": zod.string().nullish(),
   "currentLatitude": zod.number().nullable(),
   "currentLongitude": zod.number().nullable(),
+  "currentAccuracyMeters": zod.number().min(listCouriersResponseCurrentAccuracyMetersMin).nullable(),
+  "currentSpeedMetersPerSecond": zod.number().min(listCouriersResponseCurrentSpeedMetersPerSecondMin).nullable(),
+  "locationMeasuredAt": zod.coerce.date().nullable(),
   "lastLocationAt": zod.coerce.date().nullable()
 })
 export const ListCouriersResponse = zod.array(ListCouriersResponseItem)
@@ -761,7 +772,7 @@ export const ListCourierRoutesResponse = zod.array(ListCourierRoutesResponseItem
 
 
 /**
- * @summary Update the signed-in courier's current location during active work
+ * @summary Update the signed-in courier's current location while the PWA is open
  */
 export const updateCourierLocationBodyLatitudeMin = -90;
 export const updateCourierLocationBodyLatitudeMax = 90;
@@ -769,11 +780,18 @@ export const updateCourierLocationBodyLatitudeMax = 90;
 export const updateCourierLocationBodyLongitudeMin = -180;
 export const updateCourierLocationBodyLongitudeMax = 180;
 
+export const updateCourierLocationBodyAccuracyMetersMin = 0;
+
+export const updateCourierLocationBodySpeedMetersPerSecondMin = 0;
+
 
 
 export const UpdateCourierLocationBody = zod.object({
   "latitude": zod.number().min(updateCourierLocationBodyLatitudeMin).max(updateCourierLocationBodyLatitudeMax),
-  "longitude": zod.number().min(updateCourierLocationBodyLongitudeMin).max(updateCourierLocationBodyLongitudeMax)
+  "longitude": zod.number().min(updateCourierLocationBodyLongitudeMin).max(updateCourierLocationBodyLongitudeMax),
+  "accuracyMeters": zod.number().min(updateCourierLocationBodyAccuracyMetersMin).nullish(),
+  "speedMetersPerSecond": zod.number().min(updateCourierLocationBodySpeedMetersPerSecondMin).nullish(),
+  "measuredAt": zod.coerce.date()
 })
 
 export const updateCourierLocationResponseLatitudeMin = -90;
@@ -782,11 +800,18 @@ export const updateCourierLocationResponseLatitudeMax = 90;
 export const updateCourierLocationResponseLongitudeMin = -180;
 export const updateCourierLocationResponseLongitudeMax = 180;
 
+export const updateCourierLocationResponseAccuracyMetersMin = 0;
+
+export const updateCourierLocationResponseSpeedMetersPerSecondMin = 0;
+
 
 
 export const UpdateCourierLocationResponse = zod.object({
   "latitude": zod.number().min(updateCourierLocationResponseLatitudeMin).max(updateCourierLocationResponseLatitudeMax),
   "longitude": zod.number().min(updateCourierLocationResponseLongitudeMin).max(updateCourierLocationResponseLongitudeMax),
+  "accuracyMeters": zod.number().min(updateCourierLocationResponseAccuracyMetersMin).nullable(),
+  "speedMetersPerSecond": zod.number().min(updateCourierLocationResponseSpeedMetersPerSecondMin).nullable(),
+  "measuredAt": zod.coerce.date(),
   "lastLocationAt": zod.coerce.date()
 })
 

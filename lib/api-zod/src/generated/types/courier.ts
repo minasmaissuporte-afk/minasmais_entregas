@@ -18,6 +18,18 @@ export interface Courier {
   currentLatitude: number | null;
   /** @nullable */
   currentLongitude: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  currentAccuracyMeters: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  currentSpeedMetersPerSecond: number | null;
+  /** @nullable */
+  locationMeasuredAt: Date | null;
   /** @nullable */
   lastLocationAt: Date | null;
 }

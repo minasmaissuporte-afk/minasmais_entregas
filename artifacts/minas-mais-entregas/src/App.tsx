@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type FocusEvent, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ClerkProvider, Show, SignIn, SignUp, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
@@ -327,10 +328,12 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
       onError: () => setError('Não foi possível registrar. Confira os dados e tente novamente.'),
     });
   };
-  return <div className="modal-backdrop" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) requestClose(); }}>
-    <section className="modal-card soft-enter" role="dialog" aria-modal="true" aria-labelledby="new-delivery-title" data-modal-active="true" onFocusCapture={keepModalFieldVisible}>
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) requestClose(); }}>
+    <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="new-delivery-title" data-modal-active="true">
       <div className="modal-header flex items-start justify-between gap-3 border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div className="min-w-0"><div className="eyebrow">NOVO PEDIDO</div><h2 id="new-delivery-title" className="mt-1 text-xl font-bold tracking-tight">Registrar entrega</h2><p className="mt-1 text-sm text-muted-foreground">Inclua os dados recebidos da unidade.</p></div><button type="button" className="icon-button modal-close-button" onClick={requestClose} aria-label="Fechar" disabled={create.isPending}><X size={18}/></button></div>
-      <form onSubmit={submit} className="modal-form space-y-4 px-5 py-4 sm:px-6 sm:py-5">
+      <form onSubmit={submit} className="modal-form">
+        <div className="modal-fields space-y-4 px-5 py-4 sm:px-6 sm:py-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Nome do cliente"><input required minLength={2} value={form.customerName} onChange={e => update('customerName', e.target.value)} placeholder="Nome completo" data-modal-initial-focus data-testid="input-customer-name"/></Field>
           <Field label="Telefone"><input type="tel" value={form.customerPhone} onChange={e => update('customerPhone', e.target.value)} placeholder="(31) 99999-0000" data-testid="input-customer-phone"/></Field>
@@ -357,10 +360,13 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
         <Field label="Observações"><textarea rows={2} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Referências úteis para a entrega" data-testid="input-notes"/></Field>
         <Field label="Prioridade"><select value={form.priority} onChange={e => update('priority', e.target.value)} data-testid="select-priority"><option value="normal">Normal</option><option value="urgent">Urgente</option></select></Field>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><button type="button" className="button-secondary" onClick={requestClose} disabled={create.isPending}>Cancelar</button><button type="submit" className="button-primary" disabled={create.isPending || storesQuery.isLoading || !storesQuery.data?.some(s => s.active)}><Plus size={16}/>{create.isPending ? 'Registrando…' : 'Registrar pedido'}</button></div>
+        </div>
+        <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6"><button type="button" className="button-secondary" onClick={requestClose} disabled={create.isPending}>Cancelar</button><button type="submit" className="button-primary" disabled={create.isPending || storesQuery.isLoading || !storesQuery.data?.some(s => s.active)}><Plus size={16}/>{create.isPending ? 'Registrando…' : 'Registrar pedido'}</button></div>
       </form>
     </section>
-  </div>;
+    </div>,
+    document.body,
+  );
 }
 
 function useModalBehavior(onRequestClose: () => void) {
@@ -392,7 +398,6 @@ function useModalBehavior(onRequestClose: () => void) {
     const focusFrame = window.requestAnimationFrame(() => {
       const initialField = document.querySelector<HTMLElement>('[data-modal-active="true"] [data-modal-initial-focus]');
       initialField?.focus({ preventScroll: true });
-      initialField?.scrollIntoView({ block: 'nearest' });
     });
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -415,12 +420,6 @@ function useModalBehavior(onRequestClose: () => void) {
       window.scrollTo(0, scrollY);
     };
   }, []);
-}
-
-function keepModalFieldVisible(event: FocusEvent<HTMLElement>) {
-  const field = event.target;
-  if (!(field instanceof HTMLElement) || !field.matches('input, select, textarea')) return;
-  window.requestAnimationFrame(() => field.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -451,19 +450,24 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
       }, onError: () => setError('Não foi possível enviar a oferta. O motoboy pode ter iniciado outra entrega; atualize a lista e tente novamente.'),
     });
   };
-  return <div className="modal-backdrop" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) requestClose(); }}>
-    <section className="modal-card soft-enter" role="dialog" aria-modal="true" aria-labelledby="dispatch-title" data-modal-active="true" onFocusCapture={keepModalFieldVisible}>
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) requestClose(); }}>
+    <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="dispatch-title" data-modal-active="true">
       <div className="modal-header flex items-start justify-between gap-3 border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div className="min-w-0"><div className="eyebrow">DESPACHO INDIVIDUAL</div><h2 id="dispatch-title" className="mt-1 text-xl font-bold">Escolher motoboy</h2><p className="mt-1 text-sm text-muted-foreground">Todos os cadastros aparecem. Motoboys em atendimento não podem receber outra entrega; os offline verão a oferta quando entrarem no PWA.</p></div><button type="button" className="icon-button modal-close-button" onClick={requestClose} aria-label="Fechar" disabled={dispatch.isPending}><X size={18}/></button></div>
-      <div className="modal-body space-y-4 px-5 py-4 sm:px-6 sm:py-5">
+      <div className="modal-form">
+      <div className="modal-fields modal-body space-y-4 px-5 py-4 sm:px-6 sm:py-5">
         <Field label="Motoboy cadastrado"><select value={courierId} onChange={e => setCourierId(e.target.value)} data-modal-initial-focus data-testid="select-courier"><option value="">Selecione um motoboy</option>{(couriersQuery.data ?? []).map(c => <option key={c.id} value={c.id} disabled={c.status === 'BUSY'}>{c.name} · {c.status === 'AVAILABLE' ? 'Disponível' : c.status === 'OFFLINE' ? 'Offline' : 'Em atendimento'}</option>)}</select></Field>
         {couriersQuery.isLoading && <Skeleton rows={2}/>}
         {couriersQuery.isError && <p className="text-sm text-destructive">Não foi possível consultar os motoboys cadastrados.</p>}
         {!couriersQuery.isLoading && selectableCouriers.length === 0 && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Todos os motoboys cadastrados estão em atendimento. Aguarde alguém concluir a entrega.</div>}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><button type="button" className="button-secondary" onClick={requestClose} disabled={dispatch.isPending}>Cancelar</button><button type="button" className="button-primary" disabled={dispatch.isPending || couriersQuery.isLoading || !selectableCouriers.some(courier => courier.id === courierId)} onClick={go}><Truck size={16}/>{dispatch.isPending ? 'Enviando…' : 'Enviar oferta'}</button></div>
+      </div>
+      <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6"><button type="button" className="button-secondary" onClick={requestClose} disabled={dispatch.isPending}>Cancelar</button><button type="button" className="button-primary" disabled={dispatch.isPending || couriersQuery.isLoading || !selectableCouriers.some(courier => courier.id === courierId)} onClick={go}><Truck size={16}/>{dispatch.isPending ? 'Enviando…' : 'Enviar oferta'}</button></div>
       </div>
     </section>
-  </div>;
+    </div>,
+    document.body,
+  );
 }
 
 function Dashboard({ isAdmin }: { isAdmin: boolean }) {
@@ -480,11 +484,35 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
   const qc = useQueryClient();
   const createDeliveryRoute = useCreateDeliveryRoute();
   const deleteDelivery = useDeleteDelivery();
-  const summary = useGetDashboardSummary({ query: { refetchInterval: 15000, refetchOnWindowFocus: true } });
+  const summary = useGetDashboardSummary({ query: { refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
   const stores = useListStores({ query: { queryKey: getListStoresQueryKey() } });
-  const couriers = useListCouriers({ query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000 } });
+  const couriers = useListCouriers({ query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
   const params = useMemo(() => ({ ...(status ? { status } : {}), ...(search ? { search } : {}), ...(storeId ? { storeId } : {}) }), [status, search, storeId]);
-  const deliveries = useListDeliveries(params, { query: { refetchInterval: 15000, refetchOnWindowFocus: true } });
+  const deliveries = useListDeliveries(params, { query: { refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
+  const [now, setNow] = useState(() => Date.now());
+  const refreshDashboard = () => Promise.all([
+    summary.refetch(),
+    couriers.refetch(),
+    deliveries.refetch(),
+  ]);
+  const refreshDashboardRef = useRef(refreshDashboard);
+  refreshDashboardRef.current = refreshDashboard;
+  useEffect(() => {
+    const clock = window.setInterval(() => {
+      if (document.visibilityState === "visible") setNow(Date.now());
+    }, 1000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        setNow(Date.now());
+        void refreshDashboardRef.current();
+      }
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(clock);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
   const runSearch = (e: FormEvent) => { e.preventDefault(); setSearch(searchText.trim()); };
   const invalidate = (id: string) => {
     void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
@@ -543,27 +571,44 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
     );
   };
   const counts = summary.data;
-  const activeCouriers = useMemo(
-    () => (couriers.data ?? []).filter(courier => courier.status === 'BUSY'),
-    [couriers.data],
-  );
-  const effectiveSelectedCourierId = activeCouriers.some(courier => courier.id === selectedCourierId)
+  const ageSeconds = (timestamp: string | null | undefined) => {
+    if (!timestamp) return null;
+    const parsed = Date.parse(timestamp);
+    return Number.isFinite(parsed) ? Math.max(0, Math.floor((now - parsed) / 1000)) : null;
+  };
+  const formatAge = (age: number | null) =>
+    age == null ? "sem horário" : age < 60 ? `${age}s` : `${Math.floor(age / 60)} min`;
+  const allCouriers = couriers.data ?? [];
+  const effectiveSelectedCourierId = allCouriers.some(courier => courier.id === selectedCourierId)
     ? selectedCourierId
     : '';
-  const trackingCouriers = activeCouriers.filter(
+  const trackingCouriers = allCouriers.filter(
     courier =>
       (!effectiveSelectedCourierId || courier.id === effectiveSelectedCourierId) &&
       courier.currentLatitude != null &&
       courier.currentLongitude != null,
   );
-  const trackingMarkers: MapMarker[] = trackingCouriers.map(courier => ({
-    id: courier.id,
-    latitude: courier.currentLatitude!,
-    longitude: courier.currentLongitude!,
-    title: courier.name,
-    detail: `${courier.currentDeliveryCode ? `Entrega ${courier.currentDeliveryCode} · ` : ''}Atualizado ${timeAgo(courier.lastLocationAt)}`,
-    kind: 'courier',
-  }));
+  const latestLocationAge = trackingCouriers.reduce<number | null>((latest, courier) => {
+    const age = ageSeconds(courier.lastLocationAt);
+    return age != null && (latest == null || age < latest) ? age : latest;
+  }, null);
+  const hasLiveLocation = latestLocationAge != null && latestLocationAge <= 30;
+  const hasConnectionError = [summary, couriers, deliveries].some(query => query.isError);
+  const trackingMarkers: MapMarker[] = trackingCouriers.map(courier => {
+    const age = ageSeconds(courier.lastLocationAt);
+    const stale = age == null || age > 120;
+    return {
+      id: courier.id,
+      latitude: courier.currentLatitude!,
+      longitude: courier.currentLongitude!,
+      title: courier.name,
+      detail: stale
+        ? `Sinal perdido — última posição há ${formatAge(age)}`
+        : `${courier.currentDeliveryCode ? `Entrega ${courier.currentDeliveryCode} · ` : ''}Atualizado há ${formatAge(age)}`,
+      kind: 'courier',
+      stale,
+    };
+  });
   const storeMarkers: MapMarker[] = (stores.data ?? [])
     .filter(store => store.latitude != null && store.longitude != null)
     .map(store => ({
@@ -581,6 +626,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
       <div className="flex flex-wrap gap-2 self-start sm:self-auto">
         {selectedDeliveryIds.length >= 2 && <button className="button-secondary h-10" onClick={offerGroupedRoute} disabled={createDeliveryRoute.isPending} data-testid="button-create-route"><Bike size={16}/>{createDeliveryRoute.isPending ? 'Criando rota…' : `Agrupar ${selectedDeliveryIds.length} entregas`}</button>}
         {selectedDeliveryIds.length > 0 && <button className="button-quiet h-10" onClick={() => { setSelectedDeliveryIds([]); setRouteFeedback(''); }}>Limpar seleção ({selectedDeliveryIds.length})</button>}
+        <button className="button-secondary h-10" onClick={() => void refreshDashboard()} disabled={summary.isRefetching || couriers.isRefetching || deliveries.isRefetching} aria-label="Atualizar painel" data-testid="button-refresh-dashboard"><RefreshCw size={15} className={summary.isRefetching || couriers.isRefetching || deliveries.isRefetching ? 'animate-spin' : ''}/>Atualizar</button>
         <button className="button-primary h-10" onClick={() => setShowCreate(true)} data-testid="button-new-delivery"><FilePlus2 size={16}/>Nova entrega</button>
       </div>
     </div>
@@ -588,9 +634,10 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
        <Metric title="Pedidos em operação" value={counts?.requested} hint="solicitações ativas agora" icon={<PackageCheck size={17}/>} loading={summary.isLoading}/>
       <Metric title="Aguardando entregador" value={counts?.awaitingCourier} hint={`${counts?.offered ?? '—'} ofertas enviadas`} icon={<Clock3 size={17}/>} accent loading={summary.isLoading}/>
       <Metric title="Em rota" value={counts?.inTransit} hint={`${counts?.delayed ?? '—'} com atraso`} icon={<Truck size={17}/>} loading={summary.isLoading}/>
-      <Metric title="Entregadores" value={counts ? `${counts.availableCouriers} / ${counts.busyCouriers}` : undefined} hint="disponíveis / ocupados" icon={<Bike size={17}/>} loading={summary.isLoading}/>
+      <Metric title="Entregadores" value={counts?.totalCouriers} hint={counts ? `${counts.availableCouriers} disponíveis · ${counts.busyCouriers} em atendimento · ${counts.offlineCouriers} offline` : 'cadastros no sistema'} icon={<Bike size={17}/>} loading={summary.isLoading}/>
     </section>
     {summary.isError && <div className="mb-5 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"><span>Não foi possível carregar o resumo operacional.</span><button className="inline-flex items-center gap-1 font-semibold" onClick={() => void summary.refetch()}><RefreshCw size={14}/>Tentar novamente</button></div>}
+    {hasConnectionError && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">Reconectando… os dados atuais permanecem visíveis e o painel tentará novamente automaticamente.</div>}
     <section className="mb-6 grid gap-4 lg:grid-cols-[1fr_300px]">
       <div className="panel p-4 sm:p-5">
         <div className="mb-4 flex items-center justify-between"><div><div className="eyebrow">TEMPO DE ATENDIMENTO</div><h2 className="mt-1 text-sm font-bold">Ritmo da operação</h2></div><span className="rounded-md bg-[#f5f4f2] px-2 py-1 text-[10px] font-medium text-muted-foreground">média registrada</span></div>
@@ -600,7 +647,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
           <div className="flex-1"><div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Conclusão total</span><strong className="mono text-xl">{counts?.averageTotalMinutes ?? '—'}<small className="ml-1 text-xs font-normal text-muted-foreground">min</small></strong></div><div className="meter mt-2"><span className="meter-gray" style={{ width: `${Math.min((counts?.averageTotalMinutes ?? 0) * 1.5, 100)}%` }}/></div></div>
         </div>}
       </div>
-      <div className="panel flex items-center gap-4 p-4 sm:px-5"><div className="courier-pie"><Bike size={20}/></div><div className="min-w-0 flex-1"><div className="eyebrow">DISPONIBILIDADE</div><div className="mt-1 flex items-baseline gap-1"><strong className="mono text-2xl">{counts?.availableCouriers ?? '—'}</strong><span className="text-xs text-muted-foreground">disponíveis agora</span></div><div className="mt-1 text-[11px] text-muted-foreground">{couriers.data?.filter(c => c.status === 'OFFLINE').length ?? '—'} offline</div></div><ArrowRight size={16} className="text-muted-foreground"/></div>
+      <div className="panel flex items-center gap-4 p-4 sm:px-5"><div className="courier-pie"><Bike size={20}/></div><div className="min-w-0 flex-1"><div className="eyebrow">DISPONIBILIDADE</div><div className="mt-1 flex items-baseline gap-1"><strong className="mono text-2xl">{counts?.availableCouriers ?? '—'}</strong><span className="text-xs text-muted-foreground">disponíveis agora</span></div><div className="mt-1 text-[11px] text-muted-foreground">{counts ? `${counts.busyCouriers} em atendimento · ${counts.offlineCouriers} offline` : 'Carregando situação dos motoboys'}</div></div><ArrowRight size={16} className="text-muted-foreground"/></div>
     </section>
     <section className="mb-6 grid gap-4 lg:grid-cols-[1.45fr_1fr]">
       <div className="panel overflow-hidden">
@@ -615,14 +662,13 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
               onChange={event => setSelectedCourierId(event.target.value)}
               aria-label="Selecionar motoboy para acompanhar"
             >
-              <option value="">Todos os motoboys em atendimento</option>
-              {activeCouriers.map(courier => <option key={courier.id} value={courier.id}>{courier.name}</option>)}
+              <option value="">Todos os motoboys</option>
+              {allCouriers.map(courier => <option key={courier.id} value={courier.id}>{courier.name}</option>)}
             </select>
-            <Badge tone={trackingCouriers.length ? 'green' : 'amber'}>
-              {effectiveSelectedCourierId
-                ? trackingCouriers.length ? 'GPS atualizado' : 'Aguardando GPS'
-                : trackingCouriers.length ? `${trackingCouriers.length} com GPS` : 'Aguardando GPS'}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <span className="online-indicator"><i className={hasLiveLocation ? 'animate-pulse' : ''}/>{hasLiveLocation ? 'Ao vivo' : 'Sem sinal ao vivo'}</span>
+              <span className="text-[10px] text-muted-foreground">{latestLocationAge == null ? 'Aguardando GPS' : `Atualizado há ${formatAge(latestLocationAge)}`}</span>
+            </div>
           </div>
         </div>
         {couriers.isLoading || stores.isLoading ? <div className="skeleton m-4 h-[280px] sm:h-[340px]"/> : mapMarkers.length ? (
@@ -630,6 +676,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
             <div className="flex flex-wrap gap-4 px-4 pt-3 text-[11px] text-muted-foreground sm:px-5">
               <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#16804a] text-[10px] font-bold text-white">F</span>Filial</span>
               <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#1769aa] text-[10px] font-bold text-white">M</span>Motoboy</span>
+              <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-gray-500 text-[10px] font-bold text-white">M</span>Sinal perdido</span>
             </div>
             <LiveMap markers={mapMarkers} ariaLabel="Localização das filiais e dos motoboys em atendimento"/>
           </>
@@ -637,8 +684,8 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
           <div className="grid min-h-[210px] place-items-center bg-[#f3f2ef] p-6 text-center">
             <div className="max-w-md">
               <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white text-primary shadow-sm"><MapPin size={20}/></span>
-              <h3 className="mt-3 text-sm font-semibold">{effectiveSelectedCourierId ? `Aguardando GPS de ${activeCouriers.find(courier => courier.id === effectiveSelectedCourierId)?.name ?? 'motoboy selecionado'}` : 'Aguardando uma posição GPS'}</h3>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">O mapa mostra apenas posições reais recebidas durante atendimento ativo, quando o motoboy permite a localização no PWA.</p>
+              <h3 className="mt-3 text-sm font-semibold">{effectiveSelectedCourierId ? `Aguardando GPS de ${allCouriers.find(courier => courier.id === effectiveSelectedCourierId)?.name ?? 'motoboy selecionado'}` : 'Aguardando uma posição GPS'}</h3>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">O mapa mostra posições reais enviadas pelo PWA enquanto o motoboy está conectado.</p>
             </div>
           </div>
         )}
@@ -646,7 +693,13 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
       <div className="panel overflow-hidden">
         <div className="border-b border-border px-4 py-4 sm:px-5"><div className="eyebrow">SINAL DE LOCALIZAÇÃO</div><h2 className="mt-1 text-sm font-bold">Último registro recebido</h2></div>
         {couriers.isLoading ? <Skeleton rows={3}/> : couriers.isError ? <p className="p-5 text-sm text-muted-foreground">Não foi possível consultar os registros de localização.</p> : !couriers.data?.length ? <EmptyState title="Sem entregadores cadastrados" detail="Os registros aparecerão aqui quando houver entregadores."/> :
-          <ul className="divide-y divide-border">{couriers.data.map(c => <li key={c.id} className="flex items-center gap-3 px-4 py-3 sm:px-5"><span className="avatar">{c.initials}</span><div className="min-w-0 flex-1"><div className="truncate text-xs font-semibold">{c.name}</div><div className="mt-1 text-[10px] text-muted-foreground">{c.currentLatitude != null && c.currentLongitude != null ? `GPS recebido ${timeAgo(c.lastLocationAt)}` : c.status === 'BUSY' ? 'Aguardando permissão/localização GPS' : 'Sem atendimento ativo'}{c.currentDeliveryCode ? ` · ${c.currentDeliveryCode}` : ''}</div></div><Badge tone={c.status === 'AVAILABLE' ? 'green' : c.status === 'BUSY' ? 'blue' : 'muted'}>{c.status === 'AVAILABLE' ? 'Disponível' : c.status === 'BUSY' ? 'Em atendimento' : 'Offline'}</Badge></li>)}</ul>}
+          <ul className="divide-y divide-border">{couriers.data.map(c => {
+            const age = ageSeconds(c.lastLocationAt);
+            const lostSignal = age == null || age > 120;
+            const hasCoordinates = c.currentLatitude != null && c.currentLongitude != null;
+            const statusLabel = lostSignal ? 'Sem sinal' : c.status === 'BUSY' ? 'Em atendimento' : 'Disponível';
+            return <li key={c.id} className="flex items-center gap-3 px-4 py-3 sm:px-5"><span className={`avatar ${lostSignal ? 'bg-gray-100 text-gray-500' : ''}`}>{c.initials}</span><div className="min-w-0 flex-1"><div className="truncate text-xs font-semibold">{c.name}</div><div className="mt-1 text-[10px] text-muted-foreground">{lostSignal && hasCoordinates ? `Sinal perdido — última posição há ${formatAge(age)}` : hasCoordinates ? `GPS recebido há ${formatAge(age)}` : 'Aguardando primeira posição GPS'}{c.currentDeliveryCode ? ` · ${c.currentDeliveryCode}` : ''}</div></div><Badge tone={lostSignal ? 'muted' : c.status === 'BUSY' ? 'blue' : 'green'}>{statusLabel}</Badge></li>;
+          })}</ul>}
       </div>
     </section>
     <section className="panel overflow-hidden">

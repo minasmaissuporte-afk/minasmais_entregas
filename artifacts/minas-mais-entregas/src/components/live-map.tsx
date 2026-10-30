@@ -14,6 +14,7 @@ export type MapMarker = MapCoordinate & {
   kind: "courier" | "stop" | "current" | "store";
   sequence?: number;
   completed?: boolean;
+  stale?: boolean;
   draggable?: boolean;
   onDrag?: (coordinate: MapCoordinate) => void;
 };
@@ -32,6 +33,10 @@ export default function LiveMap({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
+  const markersRef = useRef(new Map<string, L.Marker>());
+  const routeLineRef = useRef<L.Polyline | null>(null);
+  const initialViewSetRef = useRef(false);
+  const courierViewSetRef = useRef(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -53,6 +58,10 @@ export default function LiveMap({
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
+      markersRef.current.clear();
+      routeLineRef.current = null;
+      initialViewSetRef.current = false;
+      courierViewSetRef.current = false;
     };
   }, []);
 
@@ -60,26 +69,39 @@ export default function LiveMap({
     const map = mapRef.current;
     const layers = layerRef.current;
     if (!map || !layers) return;
-    layers.clearLayers();
 
-    const markerPoints = markers.map(({ latitude, longitude }) =>
-      L.latLng(latitude, longitude),
-    );
+    const markerIds = new Set(markers.map((marker) => marker.id));
+    for (const [id, marker] of markersRef.current) {
+      if (!markerIds.has(id)) {
+        marker.remove();
+        markersRef.current.delete(id);
+      }
+    }
+
+    const markerPoints = markers.map(({ latitude, longitude }) => L.latLng(latitude, longitude));
     const linePoints = (routeGeometry?.length ? routeGeometry : markers.filter((marker) => marker.kind === "stop"))
       .map(({ latitude, longitude }) => L.latLng(latitude, longitude));
 
     if (linePoints.length > 1) {
-      L.polyline(linePoints, {
-        color: "#b91c2c",
-        opacity: 0.85,
-        weight: 5,
-        lineCap: "round",
-        lineJoin: "round",
-      }).addTo(layers);
+      if (routeLineRef.current) routeLineRef.current.setLatLngs(linePoints);
+      else {
+        routeLineRef.current = L.polyline(linePoints, {
+          color: "#b91c2c",
+          opacity: 0.85,
+          weight: 5,
+          lineCap: "round",
+          lineJoin: "round",
+        }).addTo(layers);
+      }
+    } else if (routeLineRef.current) {
+      routeLineRef.current.remove();
+      routeLineRef.current = null;
     }
 
     markers.forEach((marker) => {
-      const color =
+      const color = marker.stale
+        ? "#6b7280"
+        :
         marker.kind === "courier" || marker.kind === "current"
           ? "#1769aa"
           : marker.kind === "store"
@@ -113,20 +135,37 @@ export default function LiveMap({
         detail.style.margin = "4px 0 0";
         popup.append(detail);
       }
-      const leafletMarker = L.marker([marker.latitude, marker.longitude], {
+      const existingMarker = markersRef.current.get(marker.id);
+      const leafletMarker = existingMarker ?? L.marker([marker.latitude, marker.longitude], {
         icon,
         draggable: Boolean(marker.draggable && marker.onDrag),
-      }).bindPopup(popup);
+      }).addTo(layers);
+      leafletMarker.setLatLng([marker.latitude, marker.longitude]);
+      leafletMarker.setIcon(icon);
+      if (existingMarker) leafletMarker.setPopupContent(popup);
+      else leafletMarker.bindPopup(popup);
+      leafletMarker.options.draggable = Boolean(marker.draggable && marker.onDrag);
+      if (leafletMarker.dragging) {
+        if (marker.draggable && marker.onDrag) leafletMarker.dragging.enable();
+        else leafletMarker.dragging.disable();
+      }
+      leafletMarker.off("dragend");
       if (marker.draggable && marker.onDrag) {
         leafletMarker.on("dragend", () => {
           const point = leafletMarker.getLatLng();
           marker.onDrag?.({ latitude: point.lat, longitude: point.lng });
         });
       }
-      leafletMarker.addTo(layers);
+      markersRef.current.set(marker.id, leafletMarker);
     });
 
-    if (markerPoints.length) {
+    const hasCourierMarker = markers.some(
+      (marker) => marker.kind === "courier" || marker.kind === "current",
+    );
+    if (
+      markerPoints.length &&
+      (!initialViewSetRef.current || (hasCourierMarker && !courierViewSetRef.current))
+    ) {
       const bounds = L.latLngBounds(markerPoints);
       if (linePoints.length) linePoints.forEach((point) => bounds.extend(point));
       if (bounds.getNorthEast().equals(bounds.getSouthWest())) {
@@ -134,6 +173,8 @@ export default function LiveMap({
       } else {
         map.fitBounds(bounds.pad(0.12), { maxZoom: 15 });
       }
+      initialViewSetRef.current = true;
+      if (hasCourierMarker) courierViewSetRef.current = true;
     }
   }, [markers, routeGeometry]);
 

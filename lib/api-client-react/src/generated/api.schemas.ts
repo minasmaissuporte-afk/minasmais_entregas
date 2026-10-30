@@ -268,6 +268,18 @@ export interface Courier {
   currentLatitude: number | null;
   /** @nullable */
   currentLongitude: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  currentAccuracyMeters: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  currentSpeedMetersPerSecond: number | null;
+  /** @nullable */
+  locationMeasuredAt: string | null;
   /** @nullable */
   lastLocationAt: string | null;
 }
@@ -281,8 +293,10 @@ export interface DashboardSummary {
   completed: number;
   delayed: number;
   cancelled: number;
+  totalCouriers: number;
   availableCouriers: number;
   busyCouriers: number;
+  offlineCouriers: number;
   averageAcceptanceMinutes: number;
   averageTotalMinutes: number;
 }
@@ -379,6 +393,17 @@ export interface CourierLocationInput {
      * @maximum 180
      */
   longitude: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  accuracyMeters?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  speedMetersPerSecond?: number | null;
+  measuredAt: string;
 }
 
 export interface CourierLocation {
@@ -392,6 +417,17 @@ export interface CourierLocation {
      * @maximum 180
      */
   longitude: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  accuracyMeters: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  speedMetersPerSecond: number | null;
+  measuredAt: string;
   lastLocationAt: string;
 }
 

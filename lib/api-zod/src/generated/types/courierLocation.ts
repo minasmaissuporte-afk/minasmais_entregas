@@ -17,5 +17,16 @@ export interface CourierLocation {
      * @maximum 180
      */
   longitude: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  accuracyMeters: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  speedMetersPerSecond: number | null;
+  measuredAt: Date;
   lastLocationAt: Date;
 }

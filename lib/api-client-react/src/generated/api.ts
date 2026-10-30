@@ -2151,7 +2151,7 @@ export const getUpdateCourierLocationUrl = () => {
 }
 
 /**
- * @summary Update the signed-in courier's current location during active work
+ * @summary Update the signed-in courier's current location while the PWA is open
  */
 export const updateCourierLocation = async (courierLocationInput: CourierLocationInput, options?: Parameters<typeof customFetch>[1]): Promise<CourierLocation> => {
 
@@ -2217,7 +2217,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateCourierLocationMutationVariables = {data: BodyType<CourierLocationInput>}
 
     /**
- * @summary Update the signed-in courier's current location during active work
+ * @summary Update the signed-in courier's current location while the PWA is open
  */
 export const useUpdateCourierLocation = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCourierLocation>>, TError,UpdateCourierLocationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}

@@ -440,7 +440,7 @@ paths:
     post:
       operationId: updateCourierLocation
       tags: [courier]
-      summary: Update the signed-in courier's current location during active work
+      summary: Update the signed-in courier's current location while the PWA is open
       requestBody:
         required: true
         content:
@@ -682,7 +682,7 @@ components:
           enum: [REMOVE_DEMO_RECORDS]
     Courier:
       type: object
-      required: [id, name, initials, status, currentLatitude, currentLongitude, lastLocationAt]
+      required: [id, name, initials, status, currentLatitude, currentLongitude, currentAccuracyMeters, currentSpeedMetersPerSecond, locationMeasuredAt, lastLocationAt]
       properties:
         id: { type: string }
         name: { type: string }
@@ -691,10 +691,13 @@ components:
         currentDeliveryCode: { type: ["string", "null"] }
         currentLatitude: { type: ["number", "null"] }
         currentLongitude: { type: ["number", "null"] }
+        currentAccuracyMeters: { type: ["number", "null"], minimum: 0 }
+        currentSpeedMetersPerSecond: { type: ["number", "null"], minimum: 0 }
+        locationMeasuredAt: { type: ["string", "null"], format: date-time }
         lastLocationAt: { type: ["string", "null"], format: date-time }
     DashboardSummary:
       type: object
-      required: [requested, awaitingCourier, offered, accepted, inTransit, completed, delayed, cancelled, availableCouriers, busyCouriers, averageAcceptanceMinutes, averageTotalMinutes]
+      required: [requested, awaitingCourier, offered, accepted, inTransit, completed, delayed, cancelled, totalCouriers, availableCouriers, busyCouriers, offlineCouriers, averageAcceptanceMinutes, averageTotalMinutes]
       properties:
         requested: { type: integer }
         awaitingCourier: { type: integer }
@@ -704,8 +707,10 @@ components:
         completed: { type: integer }
         delayed: { type: integer }
         cancelled: { type: integer }
+        totalCouriers: { type: integer }
         availableCouriers: { type: integer }
         busyCouriers: { type: integer }
+        offlineCouriers: { type: integer }
         averageAcceptanceMinutes: { type: number }
         averageTotalMinutes: { type: number }
     AppUser:
@@ -755,16 +760,22 @@ components:
         longitude: { type: number, minimum: -180, maximum: 180 }
     CourierLocationInput:
       type: object
-      required: [latitude, longitude]
+      required: [latitude, longitude, measuredAt]
       properties:
         latitude: { type: number, minimum: -90, maximum: 90 }
         longitude: { type: number, minimum: -180, maximum: 180 }
+        accuracyMeters: { type: ["number", "null"], minimum: 0 }
+        speedMetersPerSecond: { type: ["number", "null"], minimum: 0 }
+        measuredAt: { type: string, format: date-time }
     CourierLocation:
       type: object
-      required: [latitude, longitude, lastLocationAt]
+      required: [latitude, longitude, accuracyMeters, speedMetersPerSecond, measuredAt, lastLocationAt]
       properties:
         latitude: { type: number, minimum: -90, maximum: 90 }
         longitude: { type: number, minimum: -180, maximum: 180 }
+        accuracyMeters: { type: ["number", "null"], minimum: 0 }
+        speedMetersPerSecond: { type: ["number", "null"], minimum: 0 }
+        measuredAt: { type: string, format: date-time }
         lastLocationAt: { type: string, format: date-time }
     RouteCoordinate:
       type: object

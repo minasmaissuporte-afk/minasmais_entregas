@@ -535,38 +535,8 @@ router.post(
       .from(couriersTable)
       .where(eq(couriersTable.id, profile.courierId))
       .limit(1);
-    if (!courier || courier.status !== "BUSY") {
-      res.status(409).json({ error: "A localização só é recebida durante um atendimento ativo." });
-      return;
-    }
-
-    const [activeRoute] = await db
-      .select({ id: deliveryRoutesTable.id })
-      .from(deliveryRoutesTable)
-      .where(
-        and(
-          eq(deliveryRoutesTable.courierId, profile.courierId),
-          eq(deliveryRoutesTable.status, "ACCEPTED"),
-        ),
-      )
-      .limit(1);
-    const [activeDelivery] = await db
-      .select({ id: deliveriesTable.id })
-      .from(deliveriesTable)
-      .where(
-        and(
-          eq(deliveriesTable.courierId, profile.courierId),
-          inArray(deliveriesTable.status, [
-            "ACCEPTED",
-            "TO_STORE",
-            "AT_STORE",
-            "IN_TRANSIT",
-          ]),
-        ),
-      )
-      .limit(1);
-    if (!activeRoute && !activeDelivery) {
-      res.status(409).json({ error: "Não há entrega ativa para compartilhar a localização." });
+    if (!courier) {
+      res.status(404).json({ error: "Motoboy não encontrado." });
       return;
     }
 
@@ -576,6 +546,10 @@ router.post(
       .set({
         currentLatitude: body.data.latitude,
         currentLongitude: body.data.longitude,
+        currentAccuracyMeters: body.data.accuracyMeters ?? null,
+        currentSpeedMetersPerSecond:
+          body.data.speedMetersPerSecond ?? null,
+        locationMeasuredAt: new Date(body.data.measuredAt),
         lastLocationAt: now,
       })
       .where(eq(couriersTable.id, profile.courierId))
@@ -589,6 +563,9 @@ router.post(
       UpdateCourierLocationResponse.parse({
         latitude: updated.currentLatitude,
         longitude: updated.currentLongitude,
+        accuracyMeters: updated.currentAccuracyMeters,
+        speedMetersPerSecond: updated.currentSpeedMetersPerSecond,
+        measuredAt: updated.locationMeasuredAt?.toISOString(),
         lastLocationAt: updated.lastLocationAt?.toISOString(),
       }),
     );

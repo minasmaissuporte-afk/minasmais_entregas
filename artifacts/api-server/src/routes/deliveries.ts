@@ -516,6 +516,15 @@ router.get(
             .toFixed(1),
         )
       : 0;
+  const isOnline = (courier: (typeof couriers)[number]) =>
+    courier.lastLocationAt != null &&
+    now - courier.lastLocationAt.getTime() <= 120_000;
+  const availableCouriers = couriers.filter(
+    (courier) => courier.status !== "BUSY" && isOnline(courier),
+  ).length;
+  const busyCouriers = couriers.filter(
+    (courier) => courier.status === "BUSY" && isOnline(courier),
+  ).length;
 
   const parsed = GetDashboardSummaryResponse.parse({
     requested: active.length,
@@ -529,9 +538,10 @@ router.get(
     completed: deliveries.filter((item) => item.status === "COMPLETED").length,
     delayed: delayed.length,
     cancelled: deliveries.filter((item) => item.status === "CANCELLED").length,
-    availableCouriers: couriers.filter((item) => item.status === "AVAILABLE")
-      .length,
-    busyCouriers: couriers.filter((item) => item.status === "BUSY").length,
+    totalCouriers: couriers.length,
+    availableCouriers,
+    busyCouriers,
+    offlineCouriers: couriers.length - availableCouriers - busyCouriers,
     averageAcceptanceMinutes: average(acceptanceTimes),
     averageTotalMinutes: average(completionTimes),
   });
@@ -1069,6 +1079,10 @@ router.get(
         ...courier,
         currentLatitude: courier.currentLatitude ?? null,
         currentLongitude: courier.currentLongitude ?? null,
+        currentAccuracyMeters: courier.currentAccuracyMeters ?? null,
+        currentSpeedMetersPerSecond:
+          courier.currentSpeedMetersPerSecond ?? null,
+        locationMeasuredAt: courier.locationMeasuredAt?.toISOString() ?? null,
         lastLocationAt: courier.lastLocationAt?.toISOString() ?? null,
       })),
     ),

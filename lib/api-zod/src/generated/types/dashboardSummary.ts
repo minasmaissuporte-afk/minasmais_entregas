@@ -15,8 +15,10 @@ export interface DashboardSummary {
   completed: number;
   delayed: number;
   cancelled: number;
+  totalCouriers: number;
   availableCouriers: number;
   busyCouriers: number;
+  offlineCouriers: number;
   averageAcceptanceMinutes: number;
   averageTotalMinutes: number;
 }

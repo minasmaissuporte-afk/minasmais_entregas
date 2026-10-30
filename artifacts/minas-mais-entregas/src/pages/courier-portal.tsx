@@ -8,6 +8,7 @@ import {
   useListCourierRoutes,
   useListDeliveries,
   useUpdateDeliveryStatus,
+  useUpdateCourierLocation,
   type AppUser,
 } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
@@ -69,6 +70,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     },
   });
   const updateStatus = useUpdateDeliveryStatus();
+  const updateLocation = useUpdateCourierLocation();
   const groupedDeliveryIds = useMemo(
     () => new Set((routes.data ?? []).flatMap((route) => route.deliveries.map((delivery) => delivery.id))),
     [routes.data],
@@ -77,14 +79,25 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     () => (routes.isLoading ? [] : (deliveries.data ?? []).filter((delivery) => !groupedDeliveryIds.has(delivery.id))),
     [deliveries.data, groupedDeliveryIds, routes.isLoading],
   );
-  const isWorking =
-    (routes.data ?? []).some((route) => route.status === "ACCEPTED") ||
-    individualDeliveries.some((delivery) =>
-      ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status),
-    );
-
   const updateDelivery = (deliveryId: string, status: string) => {
     setActionError("");
+    if (["ACCEPTED", "TO_STORE", "IN_TRANSIT"].includes(status) && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords, timestamp }) => {
+          updateLocation.mutate({
+            data: {
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              accuracyMeters: coords.accuracy,
+              speedMetersPerSecond: coords.speed,
+              measuredAt: new Date(timestamp).toISOString(),
+            },
+          });
+        },
+        () => undefined,
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
+      );
+    }
     updateStatus.mutate(
       {
         deliveryId,
@@ -177,7 +190,6 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           routes={routes.data ?? []}
           isLoading={routes.isLoading}
           isError={routes.isError}
-          isWorking={isWorking}
           onRetry={() => void routes.refetch()}
         />
 
