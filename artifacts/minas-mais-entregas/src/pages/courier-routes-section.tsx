@@ -359,7 +359,7 @@ function ActiveRouteCard({
             <div className="text-sm font-bold">Mapa da rota</div>
             <p className="mt-1 text-[11px] text-muted-foreground">
               {route.routeGeometry?.length
-                ? "Traçado viário calculado pelo Geoapify, com paradas numeradas."
+                ? "Traçado viário calculado pelo Mapbox, com paradas numeradas."
                 : "Paradas numeradas na sequência da rota."}
             </p>
           </div>

@@ -30,6 +30,13 @@ import {
   requireRole,
   type AppUserProfile,
 } from "../middlewares/accessControl";
+import {
+  MapboxApiError,
+  mapboxDirections,
+  mapboxGeocodeAddress,
+  mapboxOptimizeShipments,
+  type MapboxOptimizationSolution,
+} from "../lib/mapbox";
 
 const router: IRouter = Router();
 router.use(requireAuthentication);
@@ -39,6 +46,8 @@ type DeliveryRow = {
   storeName: string;
   storeAddress: string;
   storeCity: string;
+  storeLatitude: number | null;
+  storeLongitude: number | null;
 };
 
 type Coordinate = { latitude: number; longitude: number };
@@ -88,6 +97,8 @@ async function routeDeliveries(deliveryIds: string[]): Promise<DeliveryRow[]> {
       storeName: storesTable.name,
       storeAddress: storesTable.address,
       storeCity: storesTable.city,
+      storeLatitude: storesTable.latitude,
+      storeLongitude: storesTable.longitude,
     })
     .from(deliveriesTable)
     .innerJoin(storesTable, eq(deliveriesTable.storeId, storesTable.id))
@@ -178,61 +189,36 @@ async function routeView(
   });
 }
 
-async function geocodeAddress(
-  address: string,
-  city: string,
-  apiKey: string,
-): Promise<Coordinate> {
-  const query = new URLSearchParams({
-    text: `${address}, ${city}, Minas Gerais, Brasil`,
-    format: "json",
-    limit: "1",
-    lang: "pt",
-    filter: "countrycode:br",
-    apiKey,
-  });
-
-  let response: Response;
-  try {
-    response = await fetch(
-      `https://api.geoapify.com/v1/geocode/search?${query.toString()}`,
-      { signal: AbortSignal.timeout(20_000) },
-    );
-  } catch {
-    throw new RoutePlanningError(
-      "O serviço de localização está indisponível. Tente novamente.",
-      502,
-    );
-  }
-
-  if (!response.ok) {
-    throw new RoutePlanningError(
-      "O Geoapify não conseguiu localizar os endereços desta rota.",
-      502,
-    );
-  }
-
-  const result = (await response.json()) as {
-    results?: Array<{
-      lat?: number;
-      lon?: number;
-      rank?: { confidence?: number };
-    }>;
-  };
-  const match = result.results?.[0];
+function storedCoordinate(
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
+): Coordinate | null {
   if (
-    !match ||
-    typeof match.lat !== "number" ||
-    typeof match.lon !== "number" ||
-    (typeof match.rank?.confidence === "number" &&
-      match.rank.confidence < 0.3)
+    typeof latitude !== "number" ||
+    typeof longitude !== "number" ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
   ) {
-    throw new RoutePlanningError(
-      `Não foi possível localizar o endereço "${address}". Confira o endereço e tente novamente.`,
-      422,
-    );
+    return null;
   }
-  return { latitude: match.lat, longitude: match.lon };
+  return { latitude, longitude };
+}
+
+async function geocodeAddress(address: string, city: string): Promise<Coordinate> {
+  try {
+    return await mapboxGeocodeAddress(
+      `${address}, ${city}, Minas Gerais, Brasil`,
+    );
+  } catch (error) {
+    if (error instanceof MapboxApiError) {
+      throw new RoutePlanningError(error.message, error.status);
+    }
+    throw error;
+  }
 }
 
 async function optimizeRoute(
@@ -250,14 +236,6 @@ async function optimizeRoute(
   distanceMeters: number | null;
   durationSeconds: number | null;
 }> {
-  const apiKey = process.env.GEOAPIFY_API_KEY;
-  if (!apiKey) {
-    throw new RoutePlanningError(
-      "A chave Geoapify não está configurada no servidor.",
-      503,
-    );
-  }
-
   const pickupByDelivery = new Map<string, Coordinate>();
   const customerByDelivery = new Map<string, Coordinate>();
   const geocodeCache = new Map<string, Promise<Coordinate>>();
@@ -265,133 +243,123 @@ async function optimizeRoute(
     const cacheKey = `${address.trim().toLowerCase()}|${city.trim().toLowerCase()}`;
     let pending = geocodeCache.get(cacheKey);
     if (!pending) {
-      pending = geocodeAddress(address, city, apiKey);
+      pending = geocodeAddress(address, city);
       geocodeCache.set(cacheKey, pending);
     }
     return pending;
   };
   await Promise.all(rows.map(async (row) => {
     const [pickup, customer] = await Promise.all([
-      getGeocode(row.storeAddress, row.storeCity),
-      getGeocode(row.delivery.destination, row.storeCity),
+      storedCoordinate(row.storeLatitude, row.storeLongitude) ??
+        getGeocode(row.storeAddress, row.storeCity),
+      storedCoordinate(
+        row.delivery.customerLatitude,
+        row.delivery.customerLongitude,
+      ) ?? getGeocode(row.delivery.destination, row.storeCity),
     ]);
     pickupByDelivery.set(row.delivery.id, pickup);
     customerByDelivery.set(row.delivery.id, customer);
   }));
 
-  let response: Response;
-  try {
-    response = await fetch(
-      `https://api.geoapify.com/v1/routeplanner?apiKey=${encodeURIComponent(apiKey)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(30_000),
-        body: JSON.stringify({
-          mode: "drive",
-          traffic: "approximated",
-          type: "balanced",
-          units: "metric",
-          agents: [
-            {
-              id: "courier",
-              start_location: [start.longitude, start.latitude],
-            },
-          ],
-          shipments: rows.map((row) => {
-            const pickup = pickupByDelivery.get(row.delivery.id)!;
-            const customer = customerByDelivery.get(row.delivery.id)!;
-            return {
-              id: row.delivery.id,
-              pickup: {
-                location: [pickup.longitude, pickup.latitude],
-                duration: 120,
-              },
-              delivery: {
-                location: [customer.longitude, customer.latitude],
-                duration: 90,
-              },
-            };
-          }),
-        }),
-      },
-    );
-  } catch {
-    throw new RoutePlanningError(
-      "Não foi possível calcular a rota agora. A oferta continua disponível para aceite.",
-      502,
-    );
-  }
-
-  if (!response.ok) {
-    throw new RoutePlanningError(
-      "O Geoapify não conseguiu calcular a rota. A oferta continua disponível para aceite.",
-      502,
-    );
-  }
-
-  const plan = (await response.json()) as {
-    properties?: {
-      issues?: { unassignedShipments?: number[] };
-    };
-    features?: Array<{
-      geometry?: {
-        coordinates?: unknown;
-      };
-      properties?: {
-        agent_index?: number;
-        distance?: number;
-        time?: number;
-        actions?: Array<{
-          type?: string;
-          shipment_index?: number;
-          shipment_id?: string;
-          shopment_id?: string;
-        }>;
-      };
-    }>;
+  const locations = new Map<string, { name: string; coordinates: [number, number] }>();
+  const addLocation = (name: string, coordinate: Coordinate) => {
+    if (!locations.has(name)) {
+      locations.set(name, {
+        name,
+        coordinates: [coordinate.longitude, coordinate.latitude],
+      });
+    }
   };
-  if (plan.properties?.issues?.unassignedShipments?.length) {
+  addLocation("courier-start", start);
+
+  const pickupLocationByDelivery = new Map<string, string>();
+  const dropoffLocationByDelivery = new Map<string, string>();
+  const pickupLocationByStore = new Map<string, string>();
+  for (const row of rows) {
+    const pickupLocation =
+      pickupLocationByStore.get(row.delivery.storeId) ??
+      `store-${row.delivery.storeId}`;
+    pickupLocationByStore.set(row.delivery.storeId, pickupLocation);
+    pickupLocationByDelivery.set(row.delivery.id, pickupLocation);
+    dropoffLocationByDelivery.set(row.delivery.id, `dropoff-${row.delivery.id}`);
+    addLocation(pickupLocation, pickupByDelivery.get(row.delivery.id)!);
+    addLocation(
+      `dropoff-${row.delivery.id}`,
+      customerByDelivery.get(row.delivery.id)!,
+    );
+  }
+
+  let solution: MapboxOptimizationSolution;
+  try {
+    solution = await mapboxOptimizeShipments({
+      locations: [...locations.values()],
+      shipments: rows.map((row) => ({
+        name: row.delivery.id,
+        from: pickupLocationByDelivery.get(row.delivery.id)!,
+        to: dropoffLocationByDelivery.get(row.delivery.id)!,
+        pickup_duration: 120,
+        dropoff_duration: 90,
+      })),
+    });
+  } catch (error) {
+    if (error instanceof MapboxApiError) {
+      throw new RoutePlanningError(error.message, error.status);
+    }
+    throw error;
+  }
+  if (solution.dropped?.shipments?.length) {
     throw new RoutePlanningError(
-      "O Geoapify não conseguiu incluir todas as entregas. Confira os endereços e tente novamente.",
+      "O Mapbox não conseguiu incluir todas as entregas. Confira os endereços e tente novamente.",
       422,
     );
   }
 
-  const properties =
-    plan.features?.find((feature) => feature.properties?.agent_index === 0)
-      ?.properties ?? plan.features?.[0]?.properties;
-  const routeFeature =
-    plan.features?.find((feature) => feature.properties?.agent_index === 0) ??
-    plan.features?.[0];
-  const actions = properties?.actions ?? [];
-  const stops = actions.flatMap((action) => {
-    if (action.type !== "pickup" && action.type !== "delivery") return [];
-    const index = Number.isInteger(action.shipment_index)
-      ? action.shipment_index!
-      : rows.findIndex(
-          (row) =>
-            row.delivery.id === action.shipment_id ||
-            row.delivery.id === action.shopment_id,
-        );
-    const row = rows[index];
-    if (!row) return [];
-    const isPickup = action.type === "pickup";
-    const coordinate = isPickup
-      ? pickupByDelivery.get(row.delivery.id)
-      : customerByDelivery.get(row.delivery.id);
-    if (!coordinate) return [];
-    const address = isPickup
-      ? `${row.storeAddress}, ${row.storeCity}`
-      : row.delivery.destination;
-    return [{
-      deliveryId: row.delivery.id,
-      kind: isPickup ? "pickup" as const : "delivery" as const,
-      address,
-      latitude: coordinate.latitude,
-      longitude: coordinate.longitude,
-    }];
-  });
+  const optimizedRoute =
+    solution.routes?.find((route) => route.vehicle === "courier") ??
+    solution.routes?.[0];
+  if (!optimizedRoute) {
+    throw new RoutePlanningError(
+      "O Mapbox não retornou uma rota para estas entregas.",
+      502,
+    );
+  }
+
+  const rowByDelivery = new Map(rows.map((row) => [row.delivery.id, row]));
+  const stops: Array<{
+    deliveryId: string;
+    kind: "pickup" | "delivery";
+    address: string;
+    latitude: number;
+    longitude: number;
+  }> = [];
+  for (const optimizedStop of optimizedRoute.stops ?? []) {
+    const isPickup = optimizedStop.type === "pickup";
+    const isDropoff = optimizedStop.type === "dropoff";
+    if (!isPickup && !isDropoff) continue;
+    const shipmentIds = (isPickup
+      ? optimizedStop.pickups
+      : optimizedStop.dropoffs) as unknown;
+    if (!Array.isArray(shipmentIds)) continue;
+
+    for (const shipmentId of shipmentIds) {
+      if (typeof shipmentId !== "string") continue;
+      const row = rowByDelivery.get(shipmentId);
+      if (!row) continue;
+      const coordinate = isPickup
+        ? pickupByDelivery.get(shipmentId)
+        : customerByDelivery.get(shipmentId);
+      if (!coordinate) continue;
+      stops.push({
+        deliveryId: shipmentId,
+        kind: isPickup ? "pickup" : "delivery",
+        address: isPickup
+          ? `${row.storeAddress}, ${row.storeCity}`
+          : row.delivery.destination,
+        latitude: coordinate.latitude,
+        longitude: coordinate.longitude,
+      });
+    }
+  }
 
   if (stops.length !== rows.length * 2) {
     throw new RoutePlanningError(
@@ -399,16 +367,49 @@ async function optimizeRoute(
       502,
     );
   }
+  const directionCoordinates: Coordinate[] = [
+    start,
+    ...stops.map(({ latitude, longitude }) => ({ latitude, longitude })),
+  ];
+  const endingStop = optimizedRoute.stops?.find(
+    (stop) => stop.type === "end" || stop.type === "arrive",
+  );
+  const endingLocation = endingStop?.location
+    ? locations.get(endingStop.location)?.coordinates
+    : undefined;
+  if (endingLocation) {
+    directionCoordinates.push({
+      longitude: endingLocation[0],
+      latitude: endingLocation[1],
+    });
+  }
+
+  let directions;
+  try {
+    directions = await mapboxDirections(directionCoordinates);
+  } catch (error) {
+    if (error instanceof MapboxApiError) {
+      throw new RoutePlanningError(error.message, error.status);
+    }
+    throw error;
+  }
+  const routeGeometry = extractRouteGeometry(directions.geometry?.coordinates);
+  if (!routeGeometry) {
+    throw new RoutePlanningError(
+      "O Mapbox não retornou o traçado viário desta rota.",
+      502,
+    );
+  }
   return {
     stops,
-    routeGeometry: extractRouteGeometry(routeFeature?.geometry?.coordinates),
+    routeGeometry,
     distanceMeters:
-      typeof properties?.distance === "number"
-        ? Math.round(properties.distance)
+      typeof directions.distance === "number"
+        ? Math.round(directions.distance)
         : null,
     durationSeconds:
-      typeof properties?.time === "number"
-        ? Math.round(properties.time)
+      typeof directions.duration === "number"
+        ? Math.round(directions.duration + rows.length * 210)
         : null,
   };
 }
@@ -621,12 +622,6 @@ router.get(
       return;
     }
 
-    const apiKey = process.env.GEOAPIFY_API_KEY;
-    if (!apiKey) {
-      res.status(503).json({ error: "A integração de rotas Geoapify não está configurada." });
-      return;
-    }
-
     const targetsStore = ["ACCEPTED", "TO_STORE"].includes(row.delivery.status);
     const targetAddress = targetsStore
       ? `${row.storeAddress}, ${row.storeCity}`
@@ -634,37 +629,27 @@ router.get(
     const targetLabel = targetsStore ? "Unidade de retirada" : "Entrega ao cliente";
 
     try {
-      const targetPosition = await geocodeAddress(
-        targetsStore ? row.storeAddress : row.delivery.destination,
-        row.storeCity,
-        apiKey,
-      );
-      const waypoints = [
-        `${courier.currentLatitude},${courier.currentLongitude}`,
-        `${targetPosition.latitude},${targetPosition.longitude}`,
-      ].join("|");
-      const query = new URLSearchParams({
-        waypoints,
-        mode: "drive",
-        apiKey,
-      });
-      const response = await fetch(
-        `https://api.geoapify.com/v1/routing?${query.toString()}`,
-        { signal: AbortSignal.timeout(20_000) },
-      );
-      if (!response.ok) {
-        throw new RoutePlanningError("O Geoapify não conseguiu calcular esta rota.", 502);
-      }
-
-      const result = (await response.json()) as {
-        features?: Array<{
-          geometry?: { coordinates?: unknown };
-          properties?: { distance?: number; time?: number };
-        }>;
-      };
-      const feature = result.features?.[0];
-      const routeGeometry = extractRouteGeometry(feature?.geometry?.coordinates);
-      if (!feature || !routeGeometry) {
+      const storedTarget = targetsStore
+        ? storedCoordinate(row.storeLatitude, row.storeLongitude)
+        : storedCoordinate(
+            row.delivery.customerLatitude,
+            row.delivery.customerLongitude,
+          );
+      const targetPosition =
+        storedTarget ??
+        (await geocodeAddress(
+          targetsStore ? row.storeAddress : row.delivery.destination,
+          row.storeCity,
+        ));
+      const directions = await mapboxDirections([
+        {
+          latitude: courier.currentLatitude,
+          longitude: courier.currentLongitude,
+        },
+        targetPosition,
+      ]);
+      const routeGeometry = extractRouteGeometry(directions.geometry?.coordinates);
+      if (!routeGeometry) {
         throw new RoutePlanningError("Não foi possível traçar a rota para este endereço.", 422);
       }
 
@@ -678,12 +663,12 @@ router.get(
           targetLabel,
           targetAddress,
           distanceMeters:
-            typeof feature.properties?.distance === "number"
-              ? Math.round(feature.properties.distance)
+            typeof directions.distance === "number"
+              ? Math.round(directions.distance)
               : null,
           durationSeconds:
-            typeof feature.properties?.time === "number"
-              ? Math.round(feature.properties.time)
+            typeof directions.duration === "number"
+              ? Math.round(directions.duration)
               : null,
           routeGeometry,
           lastLocationAt: courier.lastLocationAt.toISOString(),
@@ -693,6 +678,8 @@ router.get(
       const routeError =
         error instanceof RoutePlanningError
           ? error
+          : error instanceof MapboxApiError
+            ? new RoutePlanningError(error.message, error.status)
           : new RoutePlanningError("Não foi possível calcular a rota agora.", 502);
       res.status(routeError.status).json({ error: routeError.message });
     }

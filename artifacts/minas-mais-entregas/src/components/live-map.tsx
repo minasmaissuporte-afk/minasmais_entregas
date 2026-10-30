@@ -37,6 +37,7 @@ export default function LiveMap({
   const routeLineRef = useRef<L.Polyline | null>(null);
   const initialViewSetRef = useRef(false);
   const courierViewSetRef = useRef(false);
+  const mapboxToken = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN?.trim() ?? "";
 
   useEffect(() => {
     const container = containerRef.current;
@@ -46,10 +47,16 @@ export default function LiveMap({
       zoomControl: true,
       scrollWheelZoom: false,
     });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
-    }).addTo(map);
+    if (mapboxToken) {
+      L.tileLayer(
+        `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`,
+        {
+          maxZoom: 19,
+          attribution:
+            '&copy; <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noreferrer">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
+        },
+      ).addTo(map);
+    }
     const layers = L.layerGroup().addTo(map);
     mapRef.current = map;
     layerRef.current = layers;
@@ -63,7 +70,7 @@ export default function LiveMap({
       initialViewSetRef.current = false;
       courierViewSetRef.current = false;
     };
-  }, []);
+  }, [mapboxToken]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -180,15 +187,19 @@ export default function LiveMap({
 
   return (
     <div
-      ref={containerRef}
-      className={
-        size === "compact"
-          ? "h-48 w-full bg-[#f3f2ef] sm:h-56"
-          : "h-[280px] w-full bg-[#f3f2ef] sm:h-[340px]"
-      }
+      className={`relative w-full overflow-hidden bg-[#f3f2ef] ${
+        size === "compact" ? "h-48 sm:h-56" : "h-[280px] sm:h-[340px]"
+      }`}
       role="region"
       aria-label={ariaLabel}
       data-testid="map-live"
-    />
+    >
+      <div ref={containerRef} className="absolute inset-0" />
+      {!mapboxToken && (
+        <div className="pointer-events-none absolute inset-0 z-[500] grid place-items-center bg-[#f3f2ef]/90 p-4 text-center text-sm text-muted-foreground">
+          O mapa Mapbox ainda não está configurado.
+        </div>
+      )}
+    </div>
   );
 }

@@ -1200,7 +1200,7 @@ export const getAutocompleteAddressesUrl = (params: AutocompleteAddressesParams,
 }
 
 /**
- * @summary Search Brazilian addresses through Geoapify
+ * @summary Search Brazilian addresses through Mapbox
  */
 export const autocompleteAddresses = async (params: AutocompleteAddressesParams, options?: Parameters<typeof customFetch>[1]): Promise<AddressSuggestion[]> => {
 
@@ -1271,7 +1271,7 @@ export function useAutocompleteAddresses<TData = Awaited<ReturnType<typeof autoc
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Search Brazilian addresses through Geoapify
+ * @summary Search Brazilian addresses through Mapbox
  */
 
 export function useAutocompleteAddresses<TData = Awaited<ReturnType<typeof autocompleteAddresses>>, TError = ErrorType<void>>(

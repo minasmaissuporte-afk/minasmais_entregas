@@ -256,7 +256,7 @@ paths:
     get:
       operationId: autocompleteAddresses
       tags: [directory]
-      summary: Search Brazilian addresses through Geoapify
+      summary: Search Brazilian addresses through Mapbox
       parameters:
         - in: query
           name: texto
@@ -488,7 +488,7 @@ paths:
         "502":
           description: External routing service failed
         "503":
-          description: Geoapify is not configured
+          description: Mapbox geocoding is not configured
   /courier/routes/{routeId}/accept:
     post:
       operationId: acceptCourierRoute

@@ -27,6 +27,10 @@ import {
   requireRole,
   type AppUserProfile,
 } from "../middlewares/accessControl";
+import {
+  MapboxApiError,
+  mapboxAutocomplete,
+} from "../lib/mapbox";
 
 const router: IRouter = Router();
 router.use(requireAuthentication);
@@ -226,74 +230,19 @@ router.get(
       return;
     }
 
-    const apiKey = process.env.GEOAPIFY_API_KEY;
-    if (!apiKey) {
-      res.status(503).json({ error: "A busca de endereços ainda não está configurada." });
-      return;
-    }
-
-    const url = new URL("https://api.geoapify.com/v1/geocode/autocomplete");
-    url.searchParams.set("text", query.data.texto.trim());
-    url.searchParams.set("format", "json");
-    url.searchParams.set("limit", "5");
-    url.searchParams.set("lang", "pt");
-    url.searchParams.set("filter", "countrycode:br");
-    url.searchParams.set("apiKey", apiKey);
-
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!response.ok) {
-        req.log.warn({ status: response.status }, "Geoapify autocomplete request failed");
-        res.status(502).json({ error: "Não foi possível consultar endereços agora." });
-        return;
-      }
-
-      const payload = (await response.json()) as {
-        results?: Array<Record<string, unknown>>;
-      };
-      const suggestions = (payload.results ?? [])
-        .filter(
-          (result) =>
-            typeof result.formatted === "string" &&
-            typeof result.lat === "number" &&
-            Number.isFinite(result.lat) &&
-            typeof result.lon === "number" &&
-            Number.isFinite(result.lon),
-        )
-        .slice(0, 5)
-        .map((result) => ({
-          formatted: result.formatted as string,
-          street: typeof result.street === "string" ? result.street : null,
-          houseNumber:
-            typeof result.housenumber === "string" ? result.housenumber : null,
-          suburb:
-            typeof result.suburb === "string"
-              ? result.suburb
-              : typeof result.neighbourhood === "string"
-                ? result.neighbourhood
-                : null,
-          district: typeof result.district === "string" ? result.district : null,
-          city:
-            typeof result.city === "string"
-              ? result.city
-              : typeof result.town === "string"
-                ? result.town
-                : typeof result.village === "string"
-                  ? result.village
-                  : null,
-          stateCode:
-            typeof result.state_code === "string"
-              ? result.state_code.toUpperCase().slice(0, 2)
-              : null,
-          postcode: typeof result.postcode === "string" ? result.postcode : null,
-          latitude: result.lat as number,
-          longitude: result.lon as number,
-        }));
-
+      const suggestions = await mapboxAutocomplete(query.data.texto.trim());
       res.json(AutocompleteAddressesResponse.parse(suggestions));
-    } catch {
-      req.log.warn("Geoapify autocomplete request failed");
-      res.status(502).json({ error: "Não foi possível consultar endereços agora." });
+    } catch (error) {
+      const mapboxError =
+        error instanceof MapboxApiError
+          ? error
+          : new MapboxApiError("Não foi possível consultar endereços agora.");
+      req.log.warn(
+        { status: mapboxError.status },
+        "Mapbox autocomplete request failed",
+      );
+      res.status(mapboxError.status).json({ error: mapboxError.message });
     }
   },
 );

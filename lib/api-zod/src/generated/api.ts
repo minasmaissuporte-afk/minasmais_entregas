@@ -495,7 +495,7 @@ export const DeleteStoreResponse = zod.void()
 
 
 /**
- * @summary Search Brazilian addresses through Geoapify
+ * @summary Search Brazilian addresses through Mapbox
  */
 export const autocompleteAddressesQueryTextoMin = 3;
 
