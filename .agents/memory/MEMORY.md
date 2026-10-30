@@ -2,3 +2,4 @@
 - [PWA do motoboy e repasses](courier-mobile-and-earnings.md) — O motoboy usa o PWA em iOS/Android e vê entregas e valor a receber.
 - [Empacotamento Expo de produção](expo-production-builds.md) — Libere a porta Metro 8081 antes do build local; previews concorrentes podem fazer o Metro mudar de porta enquanto o script segue usando 8081.
 - [Bootstrap e papéis de acesso](role-bootstrap-and-account-removal.md) — A conta inicial de administrador não deve sobrescrever papéis atribuídos posteriormente; exclusões preservam histórico.
+- [Mapbox e rotas](mapbox-routing-access.md) — Optimization v2 Beta e geocodificação permanente estão habilitados; coordenadas persistidas exigem resultados permanentes.
