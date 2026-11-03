@@ -207,6 +207,25 @@ paths:
                 $ref: "#/components/schemas/Delivery"
         "404":
           description: Delivery not found
+    delete:
+      operationId: deleteDelivery
+      tags: [deliveries]
+      summary: Permanently delete a delivery and its related data
+      parameters:
+        - in: path
+          name: deliveryId
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Delivery and related data permanently deleted
+        "403":
+          description: Only administrators may permanently delete deliveries
+        "404":
+          description: Delivery not found
+        "409":
+          description: Delivery belongs to an active grouped route
   /deliveries/{deliveryId}/dispatch:
     post:
       operationId: dispatchDelivery

@@ -9,6 +9,7 @@ import {
   getGetMyProfileQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetDeliveryQueryKey,
+  getGetCourierEarningsQueryKey,
   getListCourierRoutesQueryKey,
   getListCouriersQueryKey,
   getListDeliveriesQueryKey,
@@ -17,6 +18,7 @@ import {
   getGetDeliveryAnalyticsQueryKey,
   useCreateDelivery,
   useCreateDeliveryRoute,
+  useDeleteDelivery,
   useDispatchDelivery,
   useGetDashboardSummary,
   useGetDelivery,
@@ -31,7 +33,7 @@ import {
 import {
   ArrowLeft, ArrowRight, Bike, Clock3, FilePlus2, Filter,
   History, MapPin, PackageCheck, Phone, Plus, Search, ShieldCheck,
-  Truck, UserRound, X, AlertTriangle, RefreshCw, KeyRound,
+  Truck, UserRound, X, AlertTriangle, RefreshCw, KeyRound, Trash2,
 } from 'lucide-react';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -628,7 +630,130 @@ function CancelDeliveryModal({
   );
 }
 
-function Dashboard({ canCancel }: { canCancel: boolean }) {
+function DeleteDeliveryModal({
+  deliveryId,
+  code,
+  onClose,
+  onDeleted,
+}: {
+  deliveryId: string;
+  code: string;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const qc = useQueryClient();
+  const deleteDelivery = useDeleteDelivery();
+  const [error, setError] = useState("");
+  const requestClose = () => {
+    if (!deleteDelivery.isPending) onClose();
+  };
+  useModalBehavior(requestClose);
+
+  const submit = () => {
+    setError("");
+    deleteDelivery.mutate(
+      { deliveryId },
+      {
+        onSuccess: async () => {
+          await Promise.all([
+            qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
+            qc.invalidateQueries({ queryKey: getGetDeliveryQueryKey(deliveryId) }),
+            qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
+            qc.invalidateQueries({ queryKey: getListCouriersQueryKey() }),
+            qc.invalidateQueries({ queryKey: getGetDeliveryAnalyticsQueryKey() }),
+            qc.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey() }),
+            qc.invalidateQueries({ queryKey: getListCourierRoutesQueryKey() }),
+            qc.invalidateQueries({ queryKey: getListActiveRoutesQueryKey() }),
+          ]);
+          onDeleted();
+          onClose();
+        },
+        onError: (mutationError) => {
+          const apiError = mutationError as Error & { data?: { error?: string } };
+          setError(
+            apiError.data?.error ??
+              (mutationError instanceof Error
+                ? mutationError.message
+                : "Não foi possível excluir definitivamente a entrega."),
+          );
+        },
+      },
+    );
+  };
+
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) requestClose();
+      }}
+    >
+      <section
+        className="modal-card"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-delivery-title"
+        aria-describedby="delete-delivery-confirmation"
+        data-modal-active="true"
+      >
+        <div className="modal-header flex items-start justify-between gap-3 border-b border-border px-5 py-4 sm:px-6 sm:py-5">
+          <div className="min-w-0">
+            <div className="eyebrow text-red-700">EXCLUSÃO DEFINITIVA</div>
+            <h2 id="delete-delivery-title" className="mt-1 text-xl font-bold">
+              Excluir entrega {code}?
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="icon-button modal-close-button"
+            onClick={requestClose}
+            aria-label="Fechar"
+            disabled={deleteDelivery.isPending}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="modal-form">
+          <div className="modal-fields space-y-4 px-5 py-4 sm:px-6 sm:py-5">
+            <p id="delete-delivery-confirmation" className="text-sm leading-relaxed text-foreground">
+              Esta entrega será apagada para sempre e não aparecerá em nenhum relatório. Deseja continuar?
+            </p>
+            {error && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
+          <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={requestClose}
+              disabled={deleteDelivery.isPending}
+            >
+              Manter entrega
+            </button>
+            <button
+              type="button"
+              className="button-primary !bg-red-700 hover:!bg-red-800"
+              onClick={submit}
+              disabled={deleteDelivery.isPending}
+              data-modal-initial-focus
+              data-testid="button-confirm-delete-delivery"
+            >
+              <Trash2 size={15} />
+              {deleteDelivery.isPending ? "Excluindo…" : "Excluir definitivamente"}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: boolean }) {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedCourierId, setSelectedCourierId] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState('');
@@ -641,6 +766,8 @@ function Dashboard({ canCancel }: { canCancel: boolean }) {
   const [storeId, setStoreId] = useState('');
   const [cancelFeedback, setCancelFeedback] = useState<FeedbackMessage | null>(null);
   const [cancelTarget, setCancelTarget] = useState<{ id: string; code: string } | null>(null);
+  const [deleteFeedback, setDeleteFeedback] = useState<FeedbackMessage | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; code: string } | null>(null);
   const qc = useQueryClient();
   const createDeliveryRoute = useCreateDeliveryRoute();
   const summary = useGetDashboardSummary({ query: { refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
@@ -854,6 +981,7 @@ function Dashboard({ canCancel }: { canCancel: boolean }) {
       </div>
       {routeFeedback && <AutoDismissFeedback feedback={routeFeedback} onDismiss={() => setRouteFeedback(null)} className="mx-4 mb-3"/>}
       {cancelFeedback && <AutoDismissFeedback feedback={cancelFeedback} onDismiss={() => setCancelFeedback(null)} className="mx-4 mb-3"/>}
+      {deleteFeedback && <AutoDismissFeedback feedback={deleteFeedback} onDismiss={() => setDeleteFeedback(null)} className="mx-4 mb-3"/>}
       {selectedDeliveryIds.length > 0 && <p className="mx-4 mb-3 text-xs text-muted-foreground">Selecione de 2 a 10 solicitações novas. A melhor sequência será calculada quando o motoboy aceitar a rota.</p>}
       {deliveries.isLoading ? <Skeleton rows={5}/> : deliveries.isError ? <div className="p-8 text-center"><AlertTriangle className="mx-auto mb-2 text-amber-600"/><p className="font-semibold">Falha ao carregar solicitações</p><p className="mb-3 mt-1 text-sm text-muted-foreground">A fila permanece disponível para nova tentativa.</p><button className="button-secondary mx-auto" onClick={() => void deliveries.refetch()}><RefreshCw size={14}/>Tentar novamente</button></div> :
         !deliveries.data?.length ? <EmptyState title="Nenhuma solicitação nesta fila" detail={search || status || storeId ? 'Ajuste os filtros ou registre uma nova entrega.' : 'Quando uma solicitação chegar, ela aparecerá aqui para análise e despacho.'} action={<button className="button-primary" onClick={() => setShowCreate(true)}><Plus size={15}/>Registrar entrega</button>}/> :
@@ -867,7 +995,7 @@ function Dashboard({ canCancel }: { canCancel: boolean }) {
               <td><StatusBadge status={d.status}/></td>
               <td>{d.courierName ? <div className="flex items-center gap-2"><span className="avatar">{d.courierInitials || d.courierName.slice(0,2).toUpperCase()}</span><div><div className="text-xs font-semibold">{d.courierName}</div><div className="text-[10px] text-muted-foreground">{timeAgo(d.lastLocationAt)}</div></div></div> : <span className="text-xs text-muted-foreground">Não atribuído</span>}</td>
               <td className="text-xs text-muted-foreground">{fmtTime(d.updatedAt || d.createdAt)}</td>
-              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{canCancel && !['COMPLETED','CANCELLED'].includes(d.status) && <button className="button-small button-red-outline" type="button" onClick={() => { setCancelFeedback(null); setCancelTarget({ id: d.id, code: d.code }); }} aria-label={`Cancelar pedido ${d.code}`} title="Cancelar pedido" data-testid={`button-cancel-${d.id}`}><X size={14}/>Cancelar pedido</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
+              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{canCancel && !['COMPLETED','CANCELLED'].includes(d.status) && <button className="button-small button-red-outline" type="button" onClick={() => { setCancelFeedback(null); setCancelTarget({ id: d.id, code: d.code }); }} aria-label={`Cancelar pedido ${d.code}`} title="Cancelar pedido" data-testid={`button-cancel-${d.id}`}><X size={14}/>Cancelar pedido</button>}{canDelete && <button className="button-small button-red-outline" type="button" onClick={() => { setDeleteFeedback(null); setDeleteTarget({ id: d.id, code: d.code }); }} aria-label={`Excluir definitivamente ${d.code}`} title="Excluir definitivamente" data-testid={`button-delete-delivery-${d.id}`}><Trash2 size={14}/>Excluir definitivamente</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
             </tr>)}</tbody>
           </table></div>}
     </section>
@@ -883,6 +1011,20 @@ function Dashboard({ canCancel }: { canCancel: boolean }) {
         setCancelFeedback({
           kind: "success",
           text: `Pedido ${cancelTarget.code} cancelado pela Central. O histórico foi preservado.`,
+        });
+      }}
+    />}
+    {deleteTarget && <DeleteDeliveryModal
+      deliveryId={deleteTarget.id}
+      code={deleteTarget.code}
+      onClose={() => setDeleteTarget(null)}
+      onDeleted={() => {
+        setSelectedDeliveryIds((current) =>
+          current.filter((id) => id !== deleteTarget.id),
+        );
+        setDeleteFeedback({
+          kind: "success",
+          text: `Entrega ${deleteTarget.code} excluída definitivamente.`,
         });
       }}
     />}
@@ -1045,7 +1187,7 @@ function UserPortalRoute() {
   if (profile.data.role === 'STORE_MANAGER' || profile.data.role === 'STORE_STAFF') {
     return <StorePortal profile={profile.data} />;
   }
-  return <RoutedErrorBoundary><AppShell profile={profile.data}><Dashboard canCancel={profile.data.role === 'ADMIN' || profile.data.role === 'CENTRAL'} /></AppShell></RoutedErrorBoundary>;
+  return <RoutedErrorBoundary><AppShell profile={profile.data}><Dashboard canCancel={profile.data.role === 'ADMIN' || profile.data.role === 'CENTRAL'} canDelete={profile.data.role === 'ADMIN'} /></AppShell></RoutedErrorBoundary>;
 }
 
 function CentralRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {

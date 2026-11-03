@@ -1175,6 +1175,80 @@ export function useGetDelivery<TData = Awaited<ReturnType<typeof getDelivery>>, 
 
 
 
+export const getDeleteDeliveryUrl = (deliveryId: string,) => {
+
+
+
+
+  return `/api/deliveries/${deliveryId}`
+}
+
+/**
+ * @summary Permanently delete a delivery and its related data
+ */
+export const deleteDelivery = async (deliveryId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteDeliveryUrl(deliveryId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteDeliveryMutationKey = () => ['deleteDelivery'] as const;
+
+export const getDeleteDeliveryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDelivery>>, TError,DeleteDeliveryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDelivery>>, TError,DeleteDeliveryMutationVariables, TContext> => {
+
+const mutationKey = getDeleteDeliveryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDelivery>>, DeleteDeliveryMutationVariables> = (props) => {
+          const {deliveryId} = props ?? {};
+
+          return  deleteDelivery(deliveryId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDeliveryMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDelivery>>>
+
+    export type DeleteDeliveryMutationError = ErrorType<void>
+    export type DeleteDeliveryMutationVariables = {deliveryId: string}
+
+    /**
+ * @summary Permanently delete a delivery and its related data
+ */
+export const useDeleteDelivery = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDelivery>>, TError,DeleteDeliveryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDelivery>>,
+        TError,
+        DeleteDeliveryMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteDeliveryMutationOptions(options), queryClient);
+    }
+
 export const getDispatchDeliveryUrl = (deliveryId: string,) => {
 
 

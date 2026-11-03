@@ -159,6 +159,29 @@ export class ObjectStorageService {
     return objectFile;
   }
 
+  async deleteObjectEntity(objectPath: string): Promise<void> {
+    if (!objectPath.startsWith('/objects/')) {
+      throw new ObjectNotFoundError();
+    }
+
+    const parts = objectPath.slice(1).split('/');
+    if (parts.length < 2 || !parts.slice(1).every(Boolean)) {
+      throw new ObjectNotFoundError();
+    }
+
+    const entityId = parts.slice(1).join('/');
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith('/')) {
+      entityDir = `${entityDir}/`;
+    }
+    const objectEntityPath = `${entityDir}${entityId}`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    await objectStorageClient
+      .bucket(bucketName)
+      .file(objectName)
+      .delete({ ignoreNotFound: true });
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith('https://storage.googleapis.com/')) {
       return rawPath;

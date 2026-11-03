@@ -339,6 +339,16 @@ export const GetDeliveryResponse = zod.object({
 
 
 /**
+ * @summary Permanently delete a delivery and its related data
+ */
+export const DeleteDeliveryParams = zod.object({
+  "deliveryId": zod.coerce.string()
+})
+
+export const DeleteDeliveryResponse = zod.void()
+
+
+/**
  * @summary Offer a delivery to an eligible courier
  */
 export const DispatchDeliveryParams = zod.object({

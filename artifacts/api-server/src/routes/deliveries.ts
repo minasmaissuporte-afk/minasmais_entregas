@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { clerkClient, getAuth } from "@clerk/express";
-import { and, desc, eq, gte, ilike, inArray, lt, or } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   GetCourierEarningsQueryParams,
@@ -921,6 +921,192 @@ router.get(
     return;
   }
   res.json(GetDeliveryResponse.parse(delivery));
+  },
+);
+
+router.delete(
+  "/deliveries/:deliveryId",
+  requireRole("ADMIN"),
+  async (req, res): Promise<void> => {
+    const params = GetDeliveryParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "Entrega inválida." });
+      return;
+    }
+
+    let result:
+      | { deleted: true }
+      | { error: "not_found" | "active_grouped_route" };
+
+    try {
+      result = await db.transaction(async (tx) => {
+        const [delivery] = await tx
+          .select()
+          .from(deliveriesTable)
+          .where(eq(deliveriesTable.id, params.data.deliveryId))
+          .for("update")
+          .limit(1);
+        if (!delivery) return { error: "not_found" as const };
+
+        const linkedRoutes = await tx
+          .select()
+          .from(deliveryRoutesTable)
+          .where(
+            sql`${deliveryRoutesTable.deliveryIds} @> ARRAY[${delivery.id}]::text[]`,
+          )
+          .for("update");
+
+        const activeStatuses = [
+          "OFFERED",
+          "ACCEPTED",
+          "TO_STORE",
+          "AT_STORE",
+          "IN_TRANSIT",
+        ];
+        const otherActiveRouteDeliveryIds = [
+          ...new Set(
+            linkedRoutes
+              .filter((route) => route.status === "ACCEPTED")
+              .flatMap((route) =>
+                route.deliveryIds.filter((id) => id !== delivery.id),
+              ),
+          ),
+        ];
+        if (otherActiveRouteDeliveryIds.length > 0) {
+          const [activeRouteDelivery] = await tx
+            .select({ id: deliveriesTable.id })
+            .from(deliveriesTable)
+            .where(
+              and(
+                inArray(deliveriesTable.id, otherActiveRouteDeliveryIds),
+                inArray(deliveriesTable.status, activeStatuses),
+              ),
+            )
+            .limit(1);
+          if (activeRouteDelivery) {
+            return { error: "active_grouped_route" as const };
+          }
+        }
+
+        const evidenceUploads = await tx
+          .select({ objectPath: deliveryEvidenceUploadsTable.objectPath })
+          .from(deliveryEvidenceUploadsTable)
+          .where(eq(deliveryEvidenceUploadsTable.deliveryId, delivery.id));
+        const evidencePaths = new Set(
+          [
+            delivery.evidencePath,
+            ...evidenceUploads.map((upload) => upload.objectPath),
+          ].filter((path): path is string => Boolean(path)),
+        );
+
+        for (const route of linkedRoutes) {
+          const remainingDeliveryIds = route.deliveryIds.filter(
+            (id) => id !== delivery.id,
+          );
+          if (route.status === "OFFERED" && remainingDeliveryIds.length >= 2) {
+            await tx
+              .update(deliveryRoutesTable)
+              .set({ deliveryIds: remainingDeliveryIds })
+              .where(eq(deliveryRoutesTable.id, route.id));
+            continue;
+          }
+
+          if (route.status === "OFFERED" && remainingDeliveryIds.length === 1) {
+            const remainingDeliveryId = remainingDeliveryIds[0];
+            const [remainingDelivery] = await tx
+              .select({ id: deliveriesTable.id, status: deliveriesTable.status })
+              .from(deliveriesTable)
+              .where(eq(deliveriesTable.id, remainingDeliveryId))
+              .for("update")
+              .limit(1);
+            if (remainingDelivery?.status === "OFFERED") {
+              await tx
+                .update(deliveriesTable)
+                .set({ status: "REQUESTED", updatedAt: new Date() })
+                .where(eq(deliveriesTable.id, remainingDeliveryId));
+              await tx.insert(deliveryEventsTable).values({
+                id: randomUUID(),
+                deliveryId: remainingDeliveryId,
+                kind: "route_offer_removed",
+                label:
+                  "Oferta de rota desfeita após exclusão de outra entrega",
+                actor: "Administrador",
+              });
+            }
+          }
+
+          await tx
+            .delete(deliveryRoutesTable)
+            .where(eq(deliveryRoutesTable.id, route.id));
+        }
+
+        const storage = new ObjectStorageService();
+        for (const objectPath of evidencePaths) {
+          await storage.deleteObjectEntity(
+            storage.normalizeObjectEntityPath(objectPath),
+          );
+        }
+
+        if (delivery.courierId) {
+          const [courier] = await tx
+            .select({
+              id: couriersTable.id,
+              currentDeliveryCode: couriersTable.currentDeliveryCode,
+            })
+            .from(couriersTable)
+            .where(eq(couriersTable.id, delivery.courierId))
+            .for("update")
+            .limit(1);
+          if (courier?.currentDeliveryCode === delivery.code) {
+            const [otherActiveDelivery] = await tx
+              .select({ id: deliveriesTable.id })
+              .from(deliveriesTable)
+              .where(
+                and(
+                  eq(deliveriesTable.courierId, delivery.courierId),
+                  inArray(deliveriesTable.status, activeStatuses),
+                  sql`${deliveriesTable.id} <> ${delivery.id}`,
+                ),
+              )
+              .limit(1);
+            if (!otherActiveDelivery) {
+              await tx
+                .update(couriersTable)
+                .set({ status: "AVAILABLE", currentDeliveryCode: null })
+                .where(eq(couriersTable.id, delivery.courierId));
+            }
+          }
+        }
+
+        await tx
+          .delete(deliveriesTable)
+          .where(eq(deliveriesTable.id, delivery.id));
+        return { deleted: true as const };
+      });
+    } catch (error) {
+      req.log.error(
+        { err: error, deliveryId: params.data.deliveryId },
+        "Failed to permanently delete delivery and related data",
+      );
+      res.status(503).json({
+        error: "Não foi possível concluir a exclusão definitiva. Atualize e tente novamente.",
+      });
+      return;
+    }
+
+    if ("error" in result) {
+      if (result.error === "not_found") {
+        res.status(404).json({ error: "Entrega não encontrada." });
+        return;
+      }
+      res.status(409).json({
+        error:
+          "Esta entrega pertence a uma rota agrupada em andamento. Conclua ou encerre a rota antes de excluir definitivamente.",
+      });
+      return;
+    }
+
+    res.status(204).end();
   },
 );
 
