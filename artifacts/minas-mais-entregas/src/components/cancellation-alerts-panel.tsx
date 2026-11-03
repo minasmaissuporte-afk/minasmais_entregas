@@ -295,16 +295,17 @@ export default function CancellationAlertsPanel() {
           </DialogHeader>
           <div className="space-y-2">
             {reasonDrafts.map((reason, index) => (
-              <div key={reason.id} className="flex items-center gap-2">
+              <div key={reason.id} className="cancellation-reason-row flex items-center gap-2">
                 <input
-                  className="h-5 w-5 accent-[#a91d2a]"
                   type="checkbox"
+                  className="h-5 w-5 accent-[#a91d2a]"
                   checked={reason.active}
                   disabled={reason.id === "MOTORCYCLE_ISSUE"}
                   aria-label={`Ativar ${reason.label}`}
                   onChange={(event) => setReasonDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, active: event.target.checked } : item))}
                 />
                 <input
+                  type="text"
                   className="h-12 min-w-0 flex-1 rounded-lg border border-border px-3 text-sm"
                   value={reason.label}
                   disabled={reason.id === "MOTORCYCLE_ISSUE"}

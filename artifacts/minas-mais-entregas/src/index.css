@@ -404,6 +404,8 @@
 input:not(.search-box input),textarea { width:100%; border:1px solid #e2e0dd; border-radius:7px; background:#fff; padding:9px 10px; color:#32353a; font-size:12px; }
 input::placeholder,textarea::placeholder { color:#a1a1a3; }
 textarea { resize:vertical; }
+.cancellation-reason-row > input[type="checkbox"] { width:20px; min-width:20px; height:20px; flex:0 0 20px; padding:0; }
+.cancellation-reason-row > input[type="text"] { width:0; min-width:0; height:48px; flex:1 1 auto; padding:0 12px; font-size:14px; }
 .field-label { display:flex; flex-direction:column; gap:6px; color:#777a80; font-size:11px; font-weight:600; }
 .skeleton { border-radius:6px; background:linear-gradient(90deg,#f1f0ee,#f8f7f5,#f1f0ee); background-size:200% 100%; animation:skeleton-shift 1.4s ease infinite; }
 @keyframes skeleton-shift { to { background-position:-200% 0; } }
