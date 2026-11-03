@@ -32,37 +32,60 @@ function normalizeVapidKey(value: string | undefined, expectedBytes: number) {
 
   let key = stripWrappingQuotes(value)
     .replace(/\\r?\\n/g, "\n")
-    .replace(/^(?:VAPID_)?(?:PUBLIC|PRIVATE)_KEY\s*[:=]\s*/i, "")
-    .replace(/^(?:public|private)\s+key\s*:\s*/i, "");
+    .trim();
+  const publicPem = key.match(
+    /-----BEGIN (PUBLIC KEY|EC PUBLIC KEY)-----[\s\S]*?-----END \1-----/,
+  );
+  if (expectedBytes === 65 && publicPem) {
+    key = publicPem[0];
+  } else if (expectedBytes === 65) {
+    const publicLine = key.match(
+      /(?:^|\n)\s*(?:VAPID_)?PUBLIC[\s_]?KEY\s*[:=]\s*(?:\r?\n\s*)?([^\r\n]+)/i,
+    );
+    if (publicLine) key = publicLine[1];
+  } else {
+    key = key
+      .replace(/^(?:VAPID_)?PRIVATE[\s_]?KEY\s*[:=]\s*/i, "")
+      .replace(/^private\s+key\s*:\s*/i, "");
+  }
   key = stripWrappingQuotes(key);
 
   let bytes: Buffer;
   const pemMatch = key.match(
-    /^-----BEGIN PUBLIC KEY-----([\s\S]*?)-----END PUBLIC KEY-----$/,
+    /^-----BEGIN (?:PUBLIC KEY|EC PUBLIC KEY)-----([\s\S]*?)-----END (?:PUBLIC KEY|EC PUBLIC KEY)-----$/,
   );
   if (expectedBytes === 65 && pemMatch) {
     const pemBody = pemMatch[1].replace(/\s+/g, "");
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(pemBody)) return null;
     const der = Buffer.from(pemBody, "base64");
-    if (
-      der.length !== P256_SPKI_PREFIX.length + 65 ||
-      !der.subarray(0, P256_SPKI_PREFIX.length).equals(P256_SPKI_PREFIX)
-    ) {
-      return null;
+    if (der.length === 65 && der[0] === 4) {
+      bytes = der;
+    } else {
+      if (
+        der.length !== P256_SPKI_PREFIX.length + 65 ||
+        !der.subarray(0, P256_SPKI_PREFIX.length).equals(P256_SPKI_PREFIX)
+      ) {
+        return null;
+      }
+      bytes = der.subarray(P256_SPKI_PREFIX.length);
     }
-    bytes = der.subarray(P256_SPKI_PREFIX.length);
   } else {
-    key = key.replace(/\s+/g, "");
+    const hexKey = key.replace(/^0x/i, "").replace(/[\s:.-]/g, "");
+    if (expectedBytes === 65 && /^[0-9a-f]{130}$/i.test(hexKey)) {
+      bytes = Buffer.from(hexKey, "hex");
+    } else {
+      key = key.replace(/\s+/g, "");
 
-    if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(key)) return null;
-    const unpadded = key.replace(/=+$/, "");
-    if (unpadded.length % 4 === 1) return null;
+      if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(key)) return null;
+      const unpadded = key.replace(/=+$/, "");
+      if (unpadded.length % 4 === 1) return null;
 
-    const base64 = unpadded.replace(/-/g, "+").replace(/_/g, "/");
-    bytes = Buffer.from(
-      `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`,
-      "base64",
-    );
+      const base64 = unpadded.replace(/-/g, "+").replace(/_/g, "/");
+      bytes = Buffer.from(
+        `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`,
+        "base64",
+      );
+    }
   }
   if (bytes.length !== expectedBytes) return null;
   if (expectedBytes === 65 && bytes[0] !== 4) return null;

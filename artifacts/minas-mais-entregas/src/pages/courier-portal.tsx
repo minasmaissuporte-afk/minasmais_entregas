@@ -73,43 +73,66 @@ function decodeVapidKey(value: string) {
 
   let normalized = stripWrappingQuotes(value)
     .replace(/\\r?\\n/g, "\n")
-    .replace(/^(?:VAPID_)?PUBLIC_KEY\s*[:=]\s*/i, "")
-    .replace(/^public\s+key\s*:\s*/i, "");
-  normalized = stripWrappingQuotes(normalized);
+    .trim();
+
+  const publicPem = normalized.match(
+    /-----BEGIN (PUBLIC KEY|EC PUBLIC KEY)-----[\s\S]*?-----END \1-----/,
+  );
+  if (publicPem) {
+    normalized = publicPem[0];
+  } else {
+    const publicLine = normalized.match(
+      /(?:^|\n)\s*(?:VAPID_)?PUBLIC[\s_]?KEY\s*[:=]\s*(?:\r?\n\s*)?([^\r\n]+)/i,
+    );
+    if (publicLine) normalized = publicLine[1];
+  }
+  normalized = stripWrappingQuotes(normalized).replace(/[;,]\s*$/, "");
 
   let raw: string;
   const pemMatch = normalized.match(
-    /^-----BEGIN PUBLIC KEY-----([\s\S]*?)-----END PUBLIC KEY-----$/,
+    /^-----BEGIN (?:PUBLIC KEY|EC PUBLIC KEY)-----([\s\S]*?)-----END (?:PUBLIC KEY|EC PUBLIC KEY)-----$/,
   );
   if (pemMatch) {
     const pemBody = pemMatch[1].replace(/\s+/g, "");
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(pemBody)) {
       throw new Error("O conteúdo PEM da chave VAPID pública está inválido.");
     }
+    const unpaddedPem = pemBody.replace(/=+$/, "");
     const der = window.atob(
-      `${pemBody.replace(/=+$/, "")}${"=".repeat((4 - (pemBody.replace(/=+$/, "").length % 4)) % 4)}`,
+      `${unpaddedPem}${"=".repeat((4 - (unpaddedPem.length % 4)) % 4)}`,
     );
-    if (der.length !== p256SpkiPrefix.length + 65) {
-      throw new Error("O PEM não contém uma chave pública P-256 válida.");
-    }
-    for (let index = 0; index < p256SpkiPrefix.length; index += 1) {
-      if (der.charCodeAt(index) !== p256SpkiPrefix[index]) {
+    if (der.length === 65 && der.charCodeAt(0) === 4) {
+      raw = der;
+    } else {
+      if (der.length !== p256SpkiPrefix.length + 65) {
         throw new Error("O PEM não contém uma chave pública P-256 válida.");
       }
+      for (let index = 0; index < p256SpkiPrefix.length; index += 1) {
+        if (der.charCodeAt(index) !== p256SpkiPrefix[index]) {
+          throw new Error("O PEM não contém uma chave pública P-256 válida.");
+        }
+      }
+      raw = der.slice(p256SpkiPrefix.length);
     }
-    raw = der.slice(p256SpkiPrefix.length);
   } else {
     normalized = normalized.replace(/\s+/g, "");
-    if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(normalized)) {
-      throw new Error("A chave VAPID pública está em formato inválido. Use a chave VAPID ou um PEM público P-256 válido.");
+    const hexKey = normalized.replace(/^0x/i, "");
+    if (/^[0-9a-f]{130}$/i.test(hexKey)) {
+      raw = Array.from({ length: 65 }, (_, index) =>
+        String.fromCharCode(Number.parseInt(hexKey.slice(index * 2, index * 2 + 2), 16)),
+      ).join("");
+    } else {
+      if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(normalized)) {
+        throw new Error("Não reconheci o formato da chave VAPID. Se copiou a saída completa, o sistema agora tentará usar somente a linha Public Key.");
+      }
+      const unpadded = normalized.replace(/=+$/, "");
+      if (unpadded.length % 4 === 1) {
+        throw new Error("A chave VAPID pública está incompleta. Confira a configuração de notificações.");
+      }
+      const base64 = unpadded.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
+      raw = window.atob(padded);
     }
-    const unpadded = normalized.replace(/=+$/, "");
-    if (unpadded.length % 4 === 1) {
-      throw new Error("A chave VAPID pública está incompleta. Confira o segredo VAPID_PUBLIC_KEY.");
-    }
-    const base64 = unpadded.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
-    raw = window.atob(padded);
   }
 
   if (raw.length !== 65 || raw.charCodeAt(0) !== 4) {
