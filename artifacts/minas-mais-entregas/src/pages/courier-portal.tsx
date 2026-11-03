@@ -54,9 +54,36 @@ const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 function decodeVapidKey(value: string) {
-  const padding = "=".repeat((4 - value.length % 4) % 4);
-  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = window.atob(base64);
+  const stripWrappingQuotes = (input: string) => {
+    const trimmed = input.trim();
+    if (
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      return trimmed.slice(1, -1).trim();
+    }
+    return trimmed;
+  };
+
+  let normalized = stripWrappingQuotes(value)
+    .replace(/^(?:VAPID_)?PUBLIC_KEY\s*[:=]\s*/i, "")
+    .replace(/^public\s+key\s*:\s*/i, "");
+  normalized = stripWrappingQuotes(normalized).replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(normalized)) {
+    throw new Error("A chave VAPID pública está em formato inválido. Use apenas o valor da chave, sem cabeçalho PEM ou rótulo.");
+  }
+
+  const unpadded = normalized.replace(/=+$/, "");
+  if (unpadded.length % 4 === 1) {
+    throw new Error("A chave VAPID pública está incompleta. Confira o segredo VAPID_PUBLIC_KEY.");
+  }
+
+  const base64 = unpadded.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
+  const raw = window.atob(padded);
+  if (raw.length !== 65 || raw.charCodeAt(0) !== 4) {
+    throw new Error("A chave VAPID pública tem tamanho inválido. Confira o segredo VAPID_PUBLIC_KEY.");
+  }
   return Uint8Array.from(raw, (character) => character.charCodeAt(0));
 }
 
@@ -109,12 +136,13 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
         setPushMessage("Notificações desativadas neste aparelho.");
       } else {
         if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("Este navegador não oferece notificações push.");
+        const applicationServerKey = decodeVapidKey(pushConfig.data.publicKey);
         const permission = await Notification.requestPermission();
         if (permission !== "granted") throw new Error("Permita notificações nas configurações do navegador para ativar os avisos.");
         const registration = await navigator.serviceWorker.ready;
         const subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: decodeVapidKey(pushConfig.data.publicKey),
+          applicationServerKey,
         });
         const json = subscription.toJSON();
         if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("Não foi possível obter os dados da assinatura.");

@@ -9,22 +9,72 @@ import {
 import { logger } from "./logger";
 
 const configured = () =>
-  Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+  Boolean(process.env.VAPID_PUBLIC_KEY?.trim() && process.env.VAPID_PRIVATE_KEY?.trim());
+
+function stripWrappingQuotes(value: string) {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function normalizeVapidKey(value: string | undefined, expectedBytes: number) {
+  if (!value) return null;
+
+  let key = stripWrappingQuotes(value)
+    .replace(/^(?:VAPID_)?(?:PUBLIC|PRIVATE)_KEY\s*[:=]\s*/i, "")
+    .replace(/^(?:public|private)\s+key\s*:\s*/i, "");
+  key = stripWrappingQuotes(key).replace(/\s+/g, "");
+
+  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(key)) return null;
+  const unpadded = key.replace(/=+$/, "");
+  if (unpadded.length % 4 === 1) return null;
+
+  const base64 = unpadded.replace(/-/g, "+").replace(/_/g, "/");
+  const bytes = Buffer.from(
+    `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`,
+    "base64",
+  );
+  if (bytes.length !== expectedBytes) return null;
+  if (expectedBytes === 65 && bytes[0] !== 4) return null;
+
+  return bytes.toString("base64url");
+}
 
 let vapidConfigured = false;
 function configureVapid() {
   if (vapidConfigured || !configured()) return;
-  webpush.setVapidDetails(
-    "mailto:balancocompulsorio@drogariasminasmais.com.br",
-    process.env.VAPID_PUBLIC_KEY!,
-    process.env.VAPID_PRIVATE_KEY!,
-  );
-  vapidConfigured = true;
+  const publicKey = normalizeVapidKey(process.env.VAPID_PUBLIC_KEY, 65);
+  const privateKey = normalizeVapidKey(process.env.VAPID_PRIVATE_KEY, 32);
+  if (!publicKey || !privateKey) {
+    logger.warn("Web push VAPID keys have an invalid format");
+    return;
+  }
+  try {
+    webpush.setVapidDetails(
+      "mailto:balancocompulsorio@drogariasminasmais.com.br",
+      publicKey,
+      privateKey,
+    );
+    vapidConfigured = true;
+  } catch {
+    logger.warn("Web push VAPID keys could not be configured");
+  }
 }
 
 export function getPushConfig() {
-  const publicKey = process.env.VAPID_PUBLIC_KEY?.trim() || null;
-  return { enabled: Boolean(publicKey && process.env.VAPID_PRIVATE_KEY), publicKey };
+  const rawPublicKey = process.env.VAPID_PUBLIC_KEY?.trim() || null;
+  const publicKey = rawPublicKey
+    ? normalizeVapidKey(rawPublicKey, 65) ?? rawPublicKey
+    : null;
+  return {
+    enabled: Boolean(rawPublicKey && process.env.VAPID_PRIVATE_KEY?.trim()),
+    publicKey,
+  };
 }
 
 export async function notifyCouriers(
