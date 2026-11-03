@@ -177,6 +177,15 @@ export default function SignInScreen() {
             testID="input-sign-in-password"
           />
           {errors.fields.password ? <Text style={[styles.fieldError, { color: colors.destructive }]}>{errors.fields.password.message}</Text> : null}
+          <Link href={'/(auth)/forgot-password' as Href} asChild>
+            <Pressable
+              accessibilityRole="link"
+              testID="link-forgot-password"
+              style={styles.forgotPasswordButton}
+            >
+              <Text style={[styles.link, { color: colors.primary }]}>Esqueceu a senha?</Text>
+            </Pressable>
+          </Link>
         </>
       ) : (
         <>
@@ -264,5 +273,6 @@ const styles = StyleSheet.create({
   footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: 24 },
   footerText: { fontFamily: 'Inter_400Regular', fontSize: 12 },
   link: { fontFamily: 'Inter_700Bold', fontSize: 12 },
+  forgotPasswordButton: { alignSelf: 'flex-end', paddingVertical: 8 },
   resendButton: { alignSelf: 'center', paddingVertical: 18 },
 });
