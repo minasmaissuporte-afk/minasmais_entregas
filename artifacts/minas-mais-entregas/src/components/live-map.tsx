@@ -12,12 +12,18 @@ export default function LiveMap({
   ariaLabel,
   size = "default",
   showCenterControls = false,
+  centerOnStoresOnly = false,
+  showCenterOnMe = true,
+  controlsAboveAttribution = false,
 }: {
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
   ariaLabel: string;
   size?: MapSize;
   showCenterControls?: boolean;
+  centerOnStoresOnly?: boolean;
+  showCenterOnMe?: boolean;
+  controlsAboveAttribution?: boolean;
 }) {
   return (
     <Suspense
@@ -37,6 +43,9 @@ export default function LiveMap({
         ariaLabel={ariaLabel}
         size={size}
         showCenterControls={showCenterControls}
+        centerOnStoresOnly={centerOnStoresOnly}
+        showCenterOnMe={showCenterOnMe}
+        controlsAboveAttribution={controlsAboveAttribution}
       />
     </Suspense>
   );

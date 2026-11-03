@@ -33,8 +33,8 @@ export const GetDashboardSummaryResponse = zod.object({
   "availableCouriers": zod.number().int(),
   "busyCouriers": zod.number().int(),
   "offlineCouriers": zod.number().int(),
-  "averageAcceptanceMinutes": zod.number(),
-  "averageTotalMinutes": zod.number()
+  "averageAcceptanceMinutes": zod.number().nullable(),
+  "averageTotalMinutes": zod.number().nullable()
 })
 
 
@@ -339,17 +339,6 @@ export const GetDeliveryResponse = zod.object({
 
 
 /**
- * Administrators may remove selected test records. Deliveries in active progress or accepted routes cannot be deleted.
- * @summary Delete an inactive delivery record
- */
-export const DeleteDeliveryParams = zod.object({
-  "deliveryId": zod.coerce.string()
-})
-
-export const DeleteDeliveryResponse = zod.void()
-
-
-/**
  * @summary Offer a delivery to an eligible courier
  */
 export const DispatchDeliveryParams = zod.object({
@@ -406,9 +395,13 @@ export const UpdateDeliveryStatusParams = zod.object({
   "deliveryId": zod.coerce.string()
 })
 
+export const updateDeliveryStatusBodyNoteMax = 500;
+
+
+
 export const UpdateDeliveryStatusBody = zod.object({
   "status": zod.enum(['ACCEPTED', 'TO_STORE', 'AT_STORE', 'IN_TRANSIT', 'COMPLETED', 'CANCELLED']),
-  "note": zod.string().optional(),
+  "note": zod.string().max(updateDeliveryStatusBodyNoteMax).optional(),
   "evidencePath": zod.string().optional()
 })
 

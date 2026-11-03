@@ -340,10 +340,13 @@
 .nav-caption { padding:0 12px 10px; }
 .nav-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; color:#65676c; font-size:13px; font-weight:600; transition:background .16s,color .16s; }
 .nav-link:hover,.nav-active { color:#a91c29; background:#fbf0f1; }
-.nav-live-dot { width:6px; height:6px; border-radius:50%; background:#b91e2c; box-shadow:0 0 0 3px #f8e5e6; }
+.nav-count-badge { display:inline-flex; min-width:20px; height:20px; align-items:center; justify-content:center; border-radius:999px; background:#b91e2c; padding:0 5px; color:#fff; font-size:10px; font-weight:800; line-height:1; }
+.nav-count-badge--mobile { position:absolute; top:-3px; right:-3px; min-width:17px; height:17px; padding:0 4px; box-shadow:0 0 0 2px #fff; }
 .topbar { display:flex; align-items:center; height:54px; padding:0 22px; border-bottom:1px solid #e7e6e3; background:rgba(255,255,255,.76); }
 .online-indicator { display:flex; align-items:center; gap:6px; border:1px solid #dce9dd; background:#f3f8f3; color:#4d7857; padding:5px 9px; border-radius:20px; font-size:10px; font-weight:700; }
 .online-indicator i { width:6px; height:6px; border-radius:50%; background:#5c9868; }
+.online-indicator--offline { border-color:#e1e2e4; background:#f2f2f3; color:#73767c; }
+.online-indicator--offline i { background:#85888e; }
 .panel { background:#fff; border:1px solid #e7e6e3; border-radius:11px; box-shadow:0 1px 2px rgba(24,28,32,.025); }
 .metric-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
 .metric-accent { border-color:#edd6d8; background:linear-gradient(140deg,#fff 65%,#fff8f8); }

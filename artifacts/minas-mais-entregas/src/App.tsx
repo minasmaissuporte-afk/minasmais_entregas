@@ -17,7 +17,6 @@ import {
   getGetDeliveryAnalyticsQueryKey,
   useCreateDelivery,
   useCreateDeliveryRoute,
-  useDeleteDelivery,
   useDispatchDelivery,
   useGetDashboardSummary,
   useGetDelivery,
@@ -33,10 +32,10 @@ import {
   ArrowLeft, ArrowRight, Bike, Clock3, FilePlus2, Filter,
   History, MapPin, PackageCheck, Phone, Plus, Search, ShieldCheck,
   Truck, UserRound, X, AlertTriangle, RefreshCw, KeyRound,
-  Trash2,
 } from 'lucide-react';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { AutoDismissFeedback, type FeedbackMessage } from '@/components/auto-dismiss-feedback';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -216,15 +215,15 @@ function HomeRedirect() {
 const statusNames: Record<string, string> = {
   REQUESTED: 'Solicitada', AWAITING_COURIER: 'Aguardando entregador', OFFERED: 'Oferta enviada',
   ACCEPTED: 'Aceita', TO_STORE: 'A caminho da loja', AT_STORE: 'Na loja',
-  IN_TRANSIT: 'Em entrega', COMPLETED: 'Concluída', CANCELLED: 'Cancelada',
+  IN_TRANSIT: 'Em entrega', COMPLETED: 'Concluída', CANCELLED: 'Cancelado pela Central',
 };
 const statusOptions: Record<string, string[]> = {
-  REQUESTED: ['CANCELLED'],
-  OFFERED: ['ACCEPTED', 'CANCELLED'],
-  ACCEPTED: ['TO_STORE', 'AT_STORE', 'CANCELLED'],
-  TO_STORE: ['AT_STORE', 'CANCELLED'],
-  AT_STORE: ['IN_TRANSIT', 'CANCELLED'],
-  IN_TRANSIT: ['COMPLETED', 'CANCELLED'],
+  REQUESTED: [],
+  OFFERED: ['ACCEPTED'],
+  ACCEPTED: ['TO_STORE', 'AT_STORE'],
+  TO_STORE: ['AT_STORE'],
+  AT_STORE: ['IN_TRANSIT'],
+  IN_TRANSIT: ['COMPLETED'],
 };
 const fmtTime = (value?: string | null) => value ? new Date(value).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 const timeAgo = (value?: string | null) => {
@@ -254,6 +253,14 @@ function EmptyState({ title, detail, action }: { title: string; detail: string; 
 function AppShell({ children, profile }: { children: ReactNode; profile: AppUser }) {
   const [location] = useLocation();
   const { signOut } = useClerk();
+  const summary = useGetDashboardSummary({
+    query: {
+      queryKey: getGetDashboardSummaryQueryKey(),
+      refetchInterval: 15000,
+      refetchOnWindowFocus: true,
+    },
+  });
+  const awaitingCount = summary.data?.awaitingCourier ?? 0;
   return <div className="ops-shell md:flex">
     <aside className="ops-sidebar flex md:min-h-[100dvh] md:w-[232px] md:flex-col">
       <div className="flex w-full items-center gap-3 border-b border-border px-5 py-5 md:border-b-0">
@@ -263,7 +270,7 @@ function AppShell({ children, profile }: { children: ReactNode; profile: AppUser
       <div className="hidden px-3 pt-5 md:block">
         <div className="nav-caption">OPERAÇÃO</div>
         <Link href="/" className={`nav-link ${location === '/' ? 'nav-active' : ''}`} data-testid="link-operations">
-          <Truck size={17} strokeWidth={1.8} /><span>Entregas</span><span className="ml-auto nav-live-dot" />
+          <Truck size={17} strokeWidth={1.8} /><span>Entregas</span>{awaitingCount > 0 && <span className="nav-count-badge ml-auto">{awaitingCount}</span>}
         </Link>
         {profile.role === 'ADMIN' && <Link href="/access" className={`nav-link ${location === '/access' ? 'nav-active' : ''}`}>
           <ShieldCheck size={17} strokeWidth={1.8}/><span>Acessos</span>
@@ -288,7 +295,7 @@ function AppShell({ children, profile }: { children: ReactNode; profile: AppUser
           <div className="ml-auto flex items-center gap-2">
             <Link href="/account" className="icon-button" aria-label="Minha conta e senha" title="Minha conta e senha"><KeyRound size={16}/></Link>
             <nav className="flex items-center gap-1 md:hidden" aria-label="Navegação principal">
-              <Link href="/" className="icon-button" aria-label="Entregas"><Truck size={16}/></Link>
+              <Link href="/" className="icon-button relative" aria-label={`Entregas${awaitingCount > 0 ? `, ${awaitingCount} aguardando entregador` : ''}`}><Truck size={16}/>{awaitingCount > 0 && <span className="nav-count-badge nav-count-badge--mobile">{awaitingCount}</span>}</Link>
               {profile.role === 'ADMIN' && <>
                 <Link href="/filiais" className="icon-button" aria-label="Filiais"><MapPin size={16}/></Link>
                 <Link href="/access" className="icon-button" aria-label="Acessos"><ShieldCheck size={16}/></Link>
@@ -483,21 +490,159 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
   );
 }
 
-function Dashboard({ isAdmin }: { isAdmin: boolean }) {
+function CancelDeliveryModal({
+  deliveryId,
+  code,
+  onClose,
+  onCancelled,
+}: {
+  deliveryId: string;
+  code: string;
+  onClose: () => void;
+  onCancelled: () => void;
+}) {
+  const qc = useQueryClient();
+  const updateStatus = useUpdateDeliveryStatus();
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const requestClose = () => {
+    if (!updateStatus.isPending) onClose();
+  };
+  useModalBehavior(requestClose);
+
+  const submit = () => {
+    setError("");
+    const note = reason.trim();
+    updateStatus.mutate(
+      {
+        deliveryId,
+        data: { status: "CANCELLED", ...(note ? { note } : {}) },
+      },
+      {
+        onSuccess: async () => {
+          await Promise.all([
+            qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
+            qc.invalidateQueries({ queryKey: getGetDeliveryQueryKey(deliveryId) }),
+            qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
+            qc.invalidateQueries({ queryKey: getListCouriersQueryKey() }),
+            qc.invalidateQueries({ queryKey: getListCourierRoutesQueryKey() }),
+            qc.invalidateQueries({ queryKey: getGetDeliveryAnalyticsQueryKey() }),
+          ]);
+          onCancelled();
+          onClose();
+        },
+        onError: (mutationError) => {
+          const apiError = mutationError as Error & { data?: { error?: string } };
+          setError(
+            apiError.data?.error ??
+              (mutationError instanceof Error
+                ? mutationError.message
+                : "Não foi possível cancelar o pedido."),
+          );
+        },
+      },
+    );
+  };
+
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) requestClose();
+      }}
+    >
+      <section
+        className="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cancel-delivery-title"
+        data-modal-active="true"
+      >
+        <div className="modal-header flex items-start justify-between gap-3 border-b border-border px-5 py-4 sm:px-6 sm:py-5">
+          <div className="min-w-0">
+            <div className="eyebrow">CANCELAMENTO</div>
+            <h2 id="cancel-delivery-title" className="mt-1 text-xl font-bold">
+              Cancelar pedido {code}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              O pedido e seu histórico permanecerão disponíveis nos relatórios.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="icon-button modal-close-button"
+            onClick={requestClose}
+            aria-label="Fechar"
+            disabled={updateStatus.isPending}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="modal-form">
+          <div className="modal-fields space-y-4 px-5 py-4 sm:px-6 sm:py-5">
+            <Field label="Motivo (opcional)">
+              <textarea
+                rows={3}
+                maxLength={500}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="Informe o motivo do cancelamento"
+                data-modal-initial-focus
+                data-testid="input-cancel-reason"
+              />
+            </Field>
+            <p className="text-right text-[11px] text-muted-foreground">
+              {reason.length}/500
+            </p>
+            {error && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
+          <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={requestClose}
+              disabled={updateStatus.isPending}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              className="button-primary"
+              onClick={submit}
+              disabled={updateStatus.isPending}
+              data-testid="button-confirm-cancel"
+            >
+              <X size={15} />
+              {updateStatus.isPending ? "Cancelando…" : "Confirmar cancelamento"}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function Dashboard({ canCancel }: { canCancel: boolean }) {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedCourierId, setSelectedCourierId] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [dispatchId, setDispatchId] = useState<string | null>(null);
   const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<string[]>([]);
-  const [routeFeedback, setRouteFeedback] = useState('');
+  const [routeFeedback, setRouteFeedback] = useState<FeedbackMessage | null>(null);
   const [searchText, setSearchText] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [storeId, setStoreId] = useState('');
-  const [deleteFeedback, setDeleteFeedback] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [cancelFeedback, setCancelFeedback] = useState<FeedbackMessage | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{ id: string; code: string } | null>(null);
   const qc = useQueryClient();
   const createDeliveryRoute = useCreateDeliveryRoute();
-  const deleteDelivery = useDeleteDelivery();
   const summary = useGetDashboardSummary({ query: { refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
   const stores = useListStores({ query: { queryKey: getListStoresQueryKey() } });
   const activeRoutes = useListActiveRoutes({ query: { queryKey: getListActiveRoutesQueryKey(), refetchInterval: 15000, refetchOnWindowFocus: true } });
@@ -538,7 +683,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
     void qc.invalidateQueries({ queryKey: getGetDeliveryAnalyticsQueryKey() });
   };
   const toggleRouteDelivery = (id: string, checked: boolean) => {
-    setRouteFeedback('');
+    setRouteFeedback(null);
     setSelectedDeliveryIds(current => {
       if (!checked) return current.filter(item => item !== id);
       if (current.length >= 10) return current;
@@ -546,46 +691,16 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
     });
   };
   const offerGroupedRoute = () => {
-    setRouteFeedback('');
+    setRouteFeedback(null);
     createDeliveryRoute.mutate({ data: { deliveryIds: selectedDeliveryIds } }, {
       onSuccess: result => {
         setSelectedDeliveryIds([]);
-        setRouteFeedback(`Rota ${result.id.slice(0, 8)} criada com ${result.deliveryCount} entregas. O motoboy verá e otimizará a sequência ao aceitar.`);
+        setRouteFeedback({ kind: "success", text: `Rota ${result.id.slice(0, 8)} criada com ${result.deliveryCount} entregas. O motoboy verá e otimizará a sequência ao aceitar.` });
         void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
         void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
       },
-      onError: error => setRouteFeedback(error instanceof Error ? error.message : 'Não foi possível criar a rota. Atualize a fila e tente novamente.'),
+      onError: error => setRouteFeedback({ kind: "error", text: error instanceof Error ? error.message : 'Não foi possível criar a rota. Atualize a fila e tente novamente.' }),
     });
-  };
-  const removeDelivery = (deliveryId: string, code: string) => {
-    if (!isAdmin) return;
-    const confirmed = window.confirm(
-      `Excluir permanentemente a entrega ${code} e seu histórico de eventos? Esta ação não pode ser desfeita.`,
-    );
-    if (!confirmed) return;
-    setDeleteFeedback(null);
-    deleteDelivery.mutate(
-      { deliveryId },
-      {
-        onSuccess: async () => {
-          setSelectedDeliveryIds((current) => current.filter((id) => id !== deliveryId));
-          setDeleteFeedback({ kind: 'success', text: `Entrega ${code} excluída.` });
-          await Promise.all([
-            qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
-            qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
-            qc.invalidateQueries({ queryKey: getListCourierRoutesQueryKey() }),
-          ]);
-          qc.removeQueries({ queryKey: getGetDeliveryQueryKey(deliveryId) });
-        },
-        onError: (error) => {
-          const apiError = error as Error & { data?: { error?: string } };
-          setDeleteFeedback({
-            kind: 'error',
-            text: apiError.data?.error ?? (error instanceof Error ? error.message : 'Não foi possível excluir a entrega.'),
-          });
-        },
-      },
-    );
   };
   const counts = summary.data;
   const ageSeconds = (timestamp: string | null | undefined) => {
@@ -609,7 +724,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
     const age = ageSeconds(courier.lastLocationAt);
     return age != null && (latest == null || age < latest) ? age : latest;
   }, null);
-  const hasLiveLocation = latestLocationAge != null && latestLocationAge <= 30;
+  const hasLiveLocation = latestLocationAge != null && latestLocationAge <= 120;
   const hasConnectionError = [summary, couriers, deliveries].some(query => query.isError);
   const trackingMarkers: MapMarker[] = trackingCouriers.map(courier => {
     const age = ageSeconds(courier.lastLocationAt);
@@ -645,7 +760,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
         <div><div className="eyebrow">VISÃO GERAL · REDE MINAS MAIS</div><h1 className="mt-2 text-[28px] font-bold tracking-[-.045em] sm:text-[34px]">Central de entregas</h1><p className="mt-1 text-sm text-muted-foreground">Acompanhe pedidos, disponibilidade e despacho em um só lugar.</p><p className="mt-2 text-[11px] text-muted-foreground">Atualização automática a cada 15 segundos.</p></div>
       <div className="flex flex-wrap gap-2 self-start sm:self-auto">
         {selectedDeliveryIds.length >= 2 && <button className="button-secondary h-10" onClick={offerGroupedRoute} disabled={createDeliveryRoute.isPending} data-testid="button-create-route"><Bike size={16}/>{createDeliveryRoute.isPending ? 'Criando rota…' : `Agrupar ${selectedDeliveryIds.length} entregas`}</button>}
-        {selectedDeliveryIds.length > 0 && <button className="button-quiet h-10" onClick={() => { setSelectedDeliveryIds([]); setRouteFeedback(''); }}>Limpar seleção ({selectedDeliveryIds.length})</button>}
+         {selectedDeliveryIds.length > 0 && <button className="button-quiet h-10" onClick={() => { setSelectedDeliveryIds([]); setRouteFeedback(null); }}>Limpar seleção ({selectedDeliveryIds.length})</button>}
         <button className="button-secondary h-10" onClick={() => void refreshDashboard()} disabled={summary.isRefetching || couriers.isRefetching || deliveries.isRefetching} aria-label="Atualizar painel" data-testid="button-refresh-dashboard"><RefreshCw size={15} className={summary.isRefetching || couriers.isRefetching || deliveries.isRefetching ? 'animate-spin' : ''}/>Atualizar</button>
         <button className="button-primary h-10" onClick={() => setShowCreate(true)} data-testid="button-new-delivery"><FilePlus2 size={16}/>Nova entrega</button>
       </div>
@@ -662,9 +777,9 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
       <div className="panel p-4 sm:p-5">
         <div className="mb-4 flex items-center justify-between"><div><div className="eyebrow">TEMPO DE ATENDIMENTO</div><h2 className="mt-1 text-sm font-bold">Ritmo da operação</h2></div><span className="rounded-md bg-[#f5f4f2] px-2 py-1 text-[10px] font-medium text-muted-foreground">média registrada</span></div>
         {summary.isLoading ? <div className="skeleton h-[76px] w-full"/> : <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="flex-1"><div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Aceite da oferta</span><strong className="mono text-xl">{counts?.averageAcceptanceMinutes ?? '—'}<small className="ml-1 text-xs font-normal text-muted-foreground">min</small></strong></div><div className="meter mt-2"><span style={{ width: `${Math.min((counts?.averageAcceptanceMinutes ?? 0) * 4, 100)}%` }}/></div></div>
+          <div className="flex-1"><div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Aceite da oferta</span><strong className="mono text-xl">{counts?.averageAcceptanceMinutes ?? '—'}{counts && <small className="ml-1 text-[10px] font-normal text-muted-foreground">{counts.averageAcceptanceMinutes == null ? 'sem dados ainda' : 'min'}</small>}</strong></div>{counts?.averageAcceptanceMinutes != null && <div className="meter mt-2"><span style={{ width: `${Math.min(counts.averageAcceptanceMinutes * 4, 100)}%` }}/></div>}</div>
           <div className="hidden h-10 w-px bg-border sm:block"/>
-          <div className="flex-1"><div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Conclusão total</span><strong className="mono text-xl">{counts?.averageTotalMinutes ?? '—'}<small className="ml-1 text-xs font-normal text-muted-foreground">min</small></strong></div><div className="meter mt-2"><span className="meter-gray" style={{ width: `${Math.min((counts?.averageTotalMinutes ?? 0) * 1.5, 100)}%` }}/></div></div>
+          <div className="flex-1"><div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Conclusão total</span><strong className="mono text-xl">{counts?.averageTotalMinutes ?? '—'}{counts && <small className="ml-1 text-[10px] font-normal text-muted-foreground">{counts.averageTotalMinutes == null ? 'sem dados ainda' : 'min'}</small>}</strong></div>{counts?.averageTotalMinutes != null && <div className="meter mt-2"><span className="meter-gray" style={{ width: `${Math.min(counts.averageTotalMinutes * 1.5, 100)}%` }}/></div>}</div>
         </div>}
       </div>
       <div className="panel flex items-center gap-4 p-4 sm:px-5"><div className="courier-pie"><Bike size={20}/></div><div className="min-w-0 flex-1"><div className="eyebrow">DISPONIBILIDADE</div><div className="mt-1 flex items-baseline gap-1"><strong className="mono text-2xl">{counts?.availableCouriers ?? '—'}</strong><span className="text-xs text-muted-foreground">disponíveis agora</span></div><div className="mt-1 text-[11px] text-muted-foreground">{counts ? `${counts.busyCouriers} em atendimento · ${counts.offlineCouriers} offline` : 'Carregando situação dos motoboys'}</div></div><ArrowRight size={16} className="text-muted-foreground"/></div>
@@ -689,7 +804,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
               {activeRouteList.map(route => <option key={route.id} value={route.id}>Rota · {route.courierFirstName}</option>)}
             </select>}
             <div className="flex items-center gap-2">
-              <span className="online-indicator"><i className={hasLiveLocation ? 'animate-pulse' : ''}/>{hasLiveLocation ? 'Ao vivo' : 'Sem sinal ao vivo'}</span>
+              <span className={`online-indicator ${hasLiveLocation ? '' : 'online-indicator--offline'}`}><i className={hasLiveLocation ? 'animate-pulse' : ''}/>{hasLiveLocation ? 'Ao vivo' : 'Nenhum motoboy online'}</span>
               <span className="text-[10px] text-muted-foreground">{latestLocationAge == null ? 'Aguardando GPS' : `GPS recebido há ${formatAge(latestLocationAge)}`}</span>
             </div>
           </div>
@@ -704,7 +819,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
             {!trackingMarkers.length && !selectedRoute && <p className="mx-4 mt-3 rounded-lg border border-dashed border-[#dedbd7] bg-[#faf9f7] px-3 py-2 text-xs text-muted-foreground sm:mx-5">Sem GPS ou rota ativa no momento. O mapa está exibindo somente as filiais cadastradas.</p>}
             {selectedRoute && !selectedRoute.routeGeometry.length && <p className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:mx-5">Rota ativa de {selectedRoute.courierFirstName}, mas a geometria ainda não está disponível.</p>}
             {selectedRoute && <p className="px-4 pt-3 text-xs font-semibold text-[#a91d2a]">Rota ativa de {selectedRoute.courierFirstName} · {selectedRoute.routeGeometry.length} pontos</p>}
-            <LiveMap markers={mapMarkers} routeGeometry={selectedRoute?.routeGeometry} ariaLabel="Localização das filiais, motoboys e rota ativa" showCenterControls/>
+            <LiveMap markers={mapMarkers} routeGeometry={selectedRoute?.routeGeometry} ariaLabel="Localização das filiais, motoboys e rota ativa" showCenterControls centerOnStoresOnly showCenterOnMe={false} controlsAboveAttribution/>
           </>
         ) : (
           <div className="grid min-h-[210px] place-items-center bg-[#f3f2ef] p-6 text-center">
@@ -737,8 +852,8 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
           <select value={storeId} onChange={e => setStoreId(e.target.value)} className="filter-select" aria-label="Filtrar por unidade" data-testid="filter-store"><option value="">Todas as unidades</option>{(stores.data ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
         </div>
       </div>
-      {routeFeedback && <p className={`mx-4 mb-3 rounded-lg px-3 py-2 text-sm ${routeFeedback.startsWith('Rota ') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`} role="status">{routeFeedback}</p>}
-      {deleteFeedback && <p className={`mx-4 mb-3 rounded-lg px-3 py-2 text-sm ${deleteFeedback.kind === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`} role="status">{deleteFeedback.text}</p>}
+      {routeFeedback && <AutoDismissFeedback feedback={routeFeedback} onDismiss={() => setRouteFeedback(null)} className="mx-4 mb-3"/>}
+      {cancelFeedback && <AutoDismissFeedback feedback={cancelFeedback} onDismiss={() => setCancelFeedback(null)} className="mx-4 mb-3"/>}
       {selectedDeliveryIds.length > 0 && <p className="mx-4 mb-3 text-xs text-muted-foreground">Selecione de 2 a 10 solicitações novas. A melhor sequência será calculada quando o motoboy aceitar a rota.</p>}
       {deliveries.isLoading ? <Skeleton rows={5}/> : deliveries.isError ? <div className="p-8 text-center"><AlertTriangle className="mx-auto mb-2 text-amber-600"/><p className="font-semibold">Falha ao carregar solicitações</p><p className="mb-3 mt-1 text-sm text-muted-foreground">A fila permanece disponível para nova tentativa.</p><button className="button-secondary mx-auto" onClick={() => void deliveries.refetch()}><RefreshCw size={14}/>Tentar novamente</button></div> :
         !deliveries.data?.length ? <EmptyState title="Nenhuma solicitação nesta fila" detail={search || status || storeId ? 'Ajuste os filtros ou registre uma nova entrega.' : 'Quando uma solicitação chegar, ela aparecerá aqui para análise e despacho.'} action={<button className="button-primary" onClick={() => setShowCreate(true)}><Plus size={15}/>Registrar entrega</button>}/> :
@@ -752,13 +867,25 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
               <td><StatusBadge status={d.status}/></td>
               <td>{d.courierName ? <div className="flex items-center gap-2"><span className="avatar">{d.courierInitials || d.courierName.slice(0,2).toUpperCase()}</span><div><div className="text-xs font-semibold">{d.courierName}</div><div className="text-[10px] text-muted-foreground">{timeAgo(d.lastLocationAt)}</div></div></div> : <span className="text-xs text-muted-foreground">Não atribuído</span>}</td>
               <td className="text-xs text-muted-foreground">{fmtTime(d.updatedAt || d.createdAt)}</td>
-              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{isAdmin && <button className="icon-button-sm text-red-700" type="button" disabled={deleteDelivery.isPending} onClick={() => removeDelivery(d.id, d.code)} aria-label={`Excluir ${d.code}`} title="Excluir registro"><Trash2 size={15}/></button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
+              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{canCancel && !['COMPLETED','CANCELLED'].includes(d.status) && <button className="button-small button-red-outline" type="button" onClick={() => { setCancelFeedback(null); setCancelTarget({ id: d.id, code: d.code }); }} aria-label={`Cancelar pedido ${d.code}`} title="Cancelar pedido" data-testid={`button-cancel-${d.id}`}><X size={14}/>Cancelar pedido</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
             </tr>)}</tbody>
           </table></div>}
     </section>
      <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground"><span>Atualizações refletem os registros disponíveis no sistema.</span><span className="inline-flex items-center gap-1"><Clock3 size={12}/>GPS atualizado a cada 15 segundos enquanto o PWA está aberto</span></div>
     {showCreate && <DeliveryModal onClose={() => setShowCreate(false)}/>}
     {dispatchId && <DispatchModal deliveryId={dispatchId} onClose={() => setDispatchId(null)}/>}
+    {cancelTarget && <CancelDeliveryModal
+      deliveryId={cancelTarget.id}
+      code={cancelTarget.code}
+      onClose={() => setCancelTarget(null)}
+      onCancelled={() => {
+        setSelectedDeliveryIds((current) => current.filter((id) => id !== cancelTarget.id));
+        setCancelFeedback({
+          kind: "success",
+          text: `Pedido ${cancelTarget.code} cancelado pela Central. O histórico foi preservado.`,
+        });
+      }}
+    />}
   </div>;
 }
 function Metric({ title, value, hint, icon, accent, loading }: { title: string; value?: number | string; hint: string; icon: ReactNode; accent?: boolean; loading?: boolean }) {
@@ -918,7 +1045,7 @@ function UserPortalRoute() {
   if (profile.data.role === 'STORE_MANAGER' || profile.data.role === 'STORE_STAFF') {
     return <StorePortal profile={profile.data} />;
   }
-  return <RoutedErrorBoundary><AppShell profile={profile.data}><Dashboard isAdmin={profile.data.role === 'ADMIN'} /></AppShell></RoutedErrorBoundary>;
+  return <RoutedErrorBoundary><AppShell profile={profile.data}><Dashboard canCancel={profile.data.role === 'ADMIN' || profile.data.role === 'CENTRAL'} /></AppShell></RoutedErrorBoundary>;
 }
 
 function CentralRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {

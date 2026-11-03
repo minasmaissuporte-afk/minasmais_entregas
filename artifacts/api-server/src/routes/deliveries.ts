@@ -9,7 +9,6 @@ import {
   GetDeliveryAnalyticsResponse,
   CreateDeliveryBody,
   CreateDeliveryResponse,
-  DeleteDeliveryParams,
   DeleteAccessUserParams,
   DispatchDeliveryBody,
   DispatchDeliveryParams,
@@ -413,7 +412,7 @@ const eventLabels: Record<string, string> = {
   AT_STORE: "Chegada à loja confirmada",
   IN_TRANSIT: "Retirada confirmada — em trânsito",
   COMPLETED: "Entrega concluída",
-  CANCELLED: "Entrega cancelada",
+  CANCELLED: "Cancelado pela Central",
 };
 
 async function deliveryView(deliveryId: string) {
@@ -695,6 +694,7 @@ router.get(
   const now = Date.now();
   const activeStatuses = new Set([
     "REQUESTED",
+    "AWAITING_COURIER",
     "OFFERED",
     "ACCEPTED",
     "TO_STORE",
@@ -743,7 +743,7 @@ router.get(
           (values.reduce((total, value) => total + value, 0) / values.length)
             .toFixed(1),
         )
-      : 0;
+      : null;
   const isOnline = (courier: (typeof couriers)[number]) =>
     courier.lastLocationAt != null &&
     now - courier.lastLocationAt.getTime() <= 120_000;
@@ -756,8 +756,9 @@ router.get(
 
   const parsed = GetDashboardSummaryResponse.parse({
     requested: active.length,
-    awaitingCourier: deliveries.filter((item) => item.status === "REQUESTED")
-      .length,
+    awaitingCourier: deliveries.filter((item) =>
+      ["REQUESTED", "AWAITING_COURIER"].includes(item.status),
+    ).length,
     offered: deliveries.filter((item) => item.status === "OFFERED").length,
     accepted: deliveries.filter((item) =>
       ["ACCEPTED", "TO_STORE", "AT_STORE"].includes(item.status),
@@ -1014,97 +1015,6 @@ router.get(
   },
 );
 
-router.delete(
-  "/deliveries/:deliveryId",
-  requireRole("ADMIN"),
-  async (req, res): Promise<void> => {
-    const params = DeleteDeliveryParams.safeParse(req.params);
-    if (!params.success) {
-      res.status(400).json({ error: params.error.message });
-      return;
-    }
-
-    const result = await db.transaction(async (tx) => {
-      const [delivery] = await tx
-        .select()
-        .from(deliveriesTable)
-        .where(eq(deliveriesTable.id, params.data.deliveryId))
-        .for("update");
-      if (!delivery) return { error: "not_found" as const };
-
-      if (["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status)) {
-        return { error: "active_delivery" as const };
-      }
-
-      const routes = await tx
-        .select()
-        .from(deliveryRoutesTable)
-        .for("update");
-      const linkedRoutes = routes.filter((route) =>
-        route.deliveryIds.includes(delivery.id),
-      );
-      if (linkedRoutes.some((route) => route.status === "ACCEPTED")) {
-        return { error: "locked_route" as const };
-      }
-      if (
-        linkedRoutes.some((route) => !["OFFERED", "COMPLETED"].includes(route.status))
-      ) {
-        return { error: "linked_route" as const };
-      }
-      if (
-        delivery.status === "OFFERED" &&
-        !linkedRoutes.some((route) => route.status === "OFFERED")
-      ) {
-        return { error: "active_offer" as const };
-      }
-
-      for (const route of linkedRoutes) {
-        const remainingIds = route.deliveryIds.filter((id) => id !== delivery.id);
-        if (remainingIds.length < 2) {
-          await tx
-            .delete(deliveryRoutesTable)
-            .where(eq(deliveryRoutesTable.id, route.id));
-          if (route.status === "OFFERED" && remainingIds.length > 0) {
-            await tx
-              .update(deliveriesTable)
-              .set({ status: "REQUESTED", courierId: null, updatedAt: new Date() })
-              .where(inArray(deliveriesTable.id, remainingIds));
-          }
-        } else {
-          await tx
-            .update(deliveryRoutesTable)
-            .set({ deliveryIds: remainingIds })
-            .where(eq(deliveryRoutesTable.id, route.id));
-        }
-      }
-
-      await tx
-        .delete(deliveriesTable)
-        .where(eq(deliveriesTable.id, delivery.id));
-      return { deleted: true as const };
-    });
-
-    if ("error" in result) {
-      if (result.error === "not_found") {
-        res.status(404).json({ error: "Entrega não encontrada." });
-        return;
-      }
-      const message =
-        result.error === "active_delivery"
-          ? "Cancele ou conclua a entrega antes de excluí-la."
-          : result.error === "locked_route"
-            ? "Esta entrega pertence a uma rota aceita e travada."
-            : result.error === "linked_route"
-              ? "Não é possível excluir esta entrega enquanto a rota estiver ativa."
-              : "Retire ou cancele a oferta individual antes de excluir a entrega.";
-      res.status(409).json({ error: message });
-      return;
-    }
-
-    res.status(204).end();
-  },
-);
-
 router.post(
   "/deliveries/:deliveryId/dispatch",
   requireRole("ADMIN", "CENTRAL"),
@@ -1254,6 +1164,14 @@ router.patch(
     }
 
     const profile = res.locals.appUser as AppUserProfile;
+    if (
+      body.data.status === "CANCELLED" &&
+      profile.role !== "ADMIN" &&
+      profile.role !== "CENTRAL"
+    ) {
+      res.status(403).json({ error: "Somente a Central pode cancelar pedidos." });
+      return;
+    }
     if (body.data.status === "COMPLETED" && profile.role === "COURIER") {
       if (
         !profile.courierId ||
@@ -1410,7 +1328,13 @@ router.patch(
           .where(eq(couriersTable.id, courierId));
       }
 
-      const label = body.data.note?.trim() || eventLabels[nextStatus];
+      const note = body.data.note?.trim();
+      const label =
+        nextStatus === "CANCELLED"
+          ? note
+            ? `Cancelado pela Central · Motivo: ${note}`
+            : eventLabels.CANCELLED
+          : note || eventLabels[nextStatus];
       await tx.insert(deliveryEventsTable).values({
         id: randomUUID(),
         deliveryId: delivery.id,

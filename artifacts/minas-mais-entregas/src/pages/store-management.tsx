@@ -16,7 +16,6 @@ import {
   type StoreInput,
 } from "@workspace/api-client-react";
 import {
-  AlertTriangle,
   Check,
   MapPin,
   Pencil,
@@ -27,6 +26,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { AutoDismissFeedback } from "@/components/auto-dismiss-feedback";
 import AddressAutocomplete from "@/components/address-autocomplete";
 import LiveMap, { type MapMarker } from "@/components/live-map";
 
@@ -316,21 +316,11 @@ export default function StoreManagement() {
       </div>
 
       {feedback && (
-        <div
-          role="status"
-          className={`mb-4 flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${
-            feedback.kind === "error"
-              ? "border-red-200 bg-red-50 text-red-800"
-              : "border-green-200 bg-green-50 text-green-800"
-          }`}
-        >
-          {feedback.kind === "error" ? (
-            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-          ) : (
-            <Check size={16} className="mt-0.5 shrink-0" />
-          )}
-          <span>{feedback.text}</span>
-        </div>
+        <AutoDismissFeedback
+          feedback={feedback}
+          onDismiss={() => setFeedback(null)}
+          className="mb-4"
+        />
       )}
 
       {formOpen && (

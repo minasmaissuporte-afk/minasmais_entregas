@@ -207,24 +207,6 @@ paths:
                 $ref: "#/components/schemas/Delivery"
         "404":
           description: Delivery not found
-    delete:
-      operationId: deleteDelivery
-      tags: [deliveries]
-      summary: Delete an inactive delivery record
-      description: Administrators may remove selected test records. Deliveries in active progress or accepted routes cannot be deleted.
-      parameters:
-        - in: path
-          name: deliveryId
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Delivery and its event history deleted
-        "404":
-          description: Delivery not found
-        "409":
-          description: Delivery is active or belongs to a locked route
   /deliveries/{deliveryId}/dispatch:
     post:
       operationId: dispatchDelivery
@@ -772,7 +754,7 @@ components:
         status:
           type: string
           enum: [ACCEPTED, TO_STORE, AT_STORE, IN_TRANSIT, COMPLETED, CANCELLED]
-        note: { type: string }
+        note: { type: string, maxLength: 500 }
         evidencePath: { type: string }
     Store:
       type: object
@@ -990,8 +972,8 @@ components:
         availableCouriers: { type: integer }
         busyCouriers: { type: integer }
         offlineCouriers: { type: integer }
-        averageAcceptanceMinutes: { type: number }
-        averageTotalMinutes: { type: number }
+        averageAcceptanceMinutes: { type: ["number", "null"] }
+        averageTotalMinutes: { type: ["number", "null"] }
     AppUser:
       type: object
       required: [id, clerkUserId, email, name, role, storeId, courierId]

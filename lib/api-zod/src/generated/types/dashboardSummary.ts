@@ -19,6 +19,8 @@ export interface DashboardSummary {
   availableCouriers: number;
   busyCouriers: number;
   offlineCouriers: number;
-  averageAcceptanceMinutes: number;
-  averageTotalMinutes: number;
+  /** @nullable */
+  averageAcceptanceMinutes: number | null;
+  /** @nullable */
+  averageTotalMinutes: number | null;
 }

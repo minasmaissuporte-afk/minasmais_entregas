@@ -261,12 +261,18 @@ export default function LiveMapbox({
   ariaLabel,
   size = "default",
   showCenterControls = false,
+  centerOnStoresOnly = false,
+  showCenterOnMe = true,
+  controlsAboveAttribution = false,
 }: {
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
   ariaLabel: string;
   size?: MapSize;
   showCenterControls?: boolean;
+  centerOnStoresOnly?: boolean;
+  showCenterOnMe?: boolean;
+  controlsAboveAttribution?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapboxMap | null>(null);
@@ -402,12 +408,20 @@ export default function LiveMapbox({
   const centerAll = () => {
     const map = mapRef.current;
     if (!map) return;
-    const coordinates = getAllCoordinates(
-      currentDataRef.current.markers,
-      currentDataRef.current.routeGeometry,
-    );
+    const coordinates = centerOnStoresOnly
+      ? currentDataRef.current.markers
+          .filter((marker) => marker.kind === "store")
+          .map((marker) => [marker.longitude, marker.latitude] as [number, number])
+      : getAllCoordinates(
+          currentDataRef.current.markers,
+          currentDataRef.current.routeGeometry,
+        );
     if (!coordinates.length) {
-      setLocationMessage("Não há posições ou paradas para centralizar.");
+      setLocationMessage(
+        centerOnStoresOnly
+          ? "Não há filiais com coordenadas para centralizar."
+          : "Não há posições ou paradas para centralizar.",
+      );
       return;
     }
     setLocationMessage(null);
@@ -490,7 +504,10 @@ export default function LiveMapbox({
         </div>
       )}
       {showCenterControls && (
-        <div className="absolute bottom-3 right-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2">
+        <div
+          className="absolute right-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2"
+          style={{ bottom: controlsAboveAttribution ? 40 : 12 }}
+        >
           <div className="flex flex-wrap justify-end gap-2">
             <button
               className="rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-foreground shadow-md hover:bg-muted"
@@ -498,16 +515,18 @@ export default function LiveMapbox({
               onClick={centerAll}
               data-testid="button-map-center-all"
             >
-              Centralizar todos
+              {centerOnStoresOnly ? "Centralizar filiais" : "Centralizar todos"}
             </button>
-            <button
-              className="rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-foreground shadow-md hover:bg-muted"
-              type="button"
-              onClick={centerOnMe}
-              data-testid="button-map-center-me"
-            >
-              Centralizar em mim
-            </button>
+            {showCenterOnMe && (
+              <button
+                className="rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-foreground shadow-md hover:bg-muted"
+                type="button"
+                onClick={centerOnMe}
+                data-testid="button-map-center-me"
+              >
+                Centralizar em mim
+              </button>
+            )}
           </div>
           {locationMessage && (
             <p

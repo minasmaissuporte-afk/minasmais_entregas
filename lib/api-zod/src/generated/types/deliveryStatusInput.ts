@@ -9,6 +9,7 @@ import type { DeliveryStatusInputStatus } from './deliveryStatusInputStatus';
 
 export interface DeliveryStatusInput {
   status: DeliveryStatusInputStatus;
+  /** @maxLength 500 */
   note?: string;
   evidencePath?: string;
 }

@@ -48,7 +48,7 @@ const STATUS_LABELS: Record<string, string> = {
   AT_STORE: "Na loja",
   IN_TRANSIT: "Em entrega",
   COMPLETED: "Concluída",
-  CANCELLED: "Cancelada",
+  CANCELLED: "Cancelado pela Central",
 };
 
 const money = (value: number) =>

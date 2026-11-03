@@ -121,6 +121,7 @@ export const DeliveryStatusInputStatus = {
 
 export interface DeliveryStatusInput {
   status: DeliveryStatusInputStatus;
+  /** @maxLength 500 */
   note?: string;
   evidencePath?: string;
 }
@@ -433,8 +434,10 @@ export interface DashboardSummary {
   availableCouriers: number;
   busyCouriers: number;
   offlineCouriers: number;
-  averageAcceptanceMinutes: number;
-  averageTotalMinutes: number;
+  /** @nullable */
+  averageAcceptanceMinutes: number | null;
+  /** @nullable */
+  averageTotalMinutes: number | null;
 }
 
 export type AppUserRole = typeof AppUserRole[keyof typeof AppUserRole];
