@@ -18,25 +18,23 @@ import {
 } from "../lib/webPush";
 
 const router: IRouter = Router();
-router.use(requireAuthentication);
 
-router.get("/push/config", (_req, res): void => {
-  res.json(getPushConfig());
-});
-
-router.get("/push/vapid-public-key", async (_req, res): Promise<void> => {
+router.get("/push/vapid-public-key", (_req, res): void => {
   const publicKey = getVapidPublicKey();
-  const keyId = getVapidKeyId();
-  if (!publicKey || !keyId) {
+  if (!publicKey) {
     res.status(503).json({ error: "A configuração VAPID está ausente ou inválida." });
     return;
   }
-  await pruneStalePushSubscriptions(keyId);
   res.json(GetVapidPublicKeyResponse.parse({ publicKey }));
+});
+
+router.get("/push/config", requireAuthentication, (_req, res): void => {
+  res.json(getPushConfig());
 });
 
 router.post(
   "/push/test",
+  requireAuthentication,
   requireRole("COURIER"),
   async (req, res): Promise<void> => {
     const profile = res.locals.appUser as AppUserProfile;
@@ -69,6 +67,7 @@ router.post(
 
 router.post(
   "/push/subscription",
+  requireAuthentication,
   requireRole("COURIER"),
   async (req, res): Promise<void> => {
     const body = SavePushSubscriptionBody.safeParse(req.body);
@@ -112,6 +111,7 @@ router.post(
 
 router.delete(
   "/push/subscription",
+  requireAuthentication,
   requireRole("COURIER"),
   async (req, res): Promise<void> => {
     const body = RemovePushSubscriptionBody.safeParse(req.body);
