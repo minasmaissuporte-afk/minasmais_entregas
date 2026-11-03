@@ -209,6 +209,22 @@ export interface PushConfig {
   publicKey: string | null;
 }
 
+export interface VapidPublicKeyResponse {
+  /**
+     * @minLength 87
+     * @maxLength 87
+     * @pattern ^B[A-Za-z0-9_-]{86}$
+     */
+  publicKey: string;
+}
+
+export interface PushTestResponse {
+  /** @minimum 0 */
+  sent: number;
+  /** @minimum 0 */
+  failed: number;
+}
+
 export interface PushSubscriptionInput {
   /** @minLength 10 */
   endpoint: string;

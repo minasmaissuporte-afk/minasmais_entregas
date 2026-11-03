@@ -15,6 +15,7 @@ export const pushSubscriptionsTable = pgTable(
     endpoint: text("endpoint").notNull(),
     p256dh: text("p256dh").notNull(),
     auth: text("auth").notNull(),
+    vapidKeyId: text("vapid_key_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

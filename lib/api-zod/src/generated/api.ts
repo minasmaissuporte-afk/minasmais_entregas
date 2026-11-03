@@ -122,6 +122,36 @@ export const GetPushConfigResponse = zod.object({
 
 
 /**
+ * @summary Get the normalized public VAPID key
+ */
+export const getVapidPublicKeyResponsePublicKeyMin = 87;
+export const getVapidPublicKeyResponsePublicKeyMax = 87;
+
+
+export const getVapidPublicKeyResponsePublicKeyRegExp = new RegExp('^B[A-Za-z0-9_-]{86}$');
+
+
+export const GetVapidPublicKeyResponse = zod.object({
+  "publicKey": zod.string().min(getVapidPublicKeyResponsePublicKeyMin).max(getVapidPublicKeyResponsePublicKeyMax).regex(getVapidPublicKeyResponsePublicKeyRegExp)
+})
+
+
+/**
+ * @summary Send a test notification to the signed-in courier
+ */
+export const sendPushTestResponseSentMin = 0;
+
+export const sendPushTestResponseFailedMin = 0;
+
+
+
+export const SendPushTestResponse = zod.object({
+  "sent": zod.number().int().min(sendPushTestResponseSentMin),
+  "failed": zod.number().int().min(sendPushTestResponseFailedMin)
+})
+
+
+/**
  * @summary Save the signed-in courier's web push subscription
  */
 export const savePushSubscriptionBodyEndpointMin = 10;
