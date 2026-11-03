@@ -22,23 +22,48 @@ function stripWrappingQuotes(value: string) {
   return trimmed;
 }
 
+const P256_SPKI_PREFIX = Buffer.from(
+  "3059301306072a8648ce3d020106082a8648ce3d030107034200",
+  "hex",
+);
+
 function normalizeVapidKey(value: string | undefined, expectedBytes: number) {
   if (!value) return null;
 
   let key = stripWrappingQuotes(value)
+    .replace(/\\r?\\n/g, "\n")
     .replace(/^(?:VAPID_)?(?:PUBLIC|PRIVATE)_KEY\s*[:=]\s*/i, "")
     .replace(/^(?:public|private)\s+key\s*:\s*/i, "");
-  key = stripWrappingQuotes(key).replace(/\s+/g, "");
+  key = stripWrappingQuotes(key);
 
-  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(key)) return null;
-  const unpadded = key.replace(/=+$/, "");
-  if (unpadded.length % 4 === 1) return null;
-
-  const base64 = unpadded.replace(/-/g, "+").replace(/_/g, "/");
-  const bytes = Buffer.from(
-    `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`,
-    "base64",
+  let bytes: Buffer;
+  const pemMatch = key.match(
+    /^-----BEGIN PUBLIC KEY-----([\s\S]*?)-----END PUBLIC KEY-----$/,
   );
+  if (expectedBytes === 65 && pemMatch) {
+    const pemBody = pemMatch[1].replace(/\s+/g, "");
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(pemBody)) return null;
+    const der = Buffer.from(pemBody, "base64");
+    if (
+      der.length !== P256_SPKI_PREFIX.length + 65 ||
+      !der.subarray(0, P256_SPKI_PREFIX.length).equals(P256_SPKI_PREFIX)
+    ) {
+      return null;
+    }
+    bytes = der.subarray(P256_SPKI_PREFIX.length);
+  } else {
+    key = key.replace(/\s+/g, "");
+
+    if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(key)) return null;
+    const unpadded = key.replace(/=+$/, "");
+    if (unpadded.length % 4 === 1) return null;
+
+    const base64 = unpadded.replace(/-/g, "+").replace(/_/g, "/");
+    bytes = Buffer.from(
+      `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`,
+      "base64",
+    );
+  }
   if (bytes.length !== expectedBytes) return null;
   if (expectedBytes === 65 && bytes[0] !== 4) return null;
 
