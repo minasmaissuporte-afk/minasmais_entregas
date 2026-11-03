@@ -54,7 +54,6 @@ export * from './listCouriersParams';
 export * from './listDeliveriesParams';
 export * from './pushConfig';
 export * from './pushSubscriptionInput';
-export * from './pushTestResponse';
 export * from './routeCoordinate';
 export * from './routeDeliverySummary';
 export * from './store';

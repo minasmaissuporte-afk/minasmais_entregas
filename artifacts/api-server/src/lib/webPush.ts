@@ -262,35 +262,6 @@ async function sendToSubscription(
   }
 }
 
-export async function sendTestPushToCourier(
-  courierId: string,
-): Promise<{ sent: number; failed: number; total: number }> {
-  const config = loadVapidConfiguration();
-  if (!config) throw new Error("A configuração VAPID está ausente ou inválida.");
-  await pruneStalePushSubscriptions(config.keyId);
-
-  const subscriptions = await db
-    .select()
-    .from(pushSubscriptionsTable)
-    .where(eq(pushSubscriptionsTable.courierId, courierId));
-  const results = await Promise.all(
-    subscriptions.map((subscription) =>
-      sendToSubscription(subscription, {
-        title: "Notificação de teste",
-        body: "As notificações do Minas Mais Entregas estão funcionando.",
-        url: "/motoboy-pwa",
-      }),
-    ),
-  );
-  const sent = results.filter(Boolean).length;
-  const failed = results.length - sent;
-  logger.info(
-    { courierId, sent, failed, total: results.length },
-    "Push test submitted to browser push services",
-  );
-  return { sent, failed, total: results.length };
-}
-
 export async function notifyCouriers(
   courierIds: string[],
   payload: { title: string; body: string; url?: string },

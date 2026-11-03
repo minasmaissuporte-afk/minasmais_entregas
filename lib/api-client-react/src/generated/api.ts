@@ -55,7 +55,6 @@ import type {
   ListDeliveriesParams,
   PushConfig,
   PushSubscriptionInput,
-  PushTestResponse,
   Store,
   StoreInput,
   UserRoleInput,
@@ -702,80 +701,6 @@ export function useGetVapidPublicKey<TData = Awaited<ReturnType<typeof getVapidP
 
 
 
-
-export const getSendPushTestUrl = () => {
-
-
-
-
-  return `/api/push/test`
-}
-
-/**
- * @summary Send a test notification to the signed-in courier
- */
-export const sendPushTest = async ( options?: Parameters<typeof customFetch>[1]): Promise<PushTestResponse> => {
-
-  return customFetch<PushTestResponse>(getSendPushTestUrl(),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-
-
-export const getSendPushTestMutationKey = () => ['sendPushTest'] as const;
-
-export const getSendPushTestMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendPushTest>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof sendPushTest>>, TError,void, TContext> => {
-
-const mutationKey = getSendPushTestMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendPushTest>>, void> = () => {
-
-
-          return  sendPushTest(requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type SendPushTestMutationResult = NonNullable<Awaited<ReturnType<typeof sendPushTest>>>
-
-    export type SendPushTestMutationError = ErrorType<void>
-
-
-    /**
- * @summary Send a test notification to the signed-in courier
- */
-export const useSendPushTest = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendPushTest>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof sendPushTest>>,
-        TError,
-        void,
-        TContext
-      > => {
-      return useMutation(getSendPushTestMutationOptions(options), queryClient);
-    }
 
 export const getSavePushSubscriptionUrl = () => {
 

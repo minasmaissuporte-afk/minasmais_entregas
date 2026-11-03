@@ -6,7 +6,6 @@ import {
   getListDeliveriesQueryKey,
   getGetVapidPublicKeyQueryKey,
   useGetVapidPublicKey,
-  useSendPushTest,
   useSavePushSubscription,
   useRemovePushSubscription,
   useGetCourierEarnings,
@@ -117,7 +116,6 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   });
   const savePush = useSavePushSubscription();
   const removePush = useRemovePushSubscription();
-  const sendPushTest = useSendPushTest();
   const currentVapidBytes = useMemo(() => {
     if (!pushKey.data?.publicKey) return null;
     try {
@@ -240,21 +238,6 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       await queryClient.invalidateQueries({ queryKey: getGetVapidPublicKeyQueryKey() });
     } catch (error) {
       setPushMessage(error instanceof Error ? error.message : "Não foi possível atualizar as notificações.");
-    }
-  };
-  const sendTestNotification = async () => {
-    setPushMessage("");
-    try {
-      const result = await sendPushTest.mutateAsync();
-      setPushMessage(
-        `Push aceito pelo serviço (${result.sent} enviado(s), ${result.failed} falha(s)). Confira a notificação neste aparelho.`,
-      );
-    } catch (error) {
-      setPushMessage(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível enviar o push de teste. Confira os logs da API.",
-      );
     }
   };
   const groupedDeliveryIds = useMemo(
@@ -413,16 +396,6 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
               </p>
               {pushKey.isError && <button type="button" className="mt-1 text-xs font-semibold text-primary" onClick={() => void pushKey.refetch()}>Tentar consultar novamente</button>}
               {pushMessage && <p role="status" className="mt-2 text-xs text-[#8b3d45]">{pushMessage}</p>}
-              {pushIsActive && (
-                <button
-                  type="button"
-                  className="mt-2 text-xs font-semibold text-primary"
-                  onClick={() => void sendTestNotification()}
-                  disabled={sendPushTest.isPending}
-                >
-                  {sendPushTest.isPending ? "Enviando teste…" : "Enviar notificação de teste"}
-                </button>
-              )}
             </div>
           </div>
           <button
@@ -442,8 +415,8 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             {savePush.isPending || removePush.isPending
               ? "Atualizando…"
               : pushIsActive
-                ? "Desativar avisos"
-                : "Ativar avisos"}
+                ? "Desativar notificações"
+                : "Ativar notificações"}
           </button>
         </section>
 

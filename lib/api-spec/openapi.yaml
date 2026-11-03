@@ -116,22 +116,6 @@ paths:
                 $ref: "#/components/schemas/VapidPublicKeyResponse"
         "503":
           description: VAPID configuration is missing or invalid
-  /push/test:
-    post:
-      operationId: sendPushTest
-      tags: [courier]
-      summary: Send a test notification to the signed-in courier
-      responses:
-        "200":
-          description: Push accepted by the browser push service
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PushTestResponse"
-        "404":
-          description: No active push subscription exists for this courier
-        "502":
-          description: The push service rejected the test notification
   /push/subscription:
     post:
       operationId: savePushSubscription
@@ -847,12 +831,6 @@ components:
       required: [publicKey]
       properties:
         publicKey: { type: string, minLength: 87, maxLength: 87, pattern: "^B[A-Za-z0-9_-]{86}$" }
-    PushTestResponse:
-      type: object
-      required: [sent, failed]
-      properties:
-        sent: { type: integer, minimum: 0 }
-        failed: { type: integer, minimum: 0 }
     PushSubscriptionInput:
       type: object
       required: [endpoint, p256dh, auth]
