@@ -3,8 +3,8 @@ name: Formato das chaves VAPID
 description: Formatos de entrada e proteção das chaves VAPID usadas pelo push do PWA.
 ---
 
-Ao configurar Web Push, normalize a chave pública e a privada separadamente. Além dos valores Base64URL, a entrada pode conter rótulos `Public Key:` e `Private Key:` juntos, PEM público P-256 ou ponto público hexadecimal. Nunca registre nem mostre os valores recebidos.
+Ao configurar Web Push, extraia separadamente os valores Base64/Base64URL, mesmo se vierem com rótulos `Public Key:` e `Private Key:` ou aspas. Converta Base64 comum para Base64URL; valide a pública com 65 bytes e primeiro byte `0x04`, a privada com 32 bytes e confirme que formam o mesmo par P-256. Nunca registre nem mostre os valores recebidos.
 
-**Why:** o usuário pode copiar a saída completa da geração do par VAPID, e rejeitar o texto rotulado impede a ativação do PWA antes mesmo de solicitar permissão.
+**Why:** o usuário pode copiar a saída completa da geração do par VAPID; erros de formato ou pares incompatíveis impedem a ativação e podem deixar inscrições antigas inválidas.
 
-**How to apply:** mantenha a mesma normalização no cliente e na API; valide a chave pública como ponto P-256 não comprimido de 65 bytes e converta-a para Base64URL antes da assinatura Web Push.
+**How to apply:** valide e normalize no servidor e exponha apenas a chave pública limpa por API; o cliente decodifica com `urlBase64ToUint8Array` antes de assinar e substitui inscrições criadas com outra chave.

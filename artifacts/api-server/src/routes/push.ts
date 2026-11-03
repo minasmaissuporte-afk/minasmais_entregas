@@ -38,7 +38,7 @@ router.get("/push/vapid-public-key", async (_req, res): Promise<void> => {
 router.post(
   "/push/test",
   requireRole("COURIER"),
-  async (_req, res): Promise<void> => {
+  async (req, res): Promise<void> => {
     const profile = res.locals.appUser as AppUserProfile;
     if (!profile.courierId) {
       res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
@@ -59,6 +59,10 @@ router.post(
       res.status(502).json({ error: "O serviço de notificações rejeitou o teste. Confira os logs da API." });
       return;
     }
+    req.log.info(
+      { sent: result.sent, failed: result.failed, total: result.total },
+      "Test push accepted by browser push services",
+    );
     res.json(SendPushTestResponse.parse({ sent: result.sent, failed: result.failed }));
   },
 );

@@ -27,3 +27,4 @@ channel = "stable-25_05"
 [userenv.shared]
 INITIAL_ADMIN_EMAIL = "david@drogariasminasmais.com.br"
 INITIAL_ADMIN_EMAILS = "balancocompulsorio@drogariasminasmais.com.br"
+VAPID_SUBJECT = "mailto:contato@drogariasminasmais.com.br"

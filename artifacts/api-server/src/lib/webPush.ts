@@ -18,7 +18,6 @@ type VapidConfiguration = {
 };
 
 let activeConfigurationSignature: string | null = null;
-let activeKeyId: string | null = null;
 let lastValidationIssueSignature: string | null = null;
 let lastPrunedKeyId: string | null = null;
 
@@ -30,7 +29,7 @@ function stripOuterQuotes(value: string): string {
 }
 
 function extractKeyCandidate(value: string, kind: "PUBLIC" | "PRIVATE"): string {
-  const lines = value
+  const lines = stripOuterQuotes(value)
     .replace(/\\r\\n/g, "\n")
     .replace(/\\n/g, "\n")
     .replace(/\r\n?/g, "\n")
@@ -185,7 +184,6 @@ function loadVapidConfiguration(): VapidConfiguration | null {
         privateResult.key.value,
       );
       activeConfigurationSignature = signature;
-      activeKeyId = keyId;
     }
   } catch (error) {
     logInvalidConfiguration(

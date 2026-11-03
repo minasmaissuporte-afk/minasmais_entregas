@@ -59,7 +59,7 @@ const statusLabel: Record<string, string> = {
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const base64 = base64String.replace(/-/g, "+").replace(/_/g, "/");
   const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
   const raw = window.atob(padded);
@@ -92,6 +92,9 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   const [actionError, setActionError] = useState("");
   const [pushMessage, setPushMessage] = useState("");
   const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
+  const [serviceWorkerStatus, setServiceWorkerStatus] = useState<
+    "checking" | "active" | "missing" | "unsupported"
+  >("checking");
   const earnings = useGetCourierEarnings(
     { period },
     { query: { queryKey: getGetCourierEarningsQueryKey({ period }), refetchInterval: 15000 } },
@@ -109,48 +112,149 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   });
   const updateStatus = useUpdateDeliveryStatus();
   const updateLocation = useUpdateCourierLocation();
-  const pushConfig = useGetPushConfig({ query: { queryKey: getGetPushConfigQueryKey() } });
+  const pushKey = useGetVapidPublicKey({
+    query: { queryKey: getGetVapidPublicKeyQueryKey(), retry: false },
+  });
   const savePush = useSavePushSubscription();
   const removePush = useRemovePushSubscription();
+  const sendPushTest = useSendPushTest();
+  const currentVapidBytes = useMemo(() => {
+    if (!pushKey.data?.publicKey) return null;
+    try {
+      return urlBase64ToUint8Array(pushKey.data.publicKey);
+    } catch {
+      return null;
+    }
+  }, [pushKey.data?.publicKey]);
+  const pushIsActive = Boolean(
+    pushSubscription &&
+      currentVapidBytes &&
+      subscriptionUsesVapidKey(pushSubscription, currentVapidBytes),
+  );
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
+    if (!("serviceWorker" in navigator)) {
+      setServiceWorkerStatus("unsupported");
+      return;
+    }
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      if (!cancelled) setServiceWorkerStatus("missing");
+    }, 5000);
     void navigator.serviceWorker.ready
-      .then((registration) => registration.pushManager.getSubscription())
-      .then((subscription) => setPushSubscription(subscription));
+      .then(async (registration) => {
+        window.clearTimeout(timeoutId);
+        if (cancelled) return;
+        if (!registration.active) {
+          setServiceWorkerStatus("missing");
+          return;
+        }
+        setServiceWorkerStatus("active");
+        const subscription = await registration.pushManager.getSubscription();
+        if (!cancelled) setPushSubscription(subscription);
+      })
+      .catch(() => {
+        window.clearTimeout(timeoutId);
+        if (!cancelled) setServiceWorkerStatus("missing");
+      });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, []);
   const togglePush = async () => {
     setPushMessage("");
-    if (!pushConfig.data?.enabled || !pushConfig.data.publicKey) {
-      setPushMessage("Notificações push não estão configuradas nesta instalação. Avise a central para habilitar o serviço.");
+    if (!pushKey.data?.publicKey || !currentVapidBytes) {
+      setPushMessage("A chave VAPID não está disponível ou é inválida. Confira os Secrets e a configuração do servidor.");
       return;
     }
     try {
-      if (pushSubscription) {
-        const json = pushSubscription.toJSON();
-        if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("A assinatura atual não contém as chaves necessárias.");
-        await removePush.mutateAsync({ data: { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth } });
-        await pushSubscription.unsubscribe();
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        throw new Error("Este navegador não oferece notificações push.");
+      }
+      const registration = await navigator.serviceWorker.ready;
+      if (!registration.active) {
+        throw new Error("O Service Worker do PWA não está ativo. Feche e reabra o aplicativo.");
+      }
+      let subscription = await registration.pushManager.getSubscription();
+      const matchesCurrentKey = Boolean(
+        subscription && subscriptionUsesVapidKey(subscription, currentVapidBytes),
+      );
+
+      if (subscription && matchesCurrentKey && pushIsActive) {
+        const json = subscription.toJSON();
+        if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) {
+          throw new Error("A assinatura atual não contém as chaves necessárias.");
+        }
+        await removePush.mutateAsync({
+          data: { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
+        });
+        await subscription.unsubscribe();
         setPushSubscription(null);
         setPushMessage("Notificações desativadas neste aparelho.");
-      } else {
-        if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("Este navegador não oferece notificações push.");
-        const applicationServerKey = decodeVapidKey(pushConfig.data.publicKey);
-        const permission = await Notification.requestPermission();
-        if (permission !== "granted") throw new Error("Permita notificações nas configurações do navegador para ativar os avisos.");
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey,
-        });
-        const json = subscription.toJSON();
-        if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("Não foi possível obter os dados da assinatura.");
-        await savePush.mutateAsync({ data: { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth } });
-        setPushSubscription(subscription);
-        setPushMessage("Notificações ativadas neste aparelho.");
+        await queryClient.invalidateQueries({ queryKey: getGetVapidPublicKeyQueryKey() });
+        return;
       }
-      await queryClient.invalidateQueries({ queryKey: getGetPushConfigQueryKey() });
+
+      if (subscription && !matchesCurrentKey) {
+        const old = subscription.toJSON();
+        if (old.endpoint && old.keys?.p256dh && old.keys.auth) {
+          await removePush.mutateAsync({
+            data: { endpoint: old.endpoint, p256dh: old.keys.p256dh, auth: old.keys.auth },
+          });
+        }
+        await subscription.unsubscribe();
+        subscription = null;
+        setPushSubscription(null);
+      }
+
+      if (!("Notification" in window)) {
+        throw new Error("Este navegador não oferece notificações.");
+      }
+      let permission = Notification.permission;
+      if (permission !== "granted") permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        throw new Error("Permita notificações nas configurações do navegador para ativar os avisos.");
+      }
+
+      // Recheck immediately before subscribing so a rotated key never reuses an old subscription.
+      subscription = await registration.pushManager.getSubscription();
+      if (subscription && !subscriptionUsesVapidKey(subscription, currentVapidBytes)) {
+        await subscription.unsubscribe();
+        subscription = null;
+      }
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: currentVapidBytes.buffer as ArrayBuffer,
+        });
+      }
+      const json = subscription.toJSON();
+      if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) {
+        throw new Error("Não foi possível obter os dados da assinatura.");
+      }
+      await savePush.mutateAsync({
+        data: { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
+      });
+      setPushSubscription(subscription);
+      setPushMessage("Notificações ativadas neste aparelho.");
+      await queryClient.invalidateQueries({ queryKey: getGetVapidPublicKeyQueryKey() });
     } catch (error) {
       setPushMessage(error instanceof Error ? error.message : "Não foi possível atualizar as notificações.");
+    }
+  };
+  const sendTestNotification = async () => {
+    setPushMessage("");
+    try {
+      const result = await sendPushTest.mutateAsync();
+      setPushMessage(
+        `Push aceito pelo serviço (${result.sent} enviado(s), ${result.failed} falha(s)). Confira a notificação neste aparelho.`,
+      );
+    } catch (error) {
+      setPushMessage(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar o push de teste. Confira os logs da API.",
+      );
     }
   };
   const groupedDeliveryIds = useMemo(
@@ -289,19 +393,57 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
 
         <section className="panel mt-4 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <span className="metric-icon metric-icon-red mt-0.5">{pushSubscription ? <Bell size={16} /> : <BellOff size={16} />}</span>
+            <span className="metric-icon metric-icon-red mt-0.5">{pushIsActive ? <Bell size={16} /> : <BellOff size={16} />}</span>
             <div>
               <h2 className="text-sm font-bold">Avisos de novas entregas</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                {pushConfig.isLoading ? "Consultando configuração…" : pushConfig.isError ? "Não foi possível consultar a configuração de notificações." : !pushConfig.data?.enabled || !pushConfig.data.publicKey ? "Notificações push não estão configuradas para esta operação." : pushSubscription ? "Notificações ativadas neste aparelho." : "Ative para receber notificações neste aparelho."}
+                {serviceWorkerStatus === "checking" || pushKey.isLoading
+                  ? "Verificando Service Worker e chave VAPID…"
+                  : serviceWorkerStatus === "unsupported"
+                    ? "Este navegador não oferece Service Worker."
+                    : serviceWorkerStatus === "missing"
+                      ? "Service Worker não está ativo. Feche e reabra o PWA publicado."
+                      : pushKey.isError || !currentVapidBytes
+                        ? "Chave VAPID ausente ou inválida. Confira os Secrets da API."
+                        : pushIsActive
+                          ? "Notificações ativadas neste aparelho."
+                          : pushSubscription
+                            ? "A inscrição usa uma chave anterior e será substituída ao ativar."
+                            : "Ative para receber avisos neste aparelho."}
               </p>
-              {pushConfig.isError && <button type="button" className="mt-1 text-xs font-semibold text-primary" onClick={() => void pushConfig.refetch()}>Tentar consultar novamente</button>}
+              {pushKey.isError && <button type="button" className="mt-1 text-xs font-semibold text-primary" onClick={() => void pushKey.refetch()}>Tentar consultar novamente</button>}
               {pushMessage && <p role="status" className="mt-2 text-xs text-[#8b3d45]">{pushMessage}</p>}
+              {pushIsActive && (
+                <button
+                  type="button"
+                  className="mt-2 text-xs font-semibold text-primary"
+                  onClick={() => void sendTestNotification()}
+                  disabled={sendPushTest.isPending}
+                >
+                  {sendPushTest.isPending ? "Enviando teste…" : "Enviar notificação de teste"}
+                </button>
+              )}
             </div>
           </div>
-          <button type="button" className={pushSubscription ? "button-secondary min-h-10" : "button-primary min-h-10"} onClick={() => void togglePush()} disabled={pushConfig.isLoading || savePush.isPending || removePush.isPending || (!pushSubscription && (!pushConfig.data?.enabled || !pushConfig.data.publicKey))} data-testid="button-toggle-push">
-            {pushSubscription ? <BellOff size={15} /> : <Bell size={15} />}
-            {savePush.isPending || removePush.isPending ? "Atualizando…" : pushSubscription ? "Desativar avisos" : "Ativar avisos"}
+          <button
+            type="button"
+            className={pushIsActive ? "button-secondary min-h-10" : "button-primary min-h-10"}
+            onClick={() => void togglePush()}
+            disabled={
+              pushKey.isLoading ||
+              serviceWorkerStatus !== "active" ||
+              savePush.isPending ||
+              removePush.isPending ||
+              !currentVapidBytes
+            }
+            data-testid="button-toggle-push"
+          >
+            {pushIsActive ? <BellOff size={15} /> : <Bell size={15} />}
+            {savePush.isPending || removePush.isPending
+              ? "Atualizando…"
+              : pushIsActive
+                ? "Desativar avisos"
+                : "Ativar avisos"}
           </button>
         </section>
 
