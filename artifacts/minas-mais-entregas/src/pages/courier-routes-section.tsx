@@ -11,8 +11,8 @@ import {
   type CourierLocationInput,
   type CourierDeliveryRoute,
 } from "@workspace/api-client-react";
-import { Check, Clock3, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
-import LiveMap, { type MapCoordinate, type MapMarker } from "@/components/live-map";
+import { Check, Clock3, Map, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
+import type { MapCoordinate } from "@/components/live-map";
 import EvidencePhotoAction from "@/components/evidence-photo-action";
 
 const money = (amount: number) =>
@@ -48,11 +48,15 @@ export default function CourierRoutesSection({
   isLoading,
   isError,
   onRetry,
+  onShowMap,
+  onCurrentPositionChange,
 }: {
   routes: CourierDeliveryRoute[];
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  onShowMap: () => void;
+  onCurrentPositionChange: (position: MapCoordinate) => void;
 }) {
   const queryClient = useQueryClient();
   const acceptRoute = useAcceptCourierRoute();
@@ -61,10 +65,11 @@ export default function CourierRoutesSection({
   const updateLocation = useUpdateCourierLocation();
   const updateLocationRef = useRef(updateLocation.mutateAsync);
   updateLocationRef.current = updateLocation.mutateAsync;
+  const onCurrentPositionChangeRef = useRef(onCurrentPositionChange);
+  onCurrentPositionChangeRef.current = onCurrentPositionChange;
   const [busyRouteId, setBusyRouteId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [locationMessage, setLocationMessage] = useState("");
-  const [currentPosition, setCurrentPosition] = useState<MapCoordinate | null>(null);
   const [arrivedStoreStopId, setArrivedStoreStopId] = useState<string | null>(null);
   const activeRoute = routes.find((route) => route.status === "ACCEPTED");
   const offeredRoutes = routes.filter((route) => route.status === "OFFERED");
@@ -96,7 +101,8 @@ export default function CourierRoutesSection({
         };
         const now = Date.now();
         if (now - lastDisplayedAt >= 5_000) {
-          setCurrentPosition({ latitude: position.latitude, longitude: position.longitude });
+          const coordinate = { latitude: position.latitude, longitude: position.longitude };
+          onCurrentPositionChangeRef.current(coordinate);
           lastDisplayedAt = now;
         }
         if (sending || now - lastSentAt < 15_000) return;
@@ -254,9 +260,9 @@ export default function CourierRoutesSection({
             <ActiveRouteCard
               route={activeRoute}
               busy={busyRouteId === activeRoute.id}
-              currentPosition={currentPosition}
               locationMessage={locationMessage}
               arrivedStoreStopId={arrivedStoreStopId}
+              onShowMap={onShowMap}
               onArrive={(stopId) => void handleStoreArrival(activeRoute.id, stopId)}
               onComplete={(stopId, evidencePath) => void handleCompleteStop(activeRoute.id, stopId, evidencePath)}
             />
@@ -316,17 +322,17 @@ export default function CourierRoutesSection({
 function ActiveRouteCard({
   route,
   busy,
-  currentPosition,
   locationMessage,
   arrivedStoreStopId,
+  onShowMap,
   onArrive,
   onComplete,
 }: {
   route: CourierDeliveryRoute;
   busy: boolean;
-  currentPosition: MapCoordinate | null;
   locationMessage: string;
   arrivedStoreStopId: string | null;
+  onShowMap: () => void;
   onArrive: (stopId: string) => void;
   onComplete: (stopId: string, evidencePath?: string) => void;
 }) {
@@ -334,27 +340,6 @@ function ActiveRouteCard({
   const nextStop = route.stops.find((stop) => stop.status === "PENDING");
   const hasArrivedAtNextStore = Boolean(nextStop && nextStop.id === arrivedStoreStopId);
   const progress = route.stops.length ? Math.round((completedStops / route.stops.length) * 100) : 0;
-  const mapMarkers: MapMarker[] = [
-    ...route.stops.map((stop) => ({
-      id: stop.id,
-      latitude: stop.latitude,
-      longitude: stop.longitude,
-      title: `${stop.sequence}. ${stop.kind === "pickup" ? "Retirada" : "Entrega"} · ${stop.code}`,
-      detail: stop.address,
-      kind: "stop" as const,
-      sequence: stop.sequence,
-      completed: stop.status === "DONE",
-    })),
-    ...(currentPosition
-      ? [{
-          id: `current-${route.id}`,
-          ...currentPosition,
-          title: "Sua posição atual",
-          detail: "Localização recebida pelo GPS do aparelho",
-          kind: "current" as const,
-        }]
-      : []),
-  ];
 
   return (
     <article className="overflow-hidden rounded-2xl bg-[#a91d2a] p-4 text-white shadow-sm sm:p-5">
@@ -377,28 +362,13 @@ function ActiveRouteCard({
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/15">
         <div className="h-full rounded-full bg-white transition-all" style={{ width: `${progress}%` }} />
       </div>
-      {route.stops.length > 0 && (
-        <div className="mt-4 overflow-hidden rounded-xl bg-white text-[#24272d]">
-          <div className="border-b border-border px-4 py-3">
-            <div className="text-sm font-bold">Mapa da rota</div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {route.routeGeometry?.length
-                ? "Traçado viário calculado pelo Mapbox, com paradas numeradas."
-                : "Paradas numeradas na sequência da rota."}
-            </p>
-          </div>
-          <LiveMap
-            markers={mapMarkers}
-            routeGeometry={route.routeGeometry}
-            ariaLabel="Rota do motoboy com paradas numeradas e posição atual"
-            size="full-screen"
-            showCenterControls
-          />
-          <div className="px-4 py-2 text-[11px] text-muted-foreground">
-            {locationMessage || "Aguardando posição GPS do aparelho."}
-          </div>
-        </div>
-      )}
+      <button
+        className="button-secondary mt-4 min-h-10 w-full justify-center"
+        type="button"
+        onClick={onShowMap}
+      >
+        <Map size={15} /> Abrir mapa da rota
+      </button>
 
       {nextStop ? (
         <div className="mt-4 rounded-xl bg-white p-4 text-[#24272d]">

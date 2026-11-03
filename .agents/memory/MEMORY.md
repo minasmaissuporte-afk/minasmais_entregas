@@ -4,3 +4,4 @@
 - [Bootstrap e papéis de acesso](role-bootstrap-and-account-removal.md) — A conta inicial de administrador não deve sobrescrever papéis atribuídos posteriormente; exclusões preservam histórico.
 - [Mapbox e rotas](mapbox-routing-access.md) — Optimization v2 Beta e geocodificação permanente estão habilitados; coordenadas persistidas exigem resultados permanentes.
 - [Estilo e tamanho dos mapas Mapbox](mapbox-style-choice.md) — Preserve `streets-v12`/`pt` e dê altura responsiva explícita ao elemento entregue ao Mapbox.
+- [Formato das chaves VAPID](web-push-vapid-keys.md) — Ao configurar Web Push, aceite a saída rotulada do gerador e extraia as linhas pública e privada sem expor os valores.

@@ -14,13 +14,17 @@ import {
   useUpdateDeliveryStatus,
   useUpdateCourierLocation,
   type AppUser,
+  type CourierDeliveryRoute,
 } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
-import { Bike, CheckCircle2, Clock3, LogOut, PackageCheck, Bell, BellOff } from "lucide-react";
+import { Bike, CheckCircle2, Clock3, LogOut, Map as MapIcon, PackageCheck, Bell, BellOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
+import CourierRouteMapTab from "@/components/courier-route-map-tab";
 import CourierRoutesSection from "@/pages/courier-routes-section";
 import EvidencePhotoAction from "@/components/evidence-photo-action";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { MapCoordinate } from "@/components/live-map";
 
 type Period = "day" | "week" | "month";
 const periodNames: Record<Period, string> = {
@@ -144,6 +148,8 @@ function decodeVapidKey(value: string) {
 export default function CourierPortal({ profile }: { profile: AppUser }) {
   const { signOut } = useClerk();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<"deliveries" | "map">("deliveries");
+  const [currentPosition, setCurrentPosition] = useState<MapCoordinate | null>(null);
   const [period, setPeriod] = useState<Period>("day");
   const [actionError, setActionError] = useState("");
   const [pushMessage, setPushMessage] = useState("");
@@ -217,6 +223,17 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     () => (routes.isLoading ? [] : (deliveries.data ?? []).filter((delivery) => !groupedDeliveryIds.has(delivery.id))),
     [deliveries.data, groupedDeliveryIds, routes.isLoading],
   );
+  const activeRoute = useMemo(
+    () => (routes.data ?? []).find((route) => route.status === "ACCEPTED") ?? null,
+    [routes.data],
+  );
+  const activeIndividualDelivery = useMemo(
+    () =>
+      individualDeliveries.find((delivery) =>
+        ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status),
+      ) ?? null,
+    [individualDeliveries],
+  );
   const updateDelivery = async (deliveryId: string, status: string, evidencePath?: string) => {
     setActionError("");
     if (["ACCEPTED", "TO_STORE", "IN_TRANSIT"].includes(status) && navigator.geolocation) {
@@ -274,6 +291,23 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           </button>
         </header>
 
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as "deliveries" | "map")}
+        >
+          <TabsList className="mt-4 grid h-12 w-full grid-cols-2 rounded-xl border border-[#e7e6e3] bg-white p-1">
+            <TabsTrigger value="deliveries" className="gap-2 rounded-lg text-sm">
+              <PackageCheck size={16} /> Entregas
+            </TabsTrigger>
+            <TabsTrigger value="map" className="gap-2 rounded-lg text-sm">
+              <MapIcon size={16} /> Mapa e rota
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent
+            value="deliveries"
+            forceMount
+            className={activeTab === "deliveries" ? "mt-4" : "hidden"}
+          >
         <section className="mt-5 rounded-2xl bg-[#a91d2a] p-5 text-white shadow-sm sm:p-6">
           <div className="text-xs text-white/75">Olá, {profile.name.split(" ")[0]}</div>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">Seu resumo de entregas</h1>
@@ -344,6 +378,8 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           isLoading={routes.isLoading}
           isError={routes.isError}
           onRetry={() => void routes.refetch()}
+          onShowMap={() => setActiveTab("map")}
+          onCurrentPositionChange={setCurrentPosition}
         />
 
         <section className="mt-6">
@@ -375,7 +411,13 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                       </span>
                     </div>
                     {["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status) && (
-                      <CourierDeliveryNavigation deliveryId={delivery.id} />
+                      <button
+                        type="button"
+                        className="button-secondary mt-3 min-h-9"
+                        onClick={() => setActiveTab("map")}
+                      >
+                        <MapIcon size={14} /> Ver rota no mapa
+                      </button>
                     )}
                     {delivery.status === "IN_TRANSIT" && nextStatus ? (
                       <div className="mt-3 space-y-3 border-t border-border pt-3">
@@ -418,6 +460,35 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             </div>
           )}
         </section>
+          </TabsContent>
+          <TabsContent value="map" className="mt-4">
+            {activeRoute ? (
+              <CourierRouteMapTab route={activeRoute} currentPosition={currentPosition} />
+            ) : activeIndividualDelivery ? (
+              <CourierDeliveryNavigation deliveryId={activeIndividualDelivery.id} />
+            ) : (
+              <section className="panel p-6 text-center">
+                <MapIcon className="mx-auto text-muted-foreground" size={24} />
+                <h2 className="mt-3 text-base font-bold">Nenhuma rota ativa no momento</h2>
+                <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+                  Quando você aceitar uma rota ou entrega, o mapa com o destino aparecerá aqui.
+                </p>
+                {(routes.data ?? []).some((route) => route.status === "OFFERED") && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Há uma rota aguardando aceite. Acesse Entregas para aceitar e calcular o trajeto.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className="button-primary mt-4 min-h-10"
+                  onClick={() => setActiveTab("deliveries")}
+                >
+                  <PackageCheck size={15} /> Ver entregas
+                </button>
+              </section>
+            )}
+          </TabsContent>
+        </Tabs>
         <footer className="mt-6 text-center text-[11px] text-muted-foreground">
           {profile.email} · valores calculados pelo sistema a partir do valor cadastrado por entrega.
         </footer>

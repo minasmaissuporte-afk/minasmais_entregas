@@ -44,9 +44,16 @@ function normalizeVapidKey(value: string | undefined, expectedBytes: number) {
     );
     if (publicLine) key = publicLine[1];
   } else {
-    key = key
-      .replace(/^(?:VAPID_)?PRIVATE[\s_]?KEY\s*[:=]\s*/i, "")
-      .replace(/^private\s+key\s*:\s*/i, "");
+    const privateLine = key.match(
+      /(?:^|\n)\s*(?:VAPID_)?PRIVATE[\s_]?KEY\s*[:=]\s*(?:\r?\n\s*)?([^\r\n]+)/i,
+    );
+    if (privateLine) {
+      key = privateLine[1];
+    } else {
+      key = key
+        .replace(/^(?:VAPID_)?PRIVATE[\s_]?KEY\s*[:=]\s*/i, "")
+        .replace(/^private\s+key\s*:\s*/i, "");
+    }
   }
   key = stripWrappingQuotes(key);
 
