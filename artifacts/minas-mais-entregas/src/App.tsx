@@ -32,7 +32,7 @@ import {
 import {
   ArrowLeft, ArrowRight, Bike, Clock3, FilePlus2, Filter,
   History, MapPin, PackageCheck, Phone, Plus, Search, ShieldCheck,
-  Truck, UserRound, X, AlertTriangle, RefreshCw,
+  Truck, UserRound, X, AlertTriangle, RefreshCw, KeyRound,
   Trash2,
 } from 'lucide-react';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
@@ -49,6 +49,7 @@ import StorePortal from '@/pages/store-portal';
 import StoreManagement from '@/pages/store-management';
 import Reports from '@/pages/reports';
 import EvidencePhotoAction from '@/components/evidence-photo-action';
+import AccountSecurityPage from '@/pages/account-security';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -285,6 +286,7 @@ function AppShell({ children, profile }: { children: ReactNode; profile: AppUser
       <header className="topbar">
         <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="hidden sm:inline">Rede Minas Mais</span><span className="hidden sm:inline">/</span><span className="font-semibold text-foreground">{location.startsWith('/deliveries/') ? 'Detalhe da entrega' : location === '/access' ? 'Acessos e perfis' : location === '/filiais' ? 'Filiais' : location === '/reports' ? 'Relatórios' : 'Central de entregas'}</span></div>
           <div className="ml-auto flex items-center gap-2">
+            <Link href="/account" className="icon-button" aria-label="Minha conta e senha" title="Minha conta e senha"><KeyRound size={16}/></Link>
             <nav className="flex items-center gap-1 md:hidden" aria-label="Navegação principal">
               <Link href="/" className="icon-button" aria-label="Entregas"><Truck size={16}/></Link>
               {profile.role === 'ADMIN' && <>
@@ -871,6 +873,7 @@ function PendingApproval({ profile }: { profile: AppUser }) {
       <h1 className="mt-5 text-xl font-bold">Acesso aguardando aprovação</h1>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Sua conta foi criada, mas ainda não recebeu um perfil de acesso. Um administrador precisa aprovar e vincular sua conta.</p>
       <p className="mt-4 rounded-lg bg-[#f7f6f4] px-3 py-2 text-xs text-muted-foreground">{profile.email}</p>
+      <Link className="button-secondary mt-5" href="/account"><KeyRound size={15}/> Configurar senha</Link>
       <button className="button-secondary mt-5" onClick={() => void signOut({ redirectUrl: basePath || '/' })}>Sair da conta</button>
     </section>
   </main>;
@@ -896,6 +899,13 @@ function useSignedInProfile() {
     },
   });
   return { auth, profile };
+}
+
+function AccountRoute() {
+  const auth = useUser();
+  if (!auth.isLoaded) return <ProfileLoading />;
+  if (!auth.isSignedIn) return <Redirect to="/" />;
+  return <AccountSecurityPage />;
 }
 
 function UserPortalRoute() {
@@ -959,6 +969,7 @@ function ClerkRoutes() {
         <Switch>
           <Route path="/" component={HomeRedirect}/>
           <Route path="/user-portal" component={UserPortalRoute}/>
+          <Route path="/account" component={AccountRoute}/>
           <Route path="/motoboy-pwa" component={CourierAccessPage}/>
           <Route path="/deliveries/:deliveryId" component={() => <CentralRoute><DeliveryDetail/></CentralRoute>}/>
           <Route path="/access" component={() => <CentralRoute adminOnly><AccessManagement/></CentralRoute>}/>

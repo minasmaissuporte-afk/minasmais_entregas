@@ -8,9 +8,10 @@ import {
   useUpdateDeliveryStatus,
   type AppUser,
 } from "@workspace/api-client-react";
-import { Check, LogOut, PackageCheck } from "lucide-react";
+import { Check, KeyRound, LogOut, PackageCheck } from "lucide-react";
 import { useClerk } from "@clerk/react";
 import LiveMap, { type MapMarker } from "@/components/live-map";
+import { Link } from "wouter";
 
 export default function StorePortal({ profile }: { profile: AppUser }) {
   const { signOut } = useClerk();
@@ -73,12 +74,17 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
               <div className="text-[11px] text-muted-foreground">Área da unidade</div>
             </div>
           </div>
-          <button
-            className="button-quiet"
-            onClick={() => void signOut({ redirectUrl: import.meta.env.BASE_URL })}
-          >
-            <LogOut size={15} /> Sair
-          </button>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <Link href="/account" className="button-secondary min-h-9 px-2 text-xs sm:px-3" aria-label="Alterar senha">
+              <KeyRound size={14} /> <span className="hidden sm:inline">Senha</span>
+            </Link>
+            <button
+              className="button-quiet min-h-9 px-2 text-xs sm:px-3"
+              onClick={() => void signOut({ redirectUrl: import.meta.env.BASE_URL })}
+            >
+              <LogOut size={15} /> Sair
+            </button>
+          </div>
         </header>
 
         <div className="mb-5 mt-6">
