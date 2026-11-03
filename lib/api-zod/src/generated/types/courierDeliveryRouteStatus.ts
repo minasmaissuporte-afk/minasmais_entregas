@@ -13,4 +13,5 @@ export const CourierDeliveryRouteStatus = {
   OFFERED: 'OFFERED',
   ACCEPTED: 'ACCEPTED',
   COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
 } as const;

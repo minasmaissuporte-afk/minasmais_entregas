@@ -117,6 +117,9 @@ export const DeliveryStatusInputStatus = {
   IN_TRANSIT: 'IN_TRANSIT',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
+  AWAITING_COURIER: 'AWAITING_COURIER',
+  RETURNING_TO_STORE: 'RETURNING_TO_STORE',
+  NOT_DELIVERED: 'NOT_DELIVERED',
 } as const;
 
 export interface DeliveryStatusInput {
@@ -324,11 +327,99 @@ export interface DeliveryAnalyticsRow {
   evidenceAvailable: boolean;
 }
 
+export interface DeliveryAnalyticsCancellation {
+  id: string;
+  deliveryId: string;
+  code: string;
+  customerName: string;
+  storeName: string;
+  /** @nullable */
+  courierName: string | null;
+  reason: string;
+  /** @nullable */
+  observation: string | null;
+  status: string;
+  priority: boolean;
+  requestedAt: string;
+}
+
 export interface DeliveryAnalytics {
   summary: DeliveryAnalyticsSummary;
   daily: DeliveryAnalyticsDay[];
   couriers: DeliveryAnalyticsCourier[];
   deliveries: DeliveryAnalyticsRow[];
+  cancellations: DeliveryAnalyticsCancellation[];
+}
+
+export interface DeliveryCancellationReason {
+  id: string;
+  label: string;
+  active: boolean;
+  position: number;
+}
+
+export interface UpdateDeliveryCancellationReasonsInput {
+  /** @minItems 1 */
+  reasons: DeliveryCancellationReason[];
+}
+
+export interface DeliveryCancellationAlert {
+  id: string;
+  deliveryId: string;
+  code: string;
+  customerName: string;
+  storeName: string;
+  /** @nullable */
+  courierName: string | null;
+  reason: string;
+  /** @nullable */
+  observation: string | null;
+  status: string;
+  priority: boolean;
+  requestedAt: string;
+  routeContinues: boolean;
+}
+
+export type DeliveryCancellationActionInputAction = typeof DeliveryCancellationActionInputAction[keyof typeof DeliveryCancellationActionInputAction];
+
+
+export const DeliveryCancellationActionInputAction = {
+  REQUEUE: 'REQUEUE',
+  CLOSE: 'CLOSE',
+  CONFIRM_RETURN: 'CONFIRM_RETURN',
+} as const;
+
+export interface DeliveryCancellationActionInput {
+  action: DeliveryCancellationActionInputAction;
+}
+
+export interface CourierUnableToDeliverInput {
+  /**
+     * @minLength 2
+     * @maxLength 160
+     */
+  reason: string;
+  /** @maxLength 500 */
+  observation?: string;
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude?: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude?: number;
+}
+
+export interface CourierUnableToDeliverResult {
+  deliveryId: string;
+  status: string;
+  routeContinues: boolean;
+  priority: boolean;
+  /** @minimum 1 */
+  affectedDeliveries: number;
 }
 
 export interface AddressSuggestion {
@@ -587,8 +678,14 @@ export interface RouteDeliverySummary {
   id: string;
   code: string;
   customerName: string;
+  /** @nullable */
+  customerPhone: string | null;
   destination: string;
+  /** @nullable */
+  notes: string | null;
   storeName: string;
+  storeAddress: string;
+  storeCity: string;
   deliveryAmount: number;
   status: string;
 }
@@ -631,6 +728,7 @@ export const CourierDeliveryRouteStatus = {
   OFFERED: 'OFFERED',
   ACCEPTED: 'ACCEPTED',
   COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
 } as const;
 
 export interface CourierDeliveryRoute {

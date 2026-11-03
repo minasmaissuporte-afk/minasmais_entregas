@@ -33,7 +33,7 @@ router.get("/push/config", requireAuthentication, (_req, res): void => {
 router.post(
   "/push/subscription",
   requireAuthentication,
-  requireRole("COURIER"),
+  requireRole("COURIER", "ADMIN", "CENTRAL"),
   async (req, res): Promise<void> => {
     const body = SavePushSubscriptionBody.safeParse(req.body);
     if (!body.success) {
@@ -47,7 +47,7 @@ router.post(
     }
     await pruneStalePushSubscriptions(keyId);
     const profile = res.locals.appUser as AppUserProfile;
-    if (!profile.courierId) {
+    if (profile.role === "COURIER" && !profile.courierId) {
       res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
       return;
     }
@@ -55,7 +55,8 @@ router.post(
       .insert(pushSubscriptionsTable)
       .values({
         id: randomUUID(),
-        courierId: profile.courierId,
+        courierId: profile.role === "COURIER" ? profile.courierId : null,
+        userId: profile.id,
         endpoint: body.data.endpoint,
         p256dh: body.data.p256dh,
         auth: body.data.auth,
@@ -64,7 +65,8 @@ router.post(
       .onConflictDoUpdate({
         target: pushSubscriptionsTable.endpoint,
         set: {
-          courierId: profile.courierId,
+          courierId: profile.role === "COURIER" ? profile.courierId : null,
+          userId: profile.id,
           p256dh: body.data.p256dh,
           auth: body.data.auth,
           vapidKeyId: keyId,
@@ -77,7 +79,7 @@ router.post(
 router.delete(
   "/push/subscription",
   requireAuthentication,
-  requireRole("COURIER"),
+  requireRole("COURIER", "ADMIN", "CENTRAL"),
   async (req, res): Promise<void> => {
     const body = RemovePushSubscriptionBody.safeParse(req.body);
     if (!body.success) {
@@ -85,7 +87,7 @@ router.delete(
       return;
     }
     const profile = res.locals.appUser as AppUserProfile;
-    if (!profile.courierId) {
+    if (profile.role === "COURIER" && !profile.courierId) {
       res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
       return;
     }
@@ -94,7 +96,7 @@ router.delete(
       .where(
         and(
           eq(pushSubscriptionsTable.endpoint, body.data.endpoint),
-          eq(pushSubscriptionsTable.courierId, profile.courierId),
+          eq(pushSubscriptionsTable.userId, profile.id),
         ),
       );
     res.sendStatus(204);

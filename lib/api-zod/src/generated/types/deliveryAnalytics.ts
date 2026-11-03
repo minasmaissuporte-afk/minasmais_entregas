@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DeliveryAnalyticsCancellation } from './deliveryAnalyticsCancellation';
 import type { DeliveryAnalyticsCourier } from './deliveryAnalyticsCourier';
 import type { DeliveryAnalyticsDay } from './deliveryAnalyticsDay';
 import type { DeliveryAnalyticsRow } from './deliveryAnalyticsRow';
@@ -15,4 +16,5 @@ export interface DeliveryAnalytics {
   daily: DeliveryAnalyticsDay[];
   couriers: DeliveryAnalyticsCourier[];
   deliveries: DeliveryAnalyticsRow[];
+  cancellations: DeliveryAnalyticsCancellation[];
 }

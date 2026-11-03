@@ -288,6 +288,40 @@ export async function notifyCouriers(
   }
 }
 
+export async function notifyCentralUsers(payload: {
+  title: string;
+  body: string;
+  url?: string;
+}): Promise<void> {
+  const config = loadVapidConfiguration();
+  if (!config) {
+    logger.warn("Web push is not configured; Central notification was not sent");
+    return;
+  }
+  try {
+    await pruneStalePushSubscriptions(config.keyId);
+    const users = await db
+      .select({ id: appUsersTable.id })
+      .from(appUsersTable)
+      .where(inArray(appUsersTable.role, ["ADMIN", "CENTRAL"]));
+    if (!users.length) return;
+    const subscriptions = await db
+      .select()
+      .from(pushSubscriptionsTable)
+      .where(inArray(
+        pushSubscriptionsTable.userId,
+        users.map((user) => user.id),
+      ));
+    await Promise.all(
+      subscriptions.map((subscription) =>
+        sendToSubscription(subscription, payload),
+      ),
+    );
+  } catch (error) {
+    logger.warn({ err: error }, "Could not load Central push subscriptions");
+  }
+}
+
 export async function notifyAvailableCouriers(payload: {
   title: string;
   body: string;

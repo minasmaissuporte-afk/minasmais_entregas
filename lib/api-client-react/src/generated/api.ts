@@ -37,10 +37,15 @@ import type {
   CourierEarnings,
   CourierLocation,
   CourierLocationInput,
+  CourierUnableToDeliverInput,
+  CourierUnableToDeliverResult,
   CreateDeliveryRouteInput,
   DashboardSummary,
   Delivery,
   DeliveryAnalytics,
+  DeliveryCancellationActionInput,
+  DeliveryCancellationAlert,
+  DeliveryCancellationReason,
   DeliveryEvidenceUploadInput,
   DeliveryEvidenceUploadUrl,
   DeliveryInput,
@@ -57,6 +62,7 @@ import type {
   PushSubscriptionInput,
   Store,
   StoreInput,
+  UpdateDeliveryCancellationReasonsInput,
   UserRoleInput,
   VapidPublicKeyResponse
 } from './api.schemas';
@@ -876,6 +882,385 @@ export const useRemovePushSubscription = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRemovePushSubscriptionMutationOptions(options), queryClient);
+    }
+
+export const getListDeliveryCancellationReasonsUrl = () => {
+
+
+
+
+  return `/api/delivery-cancellation-reasons`
+}
+
+/**
+ * @summary List active courier cancellation reasons
+ */
+export const listDeliveryCancellationReasons = async ( options?: Parameters<typeof customFetch>[1]): Promise<DeliveryCancellationReason[]> => {
+
+  return customFetch<DeliveryCancellationReason[]>(getListDeliveryCancellationReasonsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDeliveryCancellationReasonsQueryKey = () => {
+    return [
+    `/api/delivery-cancellation-reasons`
+    ] as const;
+    }
+
+
+export const getListDeliveryCancellationReasonsQueryOptions = <TData = Awaited<ReturnType<typeof listDeliveryCancellationReasons>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellationReasons>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDeliveryCancellationReasonsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDeliveryCancellationReasons>>> = ({ signal }) => listDeliveryCancellationReasons({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellationReasons>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListDeliveryCancellationReasonsQueryResult = NonNullable<Awaited<ReturnType<typeof listDeliveryCancellationReasons>>>
+export type ListDeliveryCancellationReasonsQueryError = ErrorType<unknown>
+
+
+export function useListDeliveryCancellationReasons<TData = Awaited<ReturnType<typeof listDeliveryCancellationReasons>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellationReasons>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listDeliveryCancellationReasons>>,
+          TError,
+          Awaited<ReturnType<typeof listDeliveryCancellationReasons>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListDeliveryCancellationReasons<TData = Awaited<ReturnType<typeof listDeliveryCancellationReasons>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellationReasons>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listDeliveryCancellationReasons>>,
+          TError,
+          Awaited<ReturnType<typeof listDeliveryCancellationReasons>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListDeliveryCancellationReasons<TData = Awaited<ReturnType<typeof listDeliveryCancellationReasons>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellationReasons>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List active courier cancellation reasons
+ */
+
+export function useListDeliveryCancellationReasons<TData = Awaited<ReturnType<typeof listDeliveryCancellationReasons>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellationReasons>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListDeliveryCancellationReasonsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateDeliveryCancellationReasonsUrl = () => {
+
+
+
+
+  return `/api/delivery-cancellation-reasons`
+}
+
+/**
+ * @summary Update editable courier cancellation reasons
+ */
+export const updateDeliveryCancellationReasons = async (updateDeliveryCancellationReasonsInput: UpdateDeliveryCancellationReasonsInput, options?: Parameters<typeof customFetch>[1]): Promise<DeliveryCancellationReason[]> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<DeliveryCancellationReason[]>(getUpdateDeliveryCancellationReasonsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateDeliveryCancellationReasonsInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateDeliveryCancellationReasonsMutationKey = () => ['updateDeliveryCancellationReasons'] as const;
+
+export const getUpdateDeliveryCancellationReasonsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDeliveryCancellationReasons>>, TError,UpdateDeliveryCancellationReasonsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateDeliveryCancellationReasons>>, TError,UpdateDeliveryCancellationReasonsMutationVariables, TContext> => {
+
+const mutationKey = getUpdateDeliveryCancellationReasonsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateDeliveryCancellationReasons>>, UpdateDeliveryCancellationReasonsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateDeliveryCancellationReasons(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateDeliveryCancellationReasonsMutationResult = NonNullable<Awaited<ReturnType<typeof updateDeliveryCancellationReasons>>>
+    export type UpdateDeliveryCancellationReasonsMutationBody = BodyType<UpdateDeliveryCancellationReasonsInput>
+    export type UpdateDeliveryCancellationReasonsMutationError = ErrorType<void>
+    export type UpdateDeliveryCancellationReasonsMutationVariables = {data: BodyType<UpdateDeliveryCancellationReasonsInput>}
+
+    /**
+ * @summary Update editable courier cancellation reasons
+ */
+export const useUpdateDeliveryCancellationReasons = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDeliveryCancellationReasons>>, TError,UpdateDeliveryCancellationReasonsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateDeliveryCancellationReasons>>,
+        TError,
+        UpdateDeliveryCancellationReasonsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateDeliveryCancellationReasonsMutationOptions(options), queryClient);
+    }
+
+export const getListDeliveryCancellationsUrl = () => {
+
+
+
+
+  return `/api/delivery-cancellations`
+}
+
+/**
+ * @summary List courier cancellation alerts for Central
+ */
+export const listDeliveryCancellations = async ( options?: Parameters<typeof customFetch>[1]): Promise<DeliveryCancellationAlert[]> => {
+
+  return customFetch<DeliveryCancellationAlert[]>(getListDeliveryCancellationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDeliveryCancellationsQueryKey = () => {
+    return [
+    `/api/delivery-cancellations`
+    ] as const;
+    }
+
+
+export const getListDeliveryCancellationsQueryOptions = <TData = Awaited<ReturnType<typeof listDeliveryCancellations>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellations>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDeliveryCancellationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDeliveryCancellations>>> = ({ signal }) => listDeliveryCancellations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellations>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListDeliveryCancellationsQueryResult = NonNullable<Awaited<ReturnType<typeof listDeliveryCancellations>>>
+export type ListDeliveryCancellationsQueryError = ErrorType<void>
+
+
+export function useListDeliveryCancellations<TData = Awaited<ReturnType<typeof listDeliveryCancellations>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellations>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listDeliveryCancellations>>,
+          TError,
+          Awaited<ReturnType<typeof listDeliveryCancellations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListDeliveryCancellations<TData = Awaited<ReturnType<typeof listDeliveryCancellations>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellations>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listDeliveryCancellations>>,
+          TError,
+          Awaited<ReturnType<typeof listDeliveryCancellations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListDeliveryCancellations<TData = Awaited<ReturnType<typeof listDeliveryCancellations>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellations>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List courier cancellation alerts for Central
+ */
+
+export function useListDeliveryCancellations<TData = Awaited<ReturnType<typeof listDeliveryCancellations>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeliveryCancellations>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListDeliveryCancellationsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getActOnDeliveryCancellationUrl = (cancellationId: string,) => {
+
+
+
+
+  return `/api/delivery-cancellations/${cancellationId}/action`
+}
+
+/**
+ * @summary Resolve or requeue a courier cancellation
+ */
+export const actOnDeliveryCancellation = async (cancellationId: string,
+    deliveryCancellationActionInput: DeliveryCancellationActionInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<void>(getActOnDeliveryCancellationUrl(cancellationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(deliveryCancellationActionInput)
+  }
+);}
+
+
+
+
+
+export const getActOnDeliveryCancellationMutationKey = () => ['actOnDeliveryCancellation'] as const;
+
+export const getActOnDeliveryCancellationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof actOnDeliveryCancellation>>, TError,ActOnDeliveryCancellationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof actOnDeliveryCancellation>>, TError,ActOnDeliveryCancellationMutationVariables, TContext> => {
+
+const mutationKey = getActOnDeliveryCancellationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof actOnDeliveryCancellation>>, ActOnDeliveryCancellationMutationVariables> = (props) => {
+          const {cancellationId,data} = props ?? {};
+
+          return  actOnDeliveryCancellation(cancellationId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ActOnDeliveryCancellationMutationResult = NonNullable<Awaited<ReturnType<typeof actOnDeliveryCancellation>>>
+    export type ActOnDeliveryCancellationMutationBody = BodyType<DeliveryCancellationActionInput>
+    export type ActOnDeliveryCancellationMutationError = ErrorType<void>
+    export type ActOnDeliveryCancellationMutationVariables = {cancellationId: string;data: BodyType<DeliveryCancellationActionInput>}
+
+    /**
+ * @summary Resolve or requeue a courier cancellation
+ */
+export const useActOnDeliveryCancellation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof actOnDeliveryCancellation>>, TError,ActOnDeliveryCancellationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof actOnDeliveryCancellation>>,
+        TError,
+        ActOnDeliveryCancellationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getActOnDeliveryCancellationMutationOptions(options), queryClient);
     }
 
 export const getListDeliveriesUrl = (params?: ListDeliveriesParams,) => {
@@ -3378,5 +3763,94 @@ export const useRecordCourierStopArrival = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRecordCourierStopArrivalMutationOptions(options), queryClient);
+    }
+
+export const getCreateCourierDeliveryCancellationUrl = (deliveryId: string,) => {
+
+
+
+
+  return `/api/courier/deliveries/${deliveryId}/unable`
+}
+
+/**
+ * @summary Report that the signed-in courier cannot complete a delivery
+ */
+export const createCourierDeliveryCancellation = async (deliveryId: string,
+    courierUnableToDeliverInput: CourierUnableToDeliverInput, options?: Parameters<typeof customFetch>[1]): Promise<CourierUnableToDeliverResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<CourierUnableToDeliverResult>(getCreateCourierDeliveryCancellationUrl(deliveryId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(courierUnableToDeliverInput)
+  }
+);}
+
+
+
+
+
+export const getCreateCourierDeliveryCancellationMutationKey = () => ['createCourierDeliveryCancellation'] as const;
+
+export const getCreateCourierDeliveryCancellationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCourierDeliveryCancellation>>, TError,CreateCourierDeliveryCancellationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCourierDeliveryCancellation>>, TError,CreateCourierDeliveryCancellationMutationVariables, TContext> => {
+
+const mutationKey = getCreateCourierDeliveryCancellationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCourierDeliveryCancellation>>, CreateCourierDeliveryCancellationMutationVariables> = (props) => {
+          const {deliveryId,data} = props ?? {};
+
+          return  createCourierDeliveryCancellation(deliveryId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCourierDeliveryCancellationMutationResult = NonNullable<Awaited<ReturnType<typeof createCourierDeliveryCancellation>>>
+    export type CreateCourierDeliveryCancellationMutationBody = BodyType<CourierUnableToDeliverInput>
+    export type CreateCourierDeliveryCancellationMutationError = ErrorType<void>
+    export type CreateCourierDeliveryCancellationMutationVariables = {deliveryId: string;data: BodyType<CourierUnableToDeliverInput>}
+
+    /**
+ * @summary Report that the signed-in courier cannot complete a delivery
+ */
+export const useCreateCourierDeliveryCancellation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCourierDeliveryCancellation>>, TError,CreateCourierDeliveryCancellationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createCourierDeliveryCancellation>>,
+        TError,
+        CreateCourierDeliveryCancellationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateCourierDeliveryCancellationMutationOptions(options), queryClient);
     }
 

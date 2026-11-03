@@ -143,6 +143,83 @@ paths:
       responses:
         "204":
           description: Subscription removed
+  /delivery-cancellation-reasons:
+    get:
+      operationId: listDeliveryCancellationReasons
+      tags: [deliveries]
+      summary: List active courier cancellation reasons
+      responses:
+        "200":
+          description: Active cancellation reasons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeliveryCancellationReason"
+    put:
+      operationId: updateDeliveryCancellationReasons
+      tags: [deliveries]
+      summary: Update editable courier cancellation reasons
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDeliveryCancellationReasonsInput"
+      responses:
+        "200":
+          description: Updated cancellation reasons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeliveryCancellationReason"
+        "403":
+          description: Administrator role required
+  /delivery-cancellations:
+    get:
+      operationId: listDeliveryCancellations
+      tags: [deliveries]
+      summary: List courier cancellation alerts for Central
+      responses:
+        "200":
+          description: Pending return and cancellation alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeliveryCancellationAlert"
+        "403":
+          description: Central or administrator role required
+  /delivery-cancellations/{cancellationId}/action:
+    post:
+      operationId: actOnDeliveryCancellation
+      tags: [deliveries]
+      summary: Resolve or requeue a courier cancellation
+      parameters:
+        - in: path
+          name: cancellationId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryCancellationActionInput"
+      responses:
+        "204":
+          description: Cancellation action applied
+        "403":
+          description: Central or administrator role required
+        "404":
+          description: Cancellation not found
+        "409":
+          description: Action does not match the cancellation state
   /deliveries:
     get:
       operationId: listDeliveries
@@ -697,6 +774,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CourierDeliveryRoute"
+  /courier/deliveries/{deliveryId}/unable:
+    post:
+      operationId: createCourierDeliveryCancellation
+      tags: [courier]
+      summary: Report that the signed-in courier cannot complete a delivery
+      parameters:
+        - in: path
+          name: deliveryId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourierUnableToDeliverInput"
+      responses:
+        "200":
+          description: Cancellation recorded and active route updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourierUnableToDeliverResult"
+        "403":
+          description: Delivery is not assigned to the signed-in courier
+        "409":
+          description: Delivery or route changed, or a fresh GPS fix is needed
 components:
   schemas:
     HealthStatus:
@@ -772,7 +877,7 @@ components:
       properties:
         status:
           type: string
-          enum: [ACCEPTED, TO_STORE, AT_STORE, IN_TRANSIT, COMPLETED, CANCELLED]
+          enum: [ACCEPTED, TO_STORE, AT_STORE, IN_TRANSIT, COMPLETED, CANCELLED, AWAITING_COURIER, RETURNING_TO_STORE, NOT_DELIVERED]
         note: { type: string, maxLength: 500 }
         evidencePath: { type: string }
     Store:
@@ -869,7 +974,7 @@ components:
             $ref: "#/components/schemas/RouteCoordinate"
     DeliveryAnalytics:
       type: object
-      required: [summary, daily, couriers, deliveries]
+      required: [summary, daily, couriers, deliveries, cancellations]
       properties:
         summary:
           $ref: "#/components/schemas/DeliveryAnalyticsSummary"
@@ -885,6 +990,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DeliveryAnalyticsRow"
+        cancellations:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryAnalyticsCancellation"
     DeliveryAnalyticsSummary:
       type: object
       required: [total, completed, cancelled, averageTotalMinutes, averageStoreMinutes, averageDeliveryMinutes, courierAmount]
@@ -929,6 +1038,78 @@ components:
         storeDepartedAt: { type: ["string", "null"], format: date-time }
         completedAt: { type: ["string", "null"], format: date-time }
         evidenceAvailable: { type: boolean }
+    DeliveryAnalyticsCancellation:
+      type: object
+      required: [id, deliveryId, code, customerName, storeName, courierName, reason, observation, status, priority, requestedAt]
+      properties:
+        id: { type: string }
+        deliveryId: { type: string }
+        code: { type: string }
+        customerName: { type: string }
+        storeName: { type: string }
+        courierName: { type: ["string", "null"] }
+        reason: { type: string }
+        observation: { type: ["string", "null"] }
+        status: { type: string }
+        priority: { type: boolean }
+        requestedAt: { type: string, format: date-time }
+    DeliveryCancellationReason:
+      type: object
+      required: [id, label, active, position]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        active: { type: boolean }
+        position: { type: integer }
+    UpdateDeliveryCancellationReasonsInput:
+      type: object
+      required: [reasons]
+      properties:
+        reasons:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/DeliveryCancellationReason"
+    DeliveryCancellationAlert:
+      type: object
+      required: [id, deliveryId, code, customerName, storeName, courierName, reason, observation, status, priority, requestedAt, routeContinues]
+      properties:
+        id: { type: string }
+        deliveryId: { type: string }
+        code: { type: string }
+        customerName: { type: string }
+        storeName: { type: string }
+        courierName: { type: ["string", "null"] }
+        reason: { type: string }
+        observation: { type: ["string", "null"] }
+        status: { type: string }
+        priority: { type: boolean }
+        requestedAt: { type: string, format: date-time }
+        routeContinues: { type: boolean }
+    DeliveryCancellationActionInput:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [REQUEUE, CLOSE, CONFIRM_RETURN]
+    CourierUnableToDeliverInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 2, maxLength: 160 }
+        observation: { type: string, maxLength: 500 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+    CourierUnableToDeliverResult:
+      type: object
+      required: [deliveryId, status, routeContinues, priority, affectedDeliveries]
+      properties:
+        deliveryId: { type: string }
+        status: { type: string }
+        routeContinues: { type: boolean }
+        priority: { type: boolean }
+        affectedDeliveries: { type: integer, minimum: 1 }
     AddressSuggestion:
       type: object
       required: [formatted, street, houseNumber, suburb, district, city, stateCode, postcode, latitude, longitude]
@@ -1082,13 +1263,17 @@ components:
         lastLocationAt: { type: string, format: date-time }
     RouteDeliverySummary:
       type: object
-      required: [id, code, customerName, destination, storeName, deliveryAmount, status]
+      required: [id, code, customerName, customerPhone, destination, notes, storeName, storeAddress, storeCity, deliveryAmount, status]
       properties:
         id: { type: string }
         code: { type: string }
         customerName: { type: string }
+        customerPhone: { type: ["string", "null"] }
         destination: { type: string }
+        notes: { type: ["string", "null"] }
         storeName: { type: string }
+        storeAddress: { type: string }
+        storeCity: { type: string }
         deliveryAmount: { type: number }
         status: { type: string }
     DeliveryRouteStop:
@@ -1112,7 +1297,7 @@ components:
       required: [id, status, courierId, deliveryCount, amountToReceive, distanceKm, estimatedMinutes, lockedAt, deliveries, stops, routeGeometry]
       properties:
         id: { type: string }
-        status: { type: string, enum: [OFFERED, ACCEPTED, COMPLETED] }
+        status: { type: string, enum: [OFFERED, ACCEPTED, COMPLETED, CANCELLED] }
         courierId: { type: ["string", "null"] }
         deliveryCount: { type: integer }
         amountToReceive: { type: number }

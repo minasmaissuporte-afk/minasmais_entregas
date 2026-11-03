@@ -9,12 +9,16 @@ import {
   GetDeliveryAnalyticsResponse,
   CreateDeliveryBody,
   CreateDeliveryResponse,
+  ActOnDeliveryCancellationBody,
+  ActOnDeliveryCancellationParams,
   DeleteAccessUserParams,
   DispatchDeliveryBody,
   DispatchDeliveryParams,
   DispatchDeliveryResponse,
   GetDashboardSummaryResponse,
   RequestDeliveryEvidenceUploadUrlBody,
+  ListDeliveryCancellationsResponse,
+  ListDeliveryCancellationReasonsResponse,
   GetDeliveryParams,
   GetDeliveryResponse,
   GetMyProfileResponse,
@@ -25,6 +29,8 @@ import {
   UpdateAccessUserBody,
   UpdateAccessUserParams,
   UpdateAccessUserResponse,
+  UpdateDeliveryCancellationReasonsBody,
+  UpdateDeliveryCancellationReasonsResponse,
   UpdateDeliveryStatusBody,
   UpdateDeliveryStatusParams,
   UpdateDeliveryStatusResponse,
@@ -34,6 +40,8 @@ import {
   couriersTable,
   db,
   deliveryEvidenceUploadsTable,
+  deliveryCancellationsTable,
+  deliveryCancellationReasonsTable,
   deliveriesTable,
   deliveryEventsTable,
   deliveryRoutesTable,
@@ -48,11 +56,280 @@ import {
 } from "../middlewares/accessControl";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
-import { notifyAvailableCouriers, notifyCouriers } from "../lib/webPush";
+import {
+  notifyAvailableCouriers,
+  notifyCentralUsers,
+  notifyCouriers,
+} from "../lib/webPush";
 
 const router: IRouter = Router();
 
 router.use(requireAuthentication);
+
+const defaultCourierCancellationReasons = [
+  { id: "CLIENT_ABSENT", label: "Cliente ausente / não atende" },
+  { id: "ADDRESS_NOT_FOUND", label: "Endereço não encontrado ou incorreto" },
+  { id: "CUSTOMER_REFUSED", label: "Cliente recusou o pedido" },
+  { id: "DOCUMENT_MISSING", label: "Receita ou documento não apresentado" },
+  { id: "PAYMENT_PROBLEM", label: "Problema no pagamento" },
+  { id: "PRODUCT_ISSUE", label: "Produto errado ou avariado" },
+  { id: "MOTORCYCLE_ISSUE", label: "Moto com problema / acidente" },
+  { id: "PERSONAL_ISSUE", label: "Imprevisto pessoal" },
+  { id: "OTHER", label: "Outro" },
+];
+
+router.get(
+  "/delivery-cancellation-reasons",
+  requireRole("ADMIN", "CENTRAL", "COURIER"),
+  async (_req, res): Promise<void> => {
+    await db
+      .insert(deliveryCancellationReasonsTable)
+      .values(
+        defaultCourierCancellationReasons.map((reason, position) => ({
+          ...reason,
+          position,
+        })),
+      )
+      .onConflictDoNothing();
+    const reasons = await db
+      .select()
+      .from(deliveryCancellationReasonsTable)
+      .where(eq(deliveryCancellationReasonsTable.active, true))
+      .orderBy(deliveryCancellationReasonsTable.position);
+    res.json(ListDeliveryCancellationReasonsResponse.parse(reasons));
+  },
+);
+
+router.put(
+  "/delivery-cancellation-reasons",
+  requireRole("ADMIN", "CENTRAL"),
+  async (req, res): Promise<void> => {
+    const body = UpdateDeliveryCancellationReasonsBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "Confira os motivos informados." });
+      return;
+    }
+    const normalizedLabels = body.data.reasons.map((reason) =>
+      reason.label.trim().toLocaleLowerCase("pt-BR"),
+    );
+    if (
+      body.data.reasons.some((reason) => !reason.label.trim()) ||
+      new Set(normalizedLabels).size !== normalizedLabels.length
+    ) {
+      res.status(400).json({ error: "Os motivos não podem ficar vazios ou repetidos." });
+      return;
+    }
+    const reasons = await db.transaction(async (tx) => {
+      await tx
+        .update(deliveryCancellationReasonsTable)
+        .set({ active: false });
+      for (const [position, reason] of body.data.reasons.entries()) {
+        await tx
+          .insert(deliveryCancellationReasonsTable)
+          .values({
+            ...reason,
+            label: reason.label.trim(),
+            position,
+          })
+          .onConflictDoUpdate({
+            target: deliveryCancellationReasonsTable.id,
+            set: {
+              label: reason.label.trim(),
+              active: reason.active,
+              position,
+            },
+          });
+      }
+      return tx
+        .select()
+        .from(deliveryCancellationReasonsTable)
+        .where(eq(deliveryCancellationReasonsTable.active, true))
+        .orderBy(deliveryCancellationReasonsTable.position);
+    });
+    res.json(UpdateDeliveryCancellationReasonsResponse.parse(reasons));
+  },
+);
+
+router.get(
+  "/delivery-cancellations",
+  requireRole("ADMIN", "CENTRAL"),
+  async (_req, res): Promise<void> => {
+    const rows = await db
+      .select({
+        cancellation: deliveryCancellationsTable,
+        code: deliveriesTable.code,
+        customerName: deliveriesTable.customerName,
+        storeName: storesTable.name,
+        courierName: couriersTable.name,
+      })
+      .from(deliveryCancellationsTable)
+      .innerJoin(
+        deliveriesTable,
+        eq(deliveryCancellationsTable.deliveryId, deliveriesTable.id),
+      )
+      .innerJoin(storesTable, eq(deliveriesTable.storeId, storesTable.id))
+      .leftJoin(couriersTable, eq(deliveryCancellationsTable.courierId, couriersTable.id))
+      .where(
+        inArray(deliveryCancellationsTable.status, [
+          "AWAITING_CENTRAL",
+          "RETURNING_TO_STORE",
+          "ROUTE_ABORTED",
+        ]),
+      )
+      .orderBy(desc(deliveryCancellationsTable.priority), desc(deliveryCancellationsTable.requestedAt));
+    res.json(
+      ListDeliveryCancellationsResponse.parse(
+        rows.map(({ cancellation, ...row }) => ({
+          ...cancellation,
+          ...row,
+          requestedAt: cancellation.requestedAt.toISOString(),
+        })),
+      ),
+    );
+  },
+);
+
+router.post(
+  "/delivery-cancellations/:cancellationId/action",
+  requireRole("ADMIN", "CENTRAL"),
+  async (req, res): Promise<void> => {
+    const params = ActOnDeliveryCancellationParams.safeParse(req.params);
+    const body = ActOnDeliveryCancellationBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({ error: "Ação de ocorrência inválida." });
+      return;
+    }
+    const now = new Date();
+    const result = await db.transaction(async (tx) => {
+      const [cancellation] = await tx
+        .select()
+        .from(deliveryCancellationsTable)
+        .where(eq(deliveryCancellationsTable.id, params.data.cancellationId))
+        .for("update");
+      if (!cancellation) return { error: "not_found" as const };
+
+      const [delivery] = await tx
+        .select()
+        .from(deliveriesTable)
+        .where(eq(deliveriesTable.id, cancellation.deliveryId))
+        .for("update");
+      if (!delivery) return { error: "not_found" as const };
+
+      if (body.data.action === "REQUEUE") {
+        if (
+          !["AWAITING_CENTRAL", "ROUTE_ABORTED"].includes(cancellation.status) ||
+          delivery.status !== "AWAITING_COURIER"
+        ) {
+          return { error: "state_conflict" as const };
+        }
+        await tx
+          .update(deliveryCancellationsTable)
+          .set({ status: "REENQUEUED", resolvedAt: now })
+          .where(eq(deliveryCancellationsTable.id, cancellation.id));
+        return { deliveryId: delivery.id, courierId: cancellation.courierId };
+      }
+
+      if (body.data.action === "CLOSE") {
+        if (!["AWAITING_CENTRAL", "ROUTE_ABORTED"].includes(cancellation.status)) {
+          return { error: "state_conflict" as const };
+        }
+        await tx
+          .update(deliveriesTable)
+          .set({ status: "NOT_DELIVERED", updatedAt: now })
+          .where(eq(deliveriesTable.id, delivery.id));
+        await tx
+          .update(deliveryCancellationsTable)
+          .set({ status: "CLOSED", resolvedAt: now })
+          .where(eq(deliveryCancellationsTable.id, cancellation.id));
+        await tx.insert(deliveryEventsTable).values({
+          id: randomUUID(),
+          deliveryId: delivery.id,
+          kind: "not_delivered",
+          label: `Pedido encerrado pela Central: ${cancellation.reason}`,
+          actor: "Central de entregas",
+          timestamp: now,
+        });
+        return { deliveryId: delivery.id, courierId: cancellation.courierId };
+      }
+
+      if (
+        cancellation.status !== "RETURNING_TO_STORE" ||
+        delivery.status !== "RETURNING_TO_STORE"
+      ) {
+        return { error: "state_conflict" as const };
+      }
+      await tx
+        .update(deliveriesTable)
+        .set({ status: "NOT_DELIVERED", updatedAt: now })
+        .where(eq(deliveriesTable.id, delivery.id));
+      await tx
+        .update(deliveryCancellationsTable)
+        .set({ status: "PRODUCT_RETURNED", resolvedAt: now })
+        .where(eq(deliveryCancellationsTable.id, cancellation.id));
+      await tx.insert(deliveryEventsTable).values({
+        id: randomUUID(),
+        deliveryId: delivery.id,
+        kind: "product_returned",
+        label: "Produto devolvido e conferido na filial",
+        actor: "Central de entregas",
+        timestamp: now,
+      });
+
+      if (cancellation.courierId) {
+        const [otherActiveRoute] = await tx
+          .select({ id: deliveryRoutesTable.id })
+          .from(deliveryRoutesTable)
+          .where(
+            and(
+              eq(deliveryRoutesTable.courierId, cancellation.courierId),
+              eq(deliveryRoutesTable.status, "ACCEPTED"),
+            ),
+          )
+          .limit(1);
+        const otherDeliveries = await tx
+          .select({ id: deliveriesTable.id })
+          .from(deliveriesTable)
+          .where(
+            and(
+              eq(deliveriesTable.courierId, cancellation.courierId),
+              inArray(deliveriesTable.status, [
+                "ACCEPTED",
+                "TO_STORE",
+                "AT_STORE",
+                "IN_TRANSIT",
+                "RETURNING_TO_STORE",
+              ]),
+            ),
+          );
+        if (!otherActiveRoute && otherDeliveries.every((item) => item.id === delivery.id)) {
+          await tx
+            .update(couriersTable)
+            .set({ status: "AVAILABLE", currentDeliveryCode: null })
+            .where(eq(couriersTable.id, cancellation.courierId));
+        }
+      }
+      return { deliveryId: delivery.id, courierId: cancellation.courierId };
+    });
+
+    if ("error" in result) {
+      const status = result.error === "not_found" ? 404 : 409;
+      res.status(status).json({
+        error:
+          result.error === "not_found"
+            ? "Ocorrência ou entrega não encontrada."
+            : "Esta ocorrência já foi tratada ou não permite essa ação.",
+      });
+      return;
+    }
+    if (body.data.action === "REQUEUE") {
+      await notifyAvailableCouriers({
+        title: "Entrega aguardando motoboy",
+        body: `O pedido foi liberado novamente pela Central.`,
+      });
+    }
+    res.status(204).end();
+  },
+);
 
 function canAccessDelivery(profile: AppUserProfile, delivery: { storeId: string; courierId: string | null }) {
   if (profile.role === "ADMIN" || profile.role === "CENTRAL") return true;
@@ -574,6 +851,64 @@ router.get(
       completedAt: firstEvent(delivery.id, ["completed"])?.toISOString() ?? null,
       evidenceAvailable: Boolean(delivery.evidencePath),
     }));
+    const cancellationConditions = [];
+    if (selectedStoreId) {
+      cancellationConditions.push(eq(deliveriesTable.storeId, selectedStoreId));
+    }
+    if (query.data.courierId) {
+      cancellationConditions.push(
+        eq(deliveryCancellationsTable.courierId, query.data.courierId),
+      );
+    }
+    if (query.data.status) {
+      cancellationConditions.push(eq(deliveriesTable.status, query.data.status));
+    }
+    if (query.data.from) {
+      cancellationConditions.push(
+        gte(
+          deliveryCancellationsTable.requestedAt,
+          saoPauloDayBoundary(query.data.from),
+        ),
+      );
+    }
+    if (query.data.to) {
+      const until = saoPauloDayBoundary(query.data.to);
+      until.setUTCDate(until.getUTCDate() + 1);
+      cancellationConditions.push(lt(deliveryCancellationsTable.requestedAt, until));
+    }
+    const cancellationRows = await db
+      .select({
+        cancellation: deliveryCancellationsTable,
+        code: deliveriesTable.code,
+        customerName: deliveriesTable.customerName,
+        storeName: storesTable.name,
+        courierName: couriersTable.name,
+      })
+      .from(deliveryCancellationsTable)
+      .innerJoin(
+        deliveriesTable,
+        eq(deliveryCancellationsTable.deliveryId, deliveriesTable.id),
+      )
+      .innerJoin(storesTable, eq(deliveriesTable.storeId, storesTable.id))
+      .leftJoin(couriersTable, eq(deliveryCancellationsTable.courierId, couriersTable.id))
+      .where(
+        cancellationConditions.length
+          ? and(...cancellationConditions)
+          : undefined,
+      )
+      .orderBy(desc(deliveryCancellationsTable.requestedAt));
+    const cancellationReportRows = cancellationRows.map(
+      ({ cancellation, ...row }) => ({
+        id: cancellation.id,
+        deliveryId: cancellation.deliveryId,
+        ...row,
+        reason: cancellation.reason,
+        observation: cancellation.observation,
+        status: cancellation.status,
+        priority: cancellation.priority,
+        requestedAt: cancellation.requestedAt.toISOString(),
+      }),
+    );
     const completedRows = reportRows.filter((row) => row.completedAt);
     const minutes = (start: string | null, end: string | null) =>
       start && end
@@ -640,7 +975,12 @@ router.get(
         summary: {
           total: reportRows.length,
           completed: completedRows.length,
-          cancelled: reportRows.filter((row) => row.status === "CANCELLED").length,
+          cancelled: new Set([
+            ...reportRows
+              .filter((row) => ["CANCELLED", "NOT_DELIVERED"].includes(row.status))
+              .map((row) => row.id),
+            ...cancellationReportRows.map((row) => row.deliveryId),
+          ]).size,
           averageTotalMinutes,
           averageStoreMinutes: averages(
             completedRows.map((row) =>
@@ -668,6 +1008,7 @@ router.get(
           }))
           .sort((a, b) => b.completedDeliveries - a.completedDeliveries),
         deliveries: reportRows,
+        cancellations: cancellationReportRows,
       }),
     );
   },
@@ -1237,7 +1578,7 @@ router.post(
       if (activeRoutes.some((route) => route.deliveryIds.includes(delivery.id))) {
         return { error: "route_locked" as const };
       }
-      if (!["REQUESTED", "OFFERED"].includes(delivery.status))
+      if (!["REQUESTED", "OFFERED", "AWAITING_COURIER"].includes(delivery.status))
         return { error: "not_dispatchable" as const };
 
       let courierId: string | null = null;

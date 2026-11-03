@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   AcceptCourierRouteBody,
@@ -8,6 +8,9 @@ import {
   CompleteCourierRouteStopBody,
   CompleteCourierRouteStopParams,
   CompleteCourierRouteStopResponse,
+  CreateCourierDeliveryCancellationBody,
+  CreateCourierDeliveryCancellationParams,
+  CreateCourierDeliveryCancellationResponse,
   CreateDeliveryRouteBody,
   CreateDeliveryRouteResponse,
   GetCourierDeliveryNavigationParams,
@@ -25,6 +28,8 @@ import {
   db,
   deliveriesTable,
   deliveryEvidenceUploadsTable,
+  deliveryCancellationsTable,
+  deliveryCancellationReasonsTable,
   deliveryEventsTable,
   deliveryRouteStopsTable,
   deliveryRoutesTable,
@@ -43,7 +48,7 @@ import {
   type MapboxOptimizationSolution,
 } from "../lib/mapbox";
 import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
-import { notifyAvailableCouriers } from "../lib/webPush";
+import { notifyAvailableCouriers, notifyCentralUsers } from "../lib/webPush";
 
 const router: IRouter = Router();
 router.use(requireAuthentication);
@@ -146,14 +151,20 @@ async function routeView(
       id: delivery.id,
       code: delivery.code,
       customerName: delivery.customerName,
+      customerPhone: delivery.customerPhone,
       destination: delivery.destination,
+      notes: delivery.notes,
       storeName: row.storeName,
+      storeAddress: row.storeAddress,
+      storeCity: row.storeCity,
       deliveryAmount: deliveryAmountCents / 100,
       status: delivery.status,
     }];
   });
 
-  const stops = stopRows.map(({ stop, delivery, storeName }) => ({
+  const stops = stopRows
+    .filter(({ stop }) => stop.status !== "CANCELLED")
+    .map(({ stop, delivery, storeName }) => ({
     id: stop.id,
     sequence: stop.sequence,
     deliveryId: stop.deliveryId,
@@ -166,7 +177,7 @@ async function routeView(
     customerName: delivery.customerName,
     storeName,
     deliveryAmount: delivery.deliveryAmountCents / 100,
-  }));
+    }));
 
   return CreateDeliveryRouteResponse.parse({
     id: route.id,
@@ -231,6 +242,7 @@ async function geocodeAddress(address: string, city: string): Promise<Coordinate
 async function optimizeRoute(
   rows: DeliveryRow[],
   start: Coordinate,
+  alreadyPickedUpDeliveryIds: ReadonlySet<string> = new Set(),
 ): Promise<{
   stops: Array<{
     deliveryId: string;
@@ -256,8 +268,11 @@ async function optimizeRoute(
     return pending;
   };
   await Promise.all(rows.map(async (row) => {
+    const alreadyPickedUp = alreadyPickedUpDeliveryIds.has(row.delivery.id);
     const [pickup, customer] = await Promise.all([
-      storedCoordinate(row.storeLatitude, row.storeLongitude) ??
+      alreadyPickedUp
+        ? start
+        : storedCoordinate(row.storeLatitude, row.storeLongitude) ??
         getGeocode(row.storeAddress, row.storeCity),
       storedCoordinate(
         row.delivery.customerLatitude,
@@ -283,10 +298,14 @@ async function optimizeRoute(
   const dropoffLocationByDelivery = new Map<string, string>();
   const pickupLocationByStore = new Map<string, string>();
   for (const row of rows) {
-    const pickupLocation =
-      pickupLocationByStore.get(row.delivery.storeId) ??
-      `store-${row.delivery.storeId}`;
-    pickupLocationByStore.set(row.delivery.storeId, pickupLocation);
+    const alreadyPickedUp = alreadyPickedUpDeliveryIds.has(row.delivery.id);
+    const pickupLocation = alreadyPickedUp
+      ? "courier-start"
+      : pickupLocationByStore.get(row.delivery.storeId) ??
+        `store-${row.delivery.storeId}`;
+    if (!alreadyPickedUp) {
+      pickupLocationByStore.set(row.delivery.storeId, pickupLocation);
+    }
     pickupLocationByDelivery.set(row.delivery.id, pickupLocation);
     dropoffLocationByDelivery.set(row.delivery.id, `dropoff-${row.delivery.id}`);
     addLocation(pickupLocation, pickupByDelivery.get(row.delivery.id)!);
@@ -304,7 +323,7 @@ async function optimizeRoute(
         name: row.delivery.id,
         from: pickupLocationByDelivery.get(row.delivery.id)!,
         to: dropoffLocationByDelivery.get(row.delivery.id)!,
-        pickup_duration: 120,
+        pickup_duration: alreadyPickedUpDeliveryIds.has(row.delivery.id) ? 0 : 120,
         dropoff_duration: 90,
       })),
     });
@@ -350,6 +369,7 @@ async function optimizeRoute(
 
     for (const shipmentId of shipmentIds) {
       if (typeof shipmentId !== "string") continue;
+      if (isPickup && alreadyPickedUpDeliveryIds.has(shipmentId)) continue;
       const row = rowByDelivery.get(shipmentId);
       if (!row) continue;
       const coordinate = isPickup
@@ -368,7 +388,10 @@ async function optimizeRoute(
     }
   }
 
-  if (stops.length !== rows.length * 2) {
+  const expectedStops =
+    rows.length * 2 -
+    rows.filter((row) => alreadyPickedUpDeliveryIds.has(row.delivery.id)).length;
+  if (stops.length !== expectedStops) {
     throw new RoutePlanningError(
       "A rota calculada não incluiu todas as retiradas e entregas. A oferta continua disponível.",
       502,
@@ -644,7 +667,7 @@ router.get(
       res.status(403).json({ error: "Esta entrega não pertence à sua conta." });
       return;
     }
-    if (!["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(row.delivery.status)) {
+    if (!["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT", "RETURNING_TO_STORE"].includes(row.delivery.status)) {
       res.status(409).json({ error: "O mapa da rota fica disponível durante um atendimento ativo." });
       return;
     }
@@ -668,11 +691,16 @@ router.get(
       return;
     }
 
-    const targetsStore = ["ACCEPTED", "TO_STORE"].includes(row.delivery.status);
+    const targetsStore = ["ACCEPTED", "TO_STORE", "RETURNING_TO_STORE"].includes(row.delivery.status);
     const targetAddress = targetsStore
       ? `${row.storeAddress}, ${row.storeCity}`
       : row.delivery.destination;
-    const targetLabel = targetsStore ? "Unidade de retirada" : "Entrega ao cliente";
+    const targetLabel =
+      row.delivery.status === "RETURNING_TO_STORE"
+        ? "Devolução na filial"
+        : targetsStore
+          ? "Unidade de retirada"
+          : "Entrega ao cliente";
 
     try {
       const storedTarget = targetsStore
@@ -729,6 +757,468 @@ router.get(
           : new RoutePlanningError("Não foi possível calcular a rota agora.", 502);
       res.status(routeError.status).json({ error: routeError.message });
     }
+  },
+);
+
+router.post(
+  "/courier/deliveries/:deliveryId/unable",
+  requireRole("COURIER"),
+  async (req, res): Promise<void> => {
+    const params = CreateCourierDeliveryCancellationParams.safeParse(req.params);
+    const body = CreateCourierDeliveryCancellationBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({ error: "Informe o motivo para não concluir a entrega." });
+      return;
+    }
+
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+
+    const [reason] = await db
+      .select()
+      .from(deliveryCancellationReasonsTable)
+      .where(
+        and(
+          eq(deliveryCancellationReasonsTable.label, body.data.reason),
+          eq(deliveryCancellationReasonsTable.active, true),
+        ),
+      )
+      .limit(1);
+    if (!reason) {
+      res.status(400).json({ error: "Selecione um motivo ativo para a ocorrência." });
+      return;
+    }
+
+    const [courier] = await db
+      .select()
+      .from(couriersTable)
+      .where(eq(couriersTable.id, profile.courierId))
+      .limit(1);
+    const [targetRow] = await routeDeliveries([params.data.deliveryId]);
+    if (!courier || !targetRow) {
+      res.status(404).json({ error: "Motoboy ou entrega não encontrado." });
+      return;
+    }
+    if (targetRow.delivery.courierId !== courier.id) {
+      res.status(403).json({ error: "Esta entrega não pertence à sua conta." });
+      return;
+    }
+    if (
+      !["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(
+        targetRow.delivery.status,
+      )
+    ) {
+      res.status(409).json({ error: "Esta entrega não está em andamento." });
+      return;
+    }
+
+    const isAccident =
+      reason.label.trim().toLocaleLowerCase("pt-BR") ===
+      "moto com problema / acidente";
+    const [activeRoute] = await db
+      .select()
+      .from(deliveryRoutesTable)
+      .where(
+        and(
+          eq(deliveryRoutesTable.courierId, courier.id),
+          eq(deliveryRoutesTable.status, "ACCEPTED"),
+        ),
+      )
+      .limit(1);
+    const belongsToRoute = Boolean(
+      activeRoute?.deliveryIds.includes(targetRow.delivery.id),
+    );
+    if (activeRoute && !belongsToRoute) {
+      res.status(409).json({ error: "Atualize a rota ativa antes de enviar a ocorrência." });
+      return;
+    }
+
+    let routeStopsSnapshot: (typeof deliveryRouteStopsTable.$inferSelect)[] = [];
+    let pendingDeliveryIds: string[] = [];
+    let remainingRows: DeliveryRow[] = [];
+    let pickedUpIds = new Set<string>();
+    let recalculated:
+      | Awaited<ReturnType<typeof optimizeRoute>>
+      | null = null;
+
+    if (belongsToRoute && activeRoute) {
+      routeStopsSnapshot = await db
+        .select()
+        .from(deliveryRouteStopsTable)
+        .where(eq(deliveryRouteStopsTable.routeId, activeRoute.id))
+        .orderBy(asc(deliveryRouteStopsTable.sequence));
+      pendingDeliveryIds = [
+        ...new Set(
+          routeStopsSnapshot
+            .filter((stop) => stop.status === "PENDING")
+            .map((stop) => stop.deliveryId),
+        ),
+      ];
+      if (!pendingDeliveryIds.includes(targetRow.delivery.id)) {
+        res.status(409).json({ error: "Esta entrega não tem parada pendente na rota ativa." });
+        return;
+      }
+
+      if (!isAccident) {
+        if (
+          courier.currentLatitude == null ||
+          courier.currentLongitude == null ||
+          !courier.lastLocationAt ||
+          Date.now() - courier.lastLocationAt.getTime() > 120_000
+        ) {
+          res.status(409).json({
+            error: "Aguarde uma posição GPS atual para recalcular as paradas restantes.",
+          });
+          return;
+        }
+        const remainingIds = activeRoute.deliveryIds.filter(
+          (deliveryId) => deliveryId !== targetRow.delivery.id,
+        );
+        remainingRows = (await routeDeliveries(remainingIds)).filter((row) =>
+          ["ACCEPTED", "IN_TRANSIT"].includes(row.delivery.status),
+        );
+        pickedUpIds = new Set(
+          remainingRows
+            .filter((row) => row.delivery.status === "IN_TRANSIT")
+            .map((row) => row.delivery.id),
+        );
+        try {
+          recalculated = remainingRows.length
+            ? await optimizeRoute(remainingRows, {
+                latitude: courier.currentLatitude,
+                longitude: courier.currentLongitude,
+              }, pickedUpIds)
+            : {
+                stops: [],
+                routeGeometry: null,
+                distanceMeters: null,
+                durationSeconds: null,
+              };
+        } catch (error) {
+          const routeError =
+            error instanceof RoutePlanningError
+              ? error
+              : new RoutePlanningError("Não foi possível recalcular a rota restante.");
+          res.status(routeError.status).json({ error: routeError.message });
+          return;
+        }
+      }
+    } else if (isAccident) {
+      pendingDeliveryIds = [targetRow.delivery.id];
+    }
+
+    const now = new Date();
+    const actor = courier.name;
+    const result = await db.transaction(async (tx) => {
+      if (belongsToRoute && activeRoute) {
+        const [lockedRoute] = await tx
+          .select()
+          .from(deliveryRoutesTable)
+          .where(eq(deliveryRoutesTable.id, activeRoute.id))
+          .for("update");
+        if (
+          !lockedRoute ||
+          lockedRoute.status !== "ACCEPTED" ||
+          lockedRoute.courierId !== courier.id ||
+          lockedRoute.deliveryIds.join("|") !== activeRoute.deliveryIds.join("|")
+        ) {
+          return { error: "route_changed" as const };
+        }
+        const currentStops = await tx
+          .select()
+          .from(deliveryRouteStopsTable)
+          .where(eq(deliveryRouteStopsTable.routeId, lockedRoute.id))
+          .orderBy(asc(deliveryRouteStopsTable.sequence))
+          .for("update");
+        const currentPendingIds = currentStops
+          .filter((stop) => stop.status === "PENDING")
+          .map((stop) => stop.id);
+        const originalPendingIds = routeStopsSnapshot
+          .filter((stop) => stop.status === "PENDING")
+          .map((stop) => stop.id);
+        if (currentPendingIds.join("|") !== originalPendingIds.join("|")) {
+          return { error: "route_changed" as const };
+        }
+
+        const pendingIds = [
+          ...new Set(
+            currentStops
+              .filter((stop) => stop.status === "PENDING")
+              .map((stop) => stop.deliveryId),
+          ),
+        ];
+        const deliveries = await tx
+          .select()
+          .from(deliveriesTable)
+          .where(inArray(deliveriesTable.id, pendingIds))
+          .for("update");
+        const activeDeliveries = deliveries.filter((delivery) =>
+          ["ACCEPTED", "IN_TRANSIT"].includes(delivery.status),
+        );
+        if (!activeDeliveries.some((delivery) => delivery.id === targetRow.delivery.id)) {
+          return { error: "delivery_changed" as const };
+        }
+
+        if (isAccident) {
+          for (const delivery of activeDeliveries) {
+            await tx
+              .update(deliveriesTable)
+              .set({
+                status: "AWAITING_COURIER",
+                courierId: null,
+                updatedAt: now,
+              })
+              .where(eq(deliveriesTable.id, delivery.id));
+            await tx.insert(deliveryCancellationsTable).values({
+              id: randomUUID(),
+              deliveryId: delivery.id,
+              courierId: courier.id,
+              routeId: lockedRoute.id,
+              reason: reason.label,
+              observation:
+                delivery.id === targetRow.delivery.id
+                  ? body.data.observation ?? null
+                  : `Rota interrompida por pane/acidente reportada na entrega ${targetRow.delivery.code}.`,
+              status: "ROUTE_ABORTED",
+              priority: true,
+              requestedAt: now,
+            });
+            await tx.insert(deliveryEventsTable).values({
+              id: randomUUID(),
+              deliveryId: delivery.id,
+              kind: "courier_route_aborted",
+              label: `Rota interrompida: ${reason.label}`,
+              actor,
+              timestamp: now,
+            });
+          }
+          await tx
+            .update(deliveryRouteStopsTable)
+            .set({ status: "CANCELLED" })
+            .where(
+              and(
+                eq(deliveryRouteStopsTable.routeId, lockedRoute.id),
+                eq(deliveryRouteStopsTable.status, "PENDING"),
+              ),
+            );
+          await tx
+            .update(deliveryRoutesTable)
+            .set({ status: "CANCELLED" })
+            .where(eq(deliveryRoutesTable.id, lockedRoute.id));
+          await tx
+            .update(couriersTable)
+            .set({
+              status: "OFFLINE",
+              currentDeliveryCode: null,
+            })
+            .where(eq(couriersTable.id, courier.id));
+          return {
+            routeContinues: false,
+            priority: true,
+            status: "AWAITING_COURIER",
+            affectedDeliveries: activeDeliveries.length,
+          };
+        }
+
+        const [targetDelivery] = await tx
+          .select()
+          .from(deliveriesTable)
+          .where(eq(deliveriesTable.id, targetRow.delivery.id))
+          .for("update");
+        if (
+          !targetDelivery ||
+          !["ACCEPTED", "IN_TRANSIT"].includes(targetDelivery.status)
+        ) {
+          return { error: "delivery_changed" as const };
+        }
+        await tx
+          .update(deliveriesTable)
+          .set({ status: "RETURNING_TO_STORE", updatedAt: now })
+          .where(eq(deliveriesTable.id, targetDelivery.id));
+        await tx.insert(deliveryCancellationsTable).values({
+          id: randomUUID(),
+          deliveryId: targetDelivery.id,
+          courierId: courier.id,
+          routeId: lockedRoute.id,
+          reason: reason.label,
+          observation: body.data.observation ?? null,
+          status: "RETURNING_TO_STORE",
+          priority: false,
+          routeContinues: Boolean(recalculated?.stops.length),
+          requestedAt: now,
+        });
+        await tx.insert(deliveryEventsTable).values({
+          id: randomUUID(),
+          deliveryId: targetDelivery.id,
+          kind: "courier_returning_to_store",
+          label: `Motoboy retornará à filial: ${reason.label}`,
+          actor,
+          timestamp: now,
+        });
+
+        await tx
+          .update(deliveryRouteStopsTable)
+          .set({ status: "CANCELLED" })
+          .where(
+            and(
+              eq(deliveryRouteStopsTable.routeId, lockedRoute.id),
+              eq(deliveryRouteStopsTable.status, "PENDING"),
+            ),
+          );
+        if (recalculated?.stops.length) {
+          await tx.insert(deliveryRouteStopsTable).values(
+            recalculated.stops.map((stop, index) => ({
+              id: randomUUID(),
+              routeId: lockedRoute.id,
+              deliveryId: stop.deliveryId,
+              sequence:
+                currentStops.filter((item) => item.status === "DONE").length +
+                index +
+                1,
+              kind: stop.kind,
+              address: stop.address,
+              latitude: stop.latitude,
+              longitude: stop.longitude,
+              status: "PENDING",
+            })),
+          );
+        }
+        const nextCode = remainingRows[0]?.delivery.code;
+        await tx
+          .update(deliveryRoutesTable)
+          .set({
+            deliveryIds: lockedRoute.deliveryIds.filter(
+              (deliveryId) => deliveryId !== targetDelivery.id,
+            ),
+            status: recalculated?.stops.length ? "ACCEPTED" : "COMPLETED",
+            startLatitude: courier.currentLatitude,
+            startLongitude: courier.currentLongitude,
+            routeGeometry: recalculated?.routeGeometry ?? null,
+            distanceMeters: recalculated?.distanceMeters ?? null,
+            durationSeconds: recalculated?.durationSeconds ?? null,
+          })
+          .where(eq(deliveryRoutesTable.id, lockedRoute.id));
+        await tx
+          .update(couriersTable)
+          .set({
+            status: "BUSY",
+            currentDeliveryCode: recalculated?.stops.length
+              ? nextCode ?? null
+              : "Devolução na filial",
+          })
+          .where(eq(couriersTable.id, courier.id));
+        return {
+          routeContinues: Boolean(recalculated?.stops.length),
+          priority: false,
+          status: "RETURNING_TO_STORE",
+          affectedDeliveries: 1,
+        };
+      }
+
+      const [delivery] = await tx
+        .select()
+        .from(deliveriesTable)
+        .where(eq(deliveriesTable.id, targetRow.delivery.id))
+        .for("update");
+      if (
+        !delivery ||
+        delivery.courierId !== courier.id ||
+        !["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(
+          delivery.status,
+        )
+      ) {
+        return { error: "delivery_changed" as const };
+      }
+
+      const routeAborted = isAccident;
+      const returning = !routeAborted && delivery.status === "IN_TRANSIT";
+      const nextStatus = routeAborted
+        ? "AWAITING_COURIER"
+        : returning
+          ? "RETURNING_TO_STORE"
+          : "AWAITING_COURIER";
+      const cancellationStatus = routeAborted
+        ? "ROUTE_ABORTED"
+        : returning
+          ? "RETURNING_TO_STORE"
+          : "AWAITING_CENTRAL";
+      await tx
+        .update(deliveriesTable)
+        .set({
+          status: nextStatus,
+          courierId: routeAborted || !returning ? null : courier.id,
+          updatedAt: now,
+        })
+        .where(eq(deliveriesTable.id, delivery.id));
+      await tx.insert(deliveryCancellationsTable).values({
+        id: randomUUID(),
+        deliveryId: delivery.id,
+        courierId: courier.id,
+        routeId: null,
+        reason: reason.label,
+        observation: body.data.observation ?? null,
+        status: cancellationStatus,
+        priority: routeAborted,
+        requestedAt: now,
+      });
+      await tx.insert(deliveryEventsTable).values({
+        id: randomUUID(),
+        deliveryId: delivery.id,
+        kind: routeAborted
+          ? "courier_route_aborted"
+          : returning
+            ? "courier_returning_to_store"
+            : "courier_unable_to_deliver",
+        label: `${routeAborted ? "Pane/acidente" : returning ? "Retorno à filial" : "Pedido reenviado"}: ${reason.label}`,
+        actor,
+        timestamp: now,
+      });
+      await tx
+        .update(couriersTable)
+        .set({
+          status: routeAborted ? "OFFLINE" : returning ? "BUSY" : "AVAILABLE",
+          currentDeliveryCode: returning
+            ? "Devolução na filial"
+            : null,
+        })
+        .where(eq(couriersTable.id, courier.id));
+      return {
+        routeContinues: false,
+        priority: routeAborted,
+        status: nextStatus,
+        affectedDeliveries: 1,
+      };
+    });
+
+    if ("error" in result) {
+      res.status(409).json({
+        error:
+          result.error === "route_changed"
+            ? "A rota mudou enquanto era recalculada. Atualize e tente novamente."
+            : "O status da entrega mudou. Atualize a tela e tente novamente.",
+      });
+      return;
+    }
+
+    await notifyCentralUsers({
+      title: result.priority
+        ? "URGENTE: rota interrompida"
+        : "Ocorrência de entrega",
+      body: `${courier.name} · pedido ${targetRow.delivery.code} · ${targetRow.delivery.customerName} · ${reason.label}${result.routeContinues ? " — rota continua com os pedidos restantes." : ""}`,
+      url: "/",
+    });
+    res.json(
+      CreateCourierDeliveryCancellationResponse.parse({
+        deliveryId: targetRow.delivery.id,
+        status: result.status,
+        routeContinues: result.routeContinues,
+        priority: result.priority,
+        affectedDeliveries: result.affectedDeliveries,
+      }),
+    );
   },
 );
 
@@ -1116,13 +1606,24 @@ router.post(
           .update(deliveryRoutesTable)
           .set({ status: "COMPLETED" })
           .where(eq(deliveryRoutesTable.id, route.id));
+        const returnDeliveries = await tx
+          .select({ id: deliveriesTable.id })
+          .from(deliveriesTable)
+          .where(
+            and(
+              eq(deliveriesTable.courierId, profile.courierId!),
+              eq(deliveriesTable.status, "RETURNING_TO_STORE"),
+            ),
+          );
+        const hasReturnToStore = returnDeliveries.length > 0;
         await tx
           .update(couriersTable)
           .set({
-            status: "AVAILABLE",
-            currentDeliveryCode: null,
-            currentLatitude: null,
-            currentLongitude: null,
+            status: hasReturnToStore ? "BUSY" : "AVAILABLE",
+            currentDeliveryCode: hasReturnToStore ? "Devolução na filial" : null,
+            ...(hasReturnToStore
+              ? {}
+              : { currentLatitude: null, currentLongitude: null }),
           })
           .where(eq(couriersTable.id, profile.courierId!));
       }

@@ -10,8 +10,14 @@ export interface RouteDeliverySummary {
   id: string;
   code: string;
   customerName: string;
+  /** @nullable */
+  customerPhone: string | null;
   destination: string;
+  /** @nullable */
+  notes: string | null;
   storeName: string;
+  storeAddress: string;
+  storeCity: string;
   deliveryAmount: number;
   status: string;
 }
