@@ -15,6 +15,8 @@ export default function LiveMap({
   centerOnStoresOnly = false,
   showCenterOnMe = true,
   controlsAboveAttribution = false,
+  fitBehindBottomPanel = false,
+  controlsBottomOffset,
 }: {
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
@@ -24,6 +26,8 @@ export default function LiveMap({
   centerOnStoresOnly?: boolean;
   showCenterOnMe?: boolean;
   controlsAboveAttribution?: boolean;
+  fitBehindBottomPanel?: boolean;
+  controlsBottomOffset?: string | number;
 }) {
   return (
     <Suspense
@@ -46,6 +50,8 @@ export default function LiveMap({
         centerOnStoresOnly={centerOnStoresOnly}
         showCenterOnMe={showCenterOnMe}
         controlsAboveAttribution={controlsAboveAttribution}
+        fitBehindBottomPanel={fitBehindBottomPanel}
+        controlsBottomOffset={controlsBottomOffset}
       />
     </Suspense>
   );

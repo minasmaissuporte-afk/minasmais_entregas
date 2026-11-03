@@ -69,6 +69,13 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+.courier-pwa button,
+.courier-pwa a.button-primary,
+.courier-pwa a.button-secondary,
+.courier-pwa a.button-quiet {
+  min-height: 48px;
+}
+
 /* LIGHT MODE */
 :root {
   --button-outline: rgba(0, 0, 0, 0.1);

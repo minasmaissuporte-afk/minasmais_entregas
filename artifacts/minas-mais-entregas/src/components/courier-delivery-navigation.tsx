@@ -1,14 +1,20 @@
 import {
   getGetCourierDeliveryNavigationQueryKey,
   useGetCourierDeliveryNavigation,
+  type Delivery,
 } from "@workspace/api-client-react";
-import { Clock3, MapPin, Navigation, RefreshCw } from "lucide-react";
+import { ArrowLeft, Clock3, MapPin, Navigation, RefreshCw } from "lucide-react";
 import LiveMap, { type MapMarker } from "@/components/live-map";
+import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
 
 export default function CourierDeliveryNavigation({
   deliveryId,
+  onBack,
+  delivery,
 }: {
   deliveryId: string;
+  onBack: () => void;
+  delivery: Delivery;
 }) {
   const navigation = useGetCourierDeliveryNavigation(deliveryId, {
     query: {
@@ -45,68 +51,104 @@ export default function CourierDeliveryNavigation({
   const mapsUrl = data
     ? `https://www.google.com/maps/dir/?api=1&origin=${data.currentPosition.latitude},${data.currentPosition.longitude}&destination=${data.targetPosition.latitude},${data.targetPosition.longitude}&travelmode=driving`
     : null;
+  const wazeUrl = data
+    ? `https://waze.com/ul?ll=${data.targetPosition.latitude}%2C${data.targetPosition.longitude}&navigate=yes`
+    : null;
 
   return (
-    <section className="mt-4 overflow-hidden rounded-xl border border-border bg-white text-[#24272d]" aria-label="Mapa da entrega individual">
-      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-        <div>
-          <h4 className="text-sm font-bold">Mapa e rota</h4>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            A rota usa sua posição GPS atual e o próximo destino.
-          </p>
-        </div>
+    <section className="relative h-[100dvh] w-full overflow-hidden bg-[#f4f3f1] text-[#24272d]" aria-label="Mapa da entrega individual">
+      {data && (
+        <LiveMap
+          markers={markers}
+          routeGeometry={data.routeGeometry}
+          ariaLabel={`Rota do motoboy até ${data.targetLabel.toLowerCase()}`}
+          size="full-screen"
+          showCenterControls
+          fitBehindBottomPanel
+          controlsBottomOffset="calc(30dvh + 64px + env(safe-area-inset-bottom))"
+        />
+      )}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-start gap-2 p-3 pt-[max(env(safe-area-inset-top),12px)]">
+        <button type="button" className="pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-4 text-sm font-semibold shadow-lg" onClick={onBack}>
+          <ArrowLeft size={16} /> Entregas
+        </button>
         <button
-          className="button-quiet shrink-0"
+          className="pointer-events-auto grid h-12 w-12 place-items-center rounded-xl bg-white/95 shadow-lg"
           type="button"
           disabled={navigation.isFetching}
           onClick={() => void navigation.refetch()}
           aria-label="Atualizar mapa e rota"
         >
-          <RefreshCw size={14} /> {navigation.isFetching ? "Atualizando…" : "Atualizar"}
+          <RefreshCw size={15} className={navigation.isFetching ? "animate-spin" : ""} />
         </button>
       </div>
 
-      {data ? (
-        <>
-          <LiveMap
-            markers={markers}
-            routeGeometry={data.routeGeometry}
-            ariaLabel={`Rota do motoboy até ${data.targetLabel.toLowerCase()}`}
-            size="full-screen"
-          />
-          <div className="space-y-3 px-4 py-3">
-            <div className="flex items-start gap-2 text-xs">
-              <MapPin size={15} className="mt-0.5 shrink-0 text-primary" />
-              <div>
-                <div className="font-semibold">{data.targetLabel}</div>
-                <div className="mt-0.5 leading-relaxed text-muted-foreground">{data.targetAddress}</div>
+      <div
+        className="absolute inset-x-0 bottom-0 z-20 max-h-[30dvh] overflow-y-auto rounded-t-2xl border-t border-border bg-white/95 p-4 shadow-[0_-8px_24px_rgba(0,0,0,.12)] backdrop-blur"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
+      >
+        {data ? (
+          <>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{data.targetLabel}</div>
+                <h2 className="mt-1 truncate text-sm font-bold">{delivery.customerName} · {delivery.code}</h2>
+                <p className="mt-1 flex items-start gap-1 text-xs leading-relaxed text-muted-foreground">
+                  <MapPin size={13} className="mt-0.5 shrink-0" />{data.targetAddress}
+                </p>
+              </div>
+              <div className="shrink-0 text-right text-xs font-semibold text-muted-foreground">
+                {data.distanceMeters != null && <div>{(data.distanceMeters / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km</div>}
+                {data.durationSeconds != null && <div className="mt-1 flex items-center gap-1"><Clock3 size={12} />{Math.ceil(data.durationSeconds / 60)} min</div>}
               </div>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex gap-3 text-xs font-semibold text-muted-foreground">
-                {data.distanceMeters != null && (
-                  <span>{(data.distanceMeters / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km</span>
-                )}
-                {data.durationSeconds != null && (
-                  <span className="inline-flex items-center gap-1"><Clock3 size={13} />{Math.ceil(data.durationSeconds / 60)} min</span>
-                )}
+            {delivery.notes && <p className="mt-2 text-xs text-muted-foreground">{delivery.notes}</p>}
+            {delivery.status === "RETURNING_TO_STORE" ? (
+              <p className="mt-2 text-xs font-semibold text-amber-900">Devolva o produto na filial.</p>
+            ) : delivery.customerPhone ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <a className="button-secondary min-h-12" href={`tel:${delivery.customerPhone}`}>Telefone</a>
+                <a
+                  className="button-secondary min-h-12"
+                  href={`https://wa.me/${(() => {
+                    const digits = delivery.customerPhone!.replace(/\D/g, "");
+                    return digits.startsWith("55") ? digits : `55${digits}`;
+                  })()}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  WhatsApp
+                </a>
               </div>
+            ) : null}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+              <span className="text-sm font-bold">
+                {delivery.deliveryAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </span>
+              {delivery.status !== "RETURNING_TO_STORE" && <CourierUnableToDeliverAction deliveryId={deliveryId} />}
+            </div>
+            <div className="mt-3 flex gap-2">
               {mapsUrl && (
-                <a className="button-secondary min-h-9" href={mapsUrl} target="_blank" rel="noreferrer">
-                  <Navigation size={14} /> Abrir navegação
+                <a className="button-secondary min-h-12 flex-1 justify-center" href={mapsUrl} target="_blank" rel="noreferrer">
+                  <Navigation size={14} /> Google Maps
+                </a>
+              )}
+              {wazeUrl && (
+                <a className="button-secondary min-h-12 flex-1 justify-center" href={wazeUrl} target="_blank" rel="noreferrer">
+                  <Navigation size={14} /> Waze
                 </a>
               )}
             </div>
+          </>
+        ) : (
+          <div className="min-h-24 py-3 text-sm text-muted-foreground" aria-live="polite">
+            {navigation.isLoading
+              ? "Obtendo GPS e calculando a rota…"
+              : ((navigation.error as { data?: { error?: string } } | null)?.data?.error ??
+                "A rota depende de uma posição GPS atual. Permita a localização e mantenha o PWA aberto; depois toque em Atualizar.")}
           </div>
-        </>
-      ) : (
-        <div className="px-4 py-5 text-sm text-muted-foreground" aria-live="polite">
-          {navigation.isLoading
-            ? "Obtendo GPS e calculando a rota…"
-            : ((navigation.error as { data?: { error?: string } } | null)?.data?.error ??
-              "A rota depende de uma posição GPS atual. Permita a localização e mantenha o PWA aberto; depois toque em Atualizar.")}
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }

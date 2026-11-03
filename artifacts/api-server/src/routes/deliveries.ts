@@ -58,7 +58,6 @@ import { ObjectStorageService } from "../lib/objectStorage";
 import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
 import {
   notifyAvailableCouriers,
-  notifyCentralUsers,
   notifyCouriers,
 } from "../lib/webPush";
 
@@ -117,6 +116,16 @@ router.put(
       new Set(normalizedLabels).size !== normalizedLabels.length
     ) {
       res.status(400).json({ error: "Os motivos não podem ficar vazios ou repetidos." });
+      return;
+    }
+    if (
+      !body.data.reasons.some(
+        (reason) => reason.id === "MOTORCYCLE_ISSUE" && reason.active,
+      )
+    ) {
+      res.status(400).json({
+        error: "Mantenha ativo o motivo 'Moto com problema / acidente'.",
+      });
       return;
     }
     const reasons = await db.transaction(async (tx) => {
@@ -690,6 +699,8 @@ const eventLabels: Record<string, string> = {
   IN_TRANSIT: "Retirada confirmada — em trânsito",
   COMPLETED: "Entrega concluída",
   CANCELLED: "Cancelado pela Central",
+  RETURNING_TO_STORE: "Retornando à filial",
+  NOT_DELIVERED: "Não entregue",
 };
 
 async function deliveryView(deliveryId: string) {
@@ -697,6 +708,8 @@ async function deliveryView(deliveryId: string) {
     .select({
       delivery: deliveriesTable,
       storeName: storesTable.name,
+      storeAddress: storesTable.address,
+      storeCity: storesTable.city,
       courierName: couriersTable.name,
       courierInitials: couriersTable.initials,
     })
@@ -720,6 +733,8 @@ async function deliveryView(deliveryId: string) {
     deliveryAmount: deliveryAmountCents / 100,
     evidenceAvailable: Boolean(evidencePath),
     storeName: row.storeName,
+    storeAddress: row.storeAddress,
+    storeCity: row.storeCity,
     courierName: row.courierName,
     courierInitials: row.courierInitials,
     events,

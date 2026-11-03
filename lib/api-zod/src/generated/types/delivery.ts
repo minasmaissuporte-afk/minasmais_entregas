@@ -19,6 +19,8 @@ export interface Delivery {
   notes?: string | null;
   storeId: string;
   storeName: string;
+  storeAddress?: string;
+  storeCity?: string;
   /** @nullable */
   courierId?: string | null;
   /** @nullable */

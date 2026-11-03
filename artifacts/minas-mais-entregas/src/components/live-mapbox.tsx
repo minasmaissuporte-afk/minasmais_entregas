@@ -141,7 +141,11 @@ function getAllCoordinates(
   ];
 }
 
-function fitMapToCoordinates(map: MapboxMap, coordinates: [number, number][]) {
+function fitMapToCoordinates(
+  map: MapboxMap,
+  coordinates: [number, number][],
+  fitBehindBottomPanel = false,
+) {
   if (!coordinates.length) return;
   if (coordinates.length === 1) {
     map.flyTo({ center: coordinates[0], zoom: 15, essential: true });
@@ -149,7 +153,14 @@ function fitMapToCoordinates(map: MapboxMap, coordinates: [number, number][]) {
   }
   const bounds = new mapboxgl.LngLatBounds();
   coordinates.forEach((coordinate) => bounds.extend(coordinate));
-  map.fitBounds(bounds, { padding: 48, maxZoom: 15, duration: 350 });
+  const bottomPadding = fitBehindBottomPanel
+    ? Math.max(60, Math.round(map.getContainer().clientHeight * 0.32))
+    : 60;
+  map.fitBounds(bounds, {
+    padding: { top: 60, right: 60, bottom: bottomPadding, left: 60 },
+    maxZoom: 15,
+    duration: 350,
+  });
 }
 
 function syncRouteLayer(
@@ -192,7 +203,7 @@ function syncRouteLayer(
         paint: {
           "line-color": "#b91c2c",
           "line-opacity": 0.88,
-          "line-width": ["interpolate", ["linear"], ["zoom"], 8, 3, 15, 6],
+          "line-width": 5,
         },
       },
       firstSymbolLayer,
@@ -264,6 +275,8 @@ export default function LiveMapbox({
   centerOnStoresOnly = false,
   showCenterOnMe = true,
   controlsAboveAttribution = false,
+  fitBehindBottomPanel = false,
+  controlsBottomOffset,
 }: {
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
@@ -273,6 +286,8 @@ export default function LiveMapbox({
   centerOnStoresOnly?: boolean;
   showCenterOnMe?: boolean;
   controlsAboveAttribution?: boolean;
+  fitBehindBottomPanel?: boolean;
+  controlsBottomOffset?: string | number;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapboxMap | null>(null);
@@ -281,6 +296,7 @@ export default function LiveMapbox({
   const syncMapDataRef = useRef<() => void>(() => {});
   const currentDataRef = useRef({ markers, routeGeometry });
   const initialViewSetRef = useRef(false);
+  const lastFitGeometryRef = useRef<string | null>(null);
   const [mapMessage, setMapMessage] = useState<string | null>(null);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const mapboxToken = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN?.trim() ?? "";
@@ -334,9 +350,17 @@ export default function LiveMapbox({
         const fitCoordinates = markerCoordinates.length
           ? [...markerCoordinates, ...lineCoordinates]
           : lineCoordinates;
-        if (fitCoordinates.length && !initialViewSetRef.current) {
-          fitMapToCoordinates(map!, fitCoordinates);
+        const geometryKey = currentGeometry?.length
+          ? currentGeometry
+              .map((point) => `${point.latitude.toFixed(6)},${point.longitude.toFixed(6)}`)
+              .join(";")
+          : "";
+        const shouldFit =
+          !initialViewSetRef.current || geometryKey !== lastFitGeometryRef.current;
+        if (fitCoordinates.length && shouldFit) {
+          fitMapToCoordinates(map!, fitCoordinates, fitBehindBottomPanel);
           initialViewSetRef.current = true;
+          lastFitGeometryRef.current = geometryKey;
         }
       } catch (error) {
         logMapError("Falha ao desenhar marcadores ou rota.", error);
@@ -397,6 +421,7 @@ export default function LiveMapbox({
       userLocationMarkerRef.current = null;
       syncMapDataRef.current = () => {};
       initialViewSetRef.current = false;
+      lastFitGeometryRef.current = null;
     };
   }, [mapboxToken]);
 
@@ -425,7 +450,7 @@ export default function LiveMapbox({
       return;
     }
     setLocationMessage(null);
-    fitMapToCoordinates(map, coordinates);
+    fitMapToCoordinates(map, coordinates, fitBehindBottomPanel);
   };
 
   const centerOnMe = () => {
@@ -506,7 +531,11 @@ export default function LiveMapbox({
       {showCenterControls && (
         <div
           className="absolute right-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2"
-          style={{ bottom: controlsAboveAttribution ? 40 : 12 }}
+          style={{
+            bottom:
+              controlsBottomOffset ??
+              (controlsAboveAttribution ? 40 : 12),
+          }}
         >
           <div className="flex flex-wrap justify-end gap-2">
             <button

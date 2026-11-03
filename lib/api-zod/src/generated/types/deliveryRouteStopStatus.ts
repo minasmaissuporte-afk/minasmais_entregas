@@ -12,4 +12,5 @@ export type DeliveryRouteStopStatus = typeof DeliveryRouteStopStatus[keyof typeo
 export const DeliveryRouteStopStatus = {
   PENDING: 'PENDING',
   DONE: 'DONE',
+  CANCELLED: 'CANCELLED',
 } as const;

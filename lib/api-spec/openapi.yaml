@@ -824,6 +824,8 @@ components:
         notes: { type: ["string", "null"] }
         storeId: { type: string }
         storeName: { type: string }
+        storeAddress: { type: string }
+        storeCity: { type: string }
         courierId: { type: ["string", "null"] }
         courierName: { type: ["string", "null"] }
         courierInitials: { type: ["string", "null"] }
@@ -1040,7 +1042,7 @@ components:
         evidenceAvailable: { type: boolean }
     DeliveryAnalyticsCancellation:
       type: object
-      required: [id, deliveryId, code, customerName, storeName, courierName, reason, observation, status, priority, requestedAt]
+      required: [id, deliveryId, code, customerName, storeName, courierName, reason, observation, status, priority, routeContinues, requestedAt]
       properties:
         id: { type: string }
         deliveryId: { type: string }
@@ -1052,6 +1054,7 @@ components:
         observation: { type: ["string", "null"] }
         status: { type: string }
         priority: { type: boolean }
+        routeContinues: { type: boolean }
         requestedAt: { type: string, format: date-time }
     DeliveryCancellationReason:
       type: object
@@ -1287,7 +1290,7 @@ components:
         address: { type: string }
         latitude: { type: number }
         longitude: { type: number }
-        status: { type: string, enum: [PENDING, DONE] }
+        status: { type: string, enum: [PENDING, DONE, CANCELLED] }
         code: { type: string }
         customerName: { type: string }
         storeName: { type: string }

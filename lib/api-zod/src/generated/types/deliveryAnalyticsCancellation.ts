@@ -19,5 +19,6 @@ export interface DeliveryAnalyticsCancellation {
   observation: string | null;
   status: string;
   priority: boolean;
+  routeContinues: boolean;
   requestedAt: Date;
 }

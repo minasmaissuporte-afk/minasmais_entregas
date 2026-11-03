@@ -51,6 +51,7 @@ import StoreManagement from '@/pages/store-management';
 import Reports from '@/pages/reports';
 import EvidencePhotoAction from '@/components/evidence-photo-action';
 import AccountSecurityPage from '@/pages/account-security';
+import CancellationAlertsPanel from '@/components/cancellation-alerts-panel';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -218,6 +219,7 @@ const statusNames: Record<string, string> = {
   REQUESTED: 'Solicitada', AWAITING_COURIER: 'Aguardando entregador', OFFERED: 'Oferta enviada',
   ACCEPTED: 'Aceita', TO_STORE: 'A caminho da loja', AT_STORE: 'Na loja',
   IN_TRANSIT: 'Em entrega', COMPLETED: 'Concluída', CANCELLED: 'Cancelado pela Central',
+  RETURNING_TO_STORE: 'Retornando à filial', NOT_DELIVERED: 'Não entregue',
 };
 const statusOptions: Record<string, string[]> = {
   REQUESTED: [],
@@ -900,6 +902,7 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
     </section>
     {summary.isError && <div className="mb-5 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"><span>Não foi possível carregar o resumo operacional.</span><button className="inline-flex items-center gap-1 font-semibold" onClick={() => void summary.refetch()}><RefreshCw size={14}/>Tentar novamente</button></div>}
     {hasConnectionError && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">Reconectando… os dados atuais permanecem visíveis e o painel tentará novamente automaticamente.</div>}
+    <CancellationAlertsPanel />
     <section className="mb-6 grid gap-4 lg:grid-cols-[1fr_300px]">
       <div className="panel p-4 sm:p-5">
         <div className="mb-4 flex items-center justify-between"><div><div className="eyebrow">TEMPO DE ATENDIMENTO</div><h2 className="mt-1 text-sm font-bold">Ritmo da operação</h2></div><span className="rounded-md bg-[#f5f4f2] px-2 py-1 text-[10px] font-medium text-muted-foreground">média registrada</span></div>

@@ -17,13 +17,14 @@ import {
   type CourierDeliveryRoute,
 } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
-import { Bike, CheckCircle2, Clock3, KeyRound, LogOut, Map as MapIcon, PackageCheck, Bell, BellOff } from "lucide-react";
+import { ArrowLeft, Bike, CheckCircle2, Clock3, KeyRound, LogOut, Map as MapIcon, PackageCheck, Bell, BellOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
 import CourierRouteMapTab from "@/components/courier-route-map-tab";
 import CourierRoutesSection from "@/pages/courier-routes-section";
 import EvidencePhotoAction from "@/components/evidence-photo-action";
+import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { MapCoordinate } from "@/components/live-map";
 
@@ -49,11 +50,14 @@ const nextStatusLabel: Record<string, string> = {
 };
 const statusLabel: Record<string, string> = {
   OFFERED: "Oferta enviada",
+  AWAITING_COURIER: "Aguardando motoboy",
   ACCEPTED: "Aceita",
   TO_STORE: "A caminho da unidade",
   AT_STORE: "Na unidade",
   IN_TRANSIT: "Em entrega",
   COMPLETED: "Concluída",
+  RETURNING_TO_STORE: "Retornando à filial",
+  NOT_DELIVERED: "Não entregue",
 };
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -256,7 +260,29 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     () =>
       individualDeliveries.find((delivery) =>
         ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status),
-      ) ?? null,
+      ) ??
+      individualDeliveries.find((delivery) => delivery.status === "RETURNING_TO_STORE") ??
+      null,
+    [individualDeliveries],
+  );
+  const activeRouteDelivery = useMemo(() => {
+    if (!activeRoute) return null;
+    const nextStop = activeRoute.stops.find((stop) => stop.status === "PENDING");
+    return (
+      activeRoute.deliveries.find(
+        (delivery) =>
+          delivery.id === nextStop?.deliveryId &&
+          ["ACCEPTED", "IN_TRANSIT"].includes(delivery.status),
+      ) ??
+      activeRoute.deliveries.find((delivery) =>
+        ["ACCEPTED", "IN_TRANSIT"].includes(delivery.status),
+      ) ??
+      null
+    );
+  }, [activeRoute]);
+  const returningDeliveries = useMemo(
+    () =>
+      individualDeliveries.filter((delivery) => delivery.status === "RETURNING_TO_STORE"),
     [individualDeliveries],
   );
   const updateDelivery = async (deliveryId: string, status: string, evidencePath?: string) => {
@@ -298,9 +324,9 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-[#f4f3f1] px-4 pb-10 pt-4 text-[#24272d] sm:px-6">
-      <div className="mx-auto max-w-2xl">
-        <header className="flex items-center justify-between rounded-xl border border-[#e7e6e3] bg-white px-4 py-3">
+    <main className={activeTab === "map" ? "courier-pwa fixed inset-0 z-40 bg-[#f4f3f1] text-[#24272d]" : "courier-pwa min-h-[100dvh] bg-[#f4f3f1] px-4 pb-10 pt-4 text-[#24272d] sm:px-6"}>
+      <div className={activeTab === "map" ? "mx-auto h-full w-full" : "mx-auto max-w-2xl"}>
+        {activeTab !== "map" && <header className="flex items-center justify-between rounded-xl border border-[#e7e6e3] bg-white px-4 py-3">
           <div className="flex items-center gap-3">
             <span className="brand-mark"><Bike size={18} /></span>
             <div>
@@ -309,35 +335,163 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
-            <Link href="/account" className="button-secondary min-h-9 px-2 text-xs sm:px-3" aria-label="Alterar senha">
-              <KeyRound size={14} /> <span className="hidden sm:inline">Senha</span>
+            <Link href="/account" className="button-secondary min-h-12 px-2 text-xs sm:px-3" aria-label="Alterar senha">
+              <KeyRound size={14} /> Alterar senha
             </Link>
             <button
-              className="button-quiet min-h-9 px-2 text-xs sm:px-3"
+              className="button-quiet min-h-12 px-2 text-xs sm:px-3"
               onClick={() => void signOut({ redirectUrl: import.meta.env.BASE_URL })}
             >
               <LogOut size={15} /> Sair
             </button>
           </div>
-        </header>
+        </header>}
 
         <Tabs
           value={activeTab}
           onValueChange={(value) => setActiveTab(value as "deliveries" | "map")}
         >
-          <TabsList className="mt-4 grid h-12 w-full grid-cols-2 rounded-xl border border-[#e7e6e3] bg-white p-1">
+          {activeTab !== "map" && <TabsList className="mt-4 grid h-14 w-full grid-cols-2 rounded-xl border border-[#e7e6e3] bg-white p-1">
             <TabsTrigger value="deliveries" className="gap-2 rounded-lg text-sm">
               <PackageCheck size={16} /> Entregas
             </TabsTrigger>
             <TabsTrigger value="map" className="gap-2 rounded-lg text-sm">
               <MapIcon size={16} /> Mapa e rota
             </TabsTrigger>
-          </TabsList>
+          </TabsList>}
           <TabsContent
             value="deliveries"
             forceMount
             className={activeTab === "deliveries" ? "mt-4" : "hidden"}
           >
+        {returningDeliveries.length > 0 && (
+          <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-950" role="status">
+            {returningDeliveries.length} {returningDeliveries.length === 1 ? "produto para devolver" : "produtos para devolver"} na filial. A Central confirmará quando receber.
+          </p>
+        )}
+        {(activeIndividualDelivery || activeRouteDelivery) && (
+          <section className="panel mb-4 overflow-hidden border-l-4 border-l-[#a91d2a] p-4 sm:p-5" aria-label="Entrega ativa">
+            {activeRouteDelivery ? (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-mono text-xs font-bold text-primary">{activeRouteDelivery.code}</div>
+                    <h2 className="mt-1 text-lg font-bold">{activeRouteDelivery.customerName}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Retirar em: {activeRouteDelivery.storeName}
+                      {activeRouteDelivery.storeAddress ? ` · ${activeRouteDelivery.storeAddress}` : ""}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-[#f3e8e9] px-3 py-1.5 text-xs font-bold text-primary">Rota ativa</span>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed">{activeRouteDelivery.destination}</p>
+                {activeRouteDelivery.notes && <p className="mt-2 rounded-lg bg-[#f6f4f1] p-3 text-xs">Observações: {activeRouteDelivery.notes}</p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {activeRouteDelivery.customerPhone && (
+                    <>
+                      <a className="button-secondary min-h-12" href={`tel:${activeRouteDelivery.customerPhone}`}>Telefone</a>
+                      <a
+                        className="button-secondary min-h-12"
+                        href={`https://wa.me/${(() => {
+                          const digits = activeRouteDelivery.customerPhone!.replace(/\D/g, "");
+                          return digits.startsWith("55") ? digits : `55${digits}`;
+                        })()}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        WhatsApp
+                      </a>
+                    </>
+                  )}
+                  <button type="button" className="button-secondary min-h-12" onClick={() => setActiveTab("map")}><MapIcon size={15} /> Ver rota</button>
+                  <CourierUnableToDeliverAction deliveryId={activeRouteDelivery.id} />
+                </div>
+                <div className="mt-3 border-t border-border pt-3 text-sm font-bold">{money(activeRouteDelivery.deliveryAmount)}</div>
+              </>
+            ) : activeIndividualDelivery ? (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-mono text-xs font-bold text-primary">{activeIndividualDelivery.code}</div>
+                    <h2 className="mt-1 text-lg font-bold">{activeIndividualDelivery.customerName}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Retirar em: {activeIndividualDelivery.storeName}
+                      {activeIndividualDelivery.storeAddress ? ` · ${activeIndividualDelivery.storeAddress}` : ""}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-[#f3e8e9] px-3 py-1.5 text-xs font-bold text-primary">
+                    {statusLabel[activeIndividualDelivery.status] ?? activeIndividualDelivery.status}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed">{activeIndividualDelivery.destination}</p>
+                {activeIndividualDelivery.notes && (
+                  <p className="mt-2 rounded-lg bg-[#f6f4f1] p-3 text-xs leading-relaxed">
+                    Observações: {activeIndividualDelivery.notes}
+                  </p>
+                )}
+                {activeIndividualDelivery.status !== "RETURNING_TO_STORE" && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {activeIndividualDelivery.customerPhone && (
+                      <>
+                        <a className="button-secondary min-h-12" href={`tel:${activeIndividualDelivery.customerPhone}`}>
+                          Telefone
+                        </a>
+                        <a
+                          className="button-secondary min-h-12"
+                          href={`https://wa.me/${(() => {
+                            const digits = activeIndividualDelivery.customerPhone!.replace(/\D/g, "");
+                            return digits.startsWith("55") ? digits : `55${digits}`;
+                          })()}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          WhatsApp
+                        </a>
+                      </>
+                    )}
+                    <button type="button" className="button-secondary min-h-12" onClick={() => setActiveTab("map")}>
+                      <MapIcon size={15} /> Ver rota
+                    </button>
+                  </div>
+                )}
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+                  <span className="text-sm font-bold">{money(activeIndividualDelivery.deliveryAmount)}</span>
+                  {activeIndividualDelivery.status === "IN_TRANSIT" ? (
+                    <div className="w-full space-y-2">
+                      <EvidencePhotoAction
+                        deliveryId={activeIndividualDelivery.id}
+                        disabled={updateStatus.isPending}
+                        onComplete={async (evidencePath) =>
+                          updateDelivery(activeIndividualDelivery.id, "COMPLETED", evidencePath)
+                        }
+                      />
+                      <CourierUnableToDeliverAction deliveryId={activeIndividualDelivery.id} />
+                    </div>
+                  ) : activeIndividualDelivery.status !== "RETURNING_TO_STORE" ? (
+                    <div className="flex w-full flex-wrap gap-2">
+                      {nextCourierStatus[activeIndividualDelivery.status] && (
+                        <button
+                          type="button"
+                          className="button-primary min-h-12"
+                          disabled={updateStatus.isPending}
+                          onClick={() =>
+                            updateDelivery(
+                              activeIndividualDelivery.id,
+                              nextCourierStatus[activeIndividualDelivery.status],
+                            )
+                          }
+                        >
+                          {updateStatus.isPending ? "Salvando…" : nextStatusLabel[activeIndividualDelivery.status]}
+                        </button>
+                      )}
+                      <CourierUnableToDeliverAction deliveryId={activeIndividualDelivery.id} />
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+          </section>
+        )}
         <section className="mt-5 rounded-2xl bg-[#a91d2a] p-5 text-white shadow-sm sm:p-6">
           <div className="text-xs text-white/75">Olá, {profile.name.split(" ")[0]}</div>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">Seu resumo de entregas</h1>
@@ -446,7 +600,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
               <div className="eyebrow">SUA OPERAÇÃO</div>
               <h2 className="mt-1 text-lg font-bold">Entregas atribuídas</h2>
             </div>
-            <span className="text-xs text-muted-foreground">{individualDeliveries.length} registros</span>
+            <span className="text-xs text-muted-foreground">{individualDeliveries.length} {individualDeliveries.length === 1 ? "registro" : "registros"}</span>
           </div>
           {deliveries.isLoading || routes.isLoading ? (
             <div className="panel p-5 text-sm text-muted-foreground">Carregando suas entregas…</div>
@@ -454,7 +608,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             <div className="panel p-5 text-sm text-red-700">Não foi possível carregar as entregas.</div>
           ) : individualDeliveries.length ? (
             <div className="space-y-3">
-              {individualDeliveries.map((delivery) => {
+              {individualDeliveries.filter((delivery) => delivery.id !== activeIndividualDelivery?.id).map((delivery) => {
                 const nextStatus = nextCourierStatus[delivery.status];
                 return (
                   <article key={delivery.id} className="panel p-4 sm:p-5">
@@ -471,7 +625,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                     {["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status) && (
                       <button
                         type="button"
-                        className="button-secondary mt-3 min-h-9"
+                        className="button-secondary mt-3 min-h-12"
                         onClick={() => setActiveTab("map")}
                       >
                         <MapIcon size={14} /> Ver rota no mapa
@@ -491,7 +645,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                         <span className="text-sm font-semibold">{money(delivery.deliveryAmount)}</span>
                         {nextStatus ? (
                           <button
-                            className="button-primary min-h-9"
+                            className="button-primary min-h-12"
                             disabled={updateStatus.isPending}
                             onClick={() => updateDelivery(delivery.id, nextStatus)}
                           >
@@ -519,13 +673,31 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           )}
         </section>
           </TabsContent>
-          <TabsContent value="map" className="mt-4">
+          <TabsContent value="map" className="fixed inset-0 z-50 m-0 h-[100dvh] overflow-hidden">
             {activeRoute ? (
-              <CourierRouteMapTab route={activeRoute} currentPosition={currentPosition} />
+              <CourierRouteMapTab
+                route={activeRoute}
+                currentPosition={currentPosition}
+                onBack={() => setActiveTab("deliveries")}
+                onRefresh={() => void routes.refetch()}
+                activeDelivery={activeRouteDelivery}
+              />
             ) : activeIndividualDelivery ? (
-              <CourierDeliveryNavigation deliveryId={activeIndividualDelivery.id} />
+              <CourierDeliveryNavigation
+                deliveryId={activeIndividualDelivery.id}
+                onBack={() => setActiveTab("deliveries")}
+                delivery={activeIndividualDelivery}
+              />
             ) : (
-              <section className="panel p-6 text-center">
+              <section className="grid h-full place-items-center p-6 text-center">
+                <button
+                  type="button"
+                  className="absolute left-4 top-4 z-20 min-h-12 rounded-lg bg-white px-4 font-semibold shadow"
+                  onClick={() => setActiveTab("deliveries")}
+                >
+                  <ArrowLeft size={15} className="mr-2 inline" /> Entregas
+                </button>
+                <div>
                 <MapIcon className="mx-auto text-muted-foreground" size={24} />
                 <h2 className="mt-3 text-base font-bold">Nenhuma rota ativa no momento</h2>
                 <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
@@ -543,13 +715,14 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                 >
                   <PackageCheck size={15} /> Ver entregas
                 </button>
+                </div>
               </section>
             )}
           </TabsContent>
         </Tabs>
-        <footer className="mt-6 text-center text-[11px] text-muted-foreground">
-          {profile.email} · valores calculados pelo sistema a partir do valor cadastrado por entrega.
-        </footer>
+        {activeTab !== "map" && <footer className="mt-6 text-center text-[11px] text-muted-foreground">
+          Valores calculados pelo sistema a partir do valor cadastrado por entrega.
+        </footer>}
       </div>
     </main>
   );

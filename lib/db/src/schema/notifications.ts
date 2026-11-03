@@ -5,8 +5,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { deliveriesTable } from "./deliveries";
-import { appUsersTable } from "./deliveries";
+import { appUsersTable, couriersTable, deliveriesTable } from "./deliveries";
 
 export const pushSubscriptionsTable = pgTable(
   "push_subscriptions",

@@ -34,3 +34,11 @@ Não inventar coordenadas: o mapa deve exibir somente posições GPS realmente r
 **Why:** o usuário solicitou rastreamento real no painel e rota visível no PWA, sem dados fictícios.
 
 **How to apply:** mantenha posições atuais protegidas por perfil e vinculadas ao atendimento; informe quando o GPS estiver ausente ou desatualizado, sem apresentar pontos estimados como atuais.
+
+## Cancelamento em rota aceita
+
+Quando uma entrega de uma rota aceita não puder ser concluída, remova somente essa entrega da sequência e recalcule as paradas restantes a partir do GPS atual. Se o produto estiver com o motoboy, mantenha o pedido em retorno à filial até a Central confirmar o recebimento. Em pane/acidente, interrompa a rota, devolva os pedidos pendentes à fila e sinalize a Central com prioridade. Não altere a seleção manual dos pedidos que formam uma rota.
+
+**Why:** o usuário definiu que o motoboy continua a rota sem nova aprovação, enquanto a Central acompanha e confirma a devolução do produto.
+
+**How to apply:** preserve the 15-second GPS cadence and update the active route map after recalculation; keep route-creation behavior separate from cancellation handling.

@@ -62,6 +62,12 @@ type DeliveryRow = {
   storeLongitude: number | null;
 };
 
+type RouteStopRow = {
+  stop: typeof deliveryRouteStopsTable.$inferSelect;
+  delivery: typeof deliveriesTable.$inferSelect;
+  storeName: string;
+};
+
 type Coordinate = { latitude: number; longitude: number };
 
 function extractRouteGeometry(coordinates: unknown): Coordinate[] | null {
@@ -123,7 +129,7 @@ async function routeView(
   const [deliveryRows, stopRows] = await Promise.all([
     routeDeliveries(route.deliveryIds),
     route.status === "OFFERED"
-      ? Promise.resolve([])
+      ? Promise.resolve([] as RouteStopRow[])
       : db
           .select({
             stop: deliveryRouteStopsTable,
@@ -815,9 +821,7 @@ router.post(
       return;
     }
 
-    const isAccident =
-      reason.label.trim().toLocaleLowerCase("pt-BR") ===
-      "moto com problema / acidente";
+    const isAccident = reason.id === "MOTORCYCLE_ISSUE";
     const [activeRoute] = await db
       .select()
       .from(deliveryRoutesTable)
@@ -995,15 +999,21 @@ router.post(
               timestamp: now,
             });
           }
-          await tx
-            .update(deliveryRouteStopsTable)
-            .set({ status: "CANCELLED" })
-            .where(
-              and(
-                eq(deliveryRouteStopsTable.routeId, lockedRoute.id),
-                eq(deliveryRouteStopsTable.status, "PENDING"),
-              ),
-            );
+          const minimumStopSequence = Math.min(
+            0,
+            ...currentStops.map((stop) => stop.sequence),
+          );
+          for (const [index, stop] of currentStops
+            .filter((item) => item.status === "PENDING")
+            .entries()) {
+            await tx
+              .update(deliveryRouteStopsTable)
+              .set({
+                status: "CANCELLED",
+                sequence: minimumStopSequence - index - 1,
+              })
+              .where(eq(deliveryRouteStopsTable.id, stop.id));
+          }
           await tx
             .update(deliveryRoutesTable)
             .set({ status: "CANCELLED" })
@@ -1059,15 +1069,21 @@ router.post(
           timestamp: now,
         });
 
-        await tx
-          .update(deliveryRouteStopsTable)
-          .set({ status: "CANCELLED" })
-          .where(
-            and(
-              eq(deliveryRouteStopsTable.routeId, lockedRoute.id),
-              eq(deliveryRouteStopsTable.status, "PENDING"),
-            ),
-          );
+        const minimumStopSequence = Math.min(
+          0,
+          ...currentStops.map((stop) => stop.sequence),
+        );
+        for (const [index, stop] of currentStops
+          .filter((item) => item.status === "PENDING")
+          .entries()) {
+          await tx
+            .update(deliveryRouteStopsTable)
+            .set({
+              status: "CANCELLED",
+              sequence: minimumStopSequence - index - 1,
+            })
+            .where(eq(deliveryRouteStopsTable.id, stop.id));
+        }
         if (recalculated?.stops.length) {
           await tx.insert(deliveryRouteStopsTable).values(
             recalculated.stops.map((stop, index) => ({
@@ -1075,7 +1091,12 @@ router.post(
               routeId: lockedRoute.id,
               deliveryId: stop.deliveryId,
               sequence:
-                currentStops.filter((item) => item.status === "DONE").length +
+                Math.max(
+                  0,
+                  ...currentStops
+                    .filter((item) => item.status === "DONE")
+                    .map((item) => item.sequence),
+                ) +
                 index +
                 1,
               kind: stop.kind,

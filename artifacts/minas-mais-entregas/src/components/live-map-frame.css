@@ -22,3 +22,8 @@
   min-height: 100vh;
   min-height: 100dvh;
 }
+
+.live-mapbox-frame--full-screen .mapboxgl-ctrl-bottom-left,
+.live-mapbox-frame--full-screen .mapboxgl-ctrl-bottom-right {
+  bottom: calc(30dvh + 24px + env(safe-area-inset-bottom)) !important;
+}

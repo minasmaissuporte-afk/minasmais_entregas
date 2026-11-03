@@ -14,6 +14,7 @@ import {
 import { Check, Clock3, Map, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
 import type { MapCoordinate } from "@/components/live-map";
 import EvidencePhotoAction from "@/components/evidence-photo-action";
+import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
 
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -70,6 +71,9 @@ export default function CourierRoutesSection({
   const [busyRouteId, setBusyRouteId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [locationMessage, setLocationMessage] = useState("");
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [lastGpsSentAt, setLastGpsSentAt] = useState<number | null>(null);
+  const [gpsClock, setGpsClock] = useState(Date.now());
   const [arrivedStoreStopId, setArrivedStoreStopId] = useState<string | null>(null);
   const activeRoute = routes.find((route) => route.status === "ACCEPTED");
   const offeredRoutes = routes.filter((route) => route.status === "OFFERED");
@@ -100,6 +104,7 @@ export default function CourierRoutesSection({
           measuredAt: new Date(gpsPosition.timestamp).toISOString(),
         };
         const now = Date.now();
+        setGpsAccuracy(position.accuracyMeters);
         if (now - lastDisplayedAt >= 5_000) {
           const coordinate = { latitude: position.latitude, longitude: position.longitude };
           onCurrentPositionChangeRef.current(coordinate);
@@ -110,7 +115,10 @@ export default function CourierRoutesSection({
         sending = true;
         void updateLocationRef.current({ data: position })
           .then(() => {
-            if (watching) setLocationMessage("");
+            if (watching) {
+              setLocationMessage("");
+              setLastGpsSentAt(Date.now());
+            }
           })
           .catch(() => {
             if (watching) {
@@ -156,6 +164,7 @@ export default function CourierRoutesSection({
       }
     };
     const heartbeat = window.setInterval(requestCurrentPosition, 15_000);
+    const gpsClockInterval = window.setInterval(() => setGpsClock(Date.now()), 5_000);
     document.addEventListener("visibilitychange", onVisibilityChange);
     void acquireWakeLock();
     setLocationMessage("Compartilhando GPS a cada 15 segundos enquanto você estiver conectado. Mantenha o PWA aberto.");
@@ -163,10 +172,29 @@ export default function CourierRoutesSection({
       watching = false;
       navigator.geolocation.clearWatch(watchId);
       window.clearInterval(heartbeat);
+      window.clearInterval(gpsClockInterval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       if (wakeLock) void wakeLock.release();
     };
   }, []);
+  const gpsAgeSeconds =
+    lastGpsSentAt == null ? null : Math.max(0, Math.floor((gpsClock - lastGpsSentAt) / 1000));
+  const gpsTone =
+    gpsAgeSeconds == null || gpsAgeSeconds > 60
+      ? "red"
+      : (gpsAccuracy ?? 0) > 50
+        ? "yellow"
+        : "green";
+  const gpsStatusText =
+    gpsAgeSeconds == null || gpsAgeSeconds > 60
+      ? "Sem envio GPS há mais de 1 min"
+      : `GPS ativo · último envio há ${gpsAgeSeconds} s`;
+  const gpsToneClass =
+    gpsTone === "green"
+      ? "border-green-200 bg-green-50 text-green-900"
+      : gpsTone === "yellow"
+        ? "border-amber-200 bg-amber-50 text-amber-950"
+        : "border-red-200 bg-red-50 text-red-900";
 
   const refreshRouteData = async () => {
     await Promise.all([
@@ -227,8 +255,19 @@ export default function CourierRoutesSection({
     }
   };
 
+  const hasRouteContent = isLoading || isError || Boolean(activeRoute) || offeredRoutes.length > 0;
   return (
-    <section className="mt-6 space-y-4" aria-label="Rotas do motoboy">
+    <>
+    <div className={`mt-4 rounded-lg border px-3 py-2 text-xs ${gpsToneClass}`} role="status" aria-live="polite">
+      <MapPin size={14} className="mr-1 inline-block align-text-bottom" />
+      <strong>{gpsStatusText}</strong>
+      {gpsAccuracy != null && gpsAgeSeconds != null && gpsAgeSeconds <= 60 && (
+        <span className="ml-2">Precisão {Math.round(gpsAccuracy)} m</span>
+      )}
+      <span className="mt-1 block">O GPS é enviado a cada 15 segundos enquanto o PWA estiver aberto.</span>
+      {locationMessage && <span className="mt-1 block">{locationMessage}</span>}
+    </div>
+    {hasRouteContent && <section className="mt-6 space-y-4" aria-label="Rotas do motoboy">
       <div className="flex items-end justify-between">
         <div>
           <div className="eyebrow">ROTAS AGRUPADAS</div>
@@ -237,12 +276,6 @@ export default function CourierRoutesSection({
         <button className="button-quiet" type="button" onClick={onRetry} aria-label="Atualizar rotas">
           <RefreshCw size={15} /> Atualizar
         </button>
-      </div>
-
-      <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900" role="status">
-        <MapPin size={14} className="mr-1 inline-block align-text-bottom" />
-        O GPS é compartilhado a cada 15 segundos enquanto você estiver conectado. Mantenha o PWA aberto.
-        {locationMessage && <span className="mt-1 block">{locationMessage}</span>}
       </div>
 
       {errorMessage && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{errorMessage}</div>}
@@ -315,7 +348,8 @@ export default function CourierRoutesSection({
           )}
         </>
       )}
-    </section>
+    </section>}
+    </>
   );
 }
 
@@ -394,12 +428,19 @@ function ActiveRouteCard({
               <Navigation size={15} /> Navegar
             </a>
             {nextStop.kind === "delivery" ? (
-              <EvidencePhotoAction
-                deliveryId={nextStop.deliveryId}
-                disabled={busy}
-                label="Enviar foto e concluir entrega"
-                onComplete={async (evidencePath) => onComplete(nextStop.id, evidencePath)}
-              />
+              <>
+                <EvidencePhotoAction
+                  deliveryId={nextStop.deliveryId}
+                  disabled={busy}
+                  label="Enviar foto e concluir entrega"
+                  onComplete={async (evidencePath) => onComplete(nextStop.id, evidencePath)}
+                />
+                <CourierUnableToDeliverAction
+                  deliveryId={nextStop.deliveryId}
+                  disabled={busy}
+                  className="sm:col-span-2"
+                />
+              </>
             ) : !hasArrivedAtNextStore ? (
               <button
                 className="button-primary min-h-10 justify-center"

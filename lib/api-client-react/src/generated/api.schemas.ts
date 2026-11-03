@@ -30,6 +30,8 @@ export interface Delivery {
   notes?: string | null;
   storeId: string;
   storeName: string;
+  storeAddress?: string;
+  storeCity?: string;
   /** @nullable */
   courierId?: string | null;
   /** @nullable */
@@ -340,6 +342,7 @@ export interface DeliveryAnalyticsCancellation {
   observation: string | null;
   status: string;
   priority: boolean;
+  routeContinues: boolean;
   requestedAt: string;
 }
 
@@ -704,6 +707,7 @@ export type DeliveryRouteStopStatus = typeof DeliveryRouteStopStatus[keyof typeo
 export const DeliveryRouteStopStatus = {
   PENDING: 'PENDING',
   DONE: 'DONE',
+  CANCELLED: 'CANCELLED',
 } as const;
 
 export interface DeliveryRouteStop {

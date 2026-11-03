@@ -49,6 +49,8 @@ const STATUS_LABELS: Record<string, string> = {
   IN_TRANSIT: "Em entrega",
   COMPLETED: "Concluída",
   CANCELLED: "Cancelado pela Central",
+  RETURNING_TO_STORE: "Retornando à filial",
+  NOT_DELIVERED: "Não entregue",
 };
 
 const money = (value: number) =>
@@ -163,10 +165,18 @@ export default function ReportsDashboard() {
       .map(([key, total]) => ({ name: STATUS_LABELS[key] ?? key, total }))
       .sort((a, b) => b.total - a.total);
   }, [data?.deliveries]);
+  const cancellationReasonCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of data?.cancellations ?? []) {
+      counts.set(item.reason, (counts.get(item.reason) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [data?.cancellations]);
 
   const exportCsv = () => {
-    if (!data?.deliveries.length) return;
+    if (!data || (!data.deliveries.length && !data.cancellations.length)) return;
     const header = [
+      "Tipo de registro",
       "Código",
       "Cliente",
       "Destino",
@@ -179,8 +189,15 @@ export default function ReportsDashboard() {
       "Saída da loja",
       "Concluída em",
       "Comprovante",
+      "Motivo da ocorrência",
+      "Observação",
+      "Status da ocorrência",
+      "Prioridade",
+      "Horário da ocorrência",
+      "Rota continua",
     ];
-    const rows = data.deliveries.map((delivery) => [
+    const deliveryRows = data.deliveries.map((delivery) => [
+      "Entrega",
       delivery.code,
       delivery.customerName,
       delivery.destination,
@@ -193,7 +210,35 @@ export default function ReportsDashboard() {
       stamp(delivery.storeDepartedAt),
       stamp(delivery.completedAt),
       delivery.evidenceAvailable ? "Disponível" : "Não disponível",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
     ]);
+    const cancellationRows = data.cancellations.map((item) => [
+      "Ocorrência",
+      item.code,
+      item.customerName,
+      "",
+      item.storeName,
+      item.courierName ?? "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      item.reason,
+      item.observation ?? "",
+      item.status,
+      item.priority ? "Sim" : "Não",
+      stamp(item.requestedAt),
+      item.routeContinues ? "Sim" : "Não",
+    ]);
+    const rows = [...deliveryRows, ...cancellationRows];
     const csv = [header, ...rows]
       .map((row) => row.map(csvCell).join(";"))
       .join("\r\n");
@@ -239,7 +284,7 @@ export default function ReportsDashboard() {
             className="button-primary min-h-10"
             type="button"
             onClick={exportCsv}
-            disabled={!data?.deliveries.length}
+            disabled={!data || (!data.deliveries.length && !data.cancellations.length)}
             data-testid="button-export-report"
           >
             <Download size={15} />
@@ -396,6 +441,57 @@ export default function ReportsDashboard() {
               icon={<Wallet size={17} />}
             />
           </section>
+
+          {data.cancellations.length > 0 && (
+            <section className="panel overflow-hidden" data-testid="report-cancellation-table">
+              <div className="border-b border-border px-4 py-4 sm:px-5">
+                <div className="eyebrow">NÃO ENTREGUES E DEVOLUÇÕES</div>
+                <h2 className="mt-1 font-bold">Ocorrências por motivo, motoboy e filial</h2>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {cancellationReasonCounts.map(([reason, count]) => (
+                    <span key={reason} className="rounded-full bg-[#f4e8e9] px-3 py-1.5 text-xs font-semibold text-primary">
+                      {reason} · {number(count)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="delivery-table w-full min-w-[1000px]">
+                  <thead>
+                    <tr>
+                      <th>Solicitada</th>
+                      <th>Pedido / cliente</th>
+                      <th>Motivo e observação</th>
+                      <th>Filial</th>
+                      <th>Motoboy</th>
+                      <th>Situação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.cancellations.map((item) => (
+                      <tr key={item.id} className="row-hover">
+                        <td className="text-xs">{stamp(item.requestedAt)}</td>
+                        <td>
+                          <Link href={`/deliveries/${item.deliveryId}`} className="table-code underline-offset-2 hover:underline">
+                            {item.code}
+                          </Link>
+                          <span className="block text-[10px] text-muted-foreground">{item.customerName}</span>
+                        </td>
+                        <td>
+                          <div className="font-semibold">{item.reason}</div>
+                          {item.observation && <span className="text-[10px] text-muted-foreground">{item.observation}</span>}
+                          {item.priority && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[9px] font-bold text-red-800">PRIORIDADE</span>}
+                        </td>
+                        <td>{item.storeName}</td>
+                        <td>{item.courierName ?? "Sem motoboy"}</td>
+                        <td className="text-xs">{item.status.replaceAll("_", " ")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
 
           {!data.deliveries.length ? (
             <section className="panel px-5 py-12 text-center" data-testid="report-empty-state">
