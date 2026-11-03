@@ -95,7 +95,12 @@ self.addEventListener("fetch", (event) => {
         const cached = await cache.match(request);
         if (cached) return cached;
         const response = await fetch(request);
-        if (response.ok) await cache.put(request, response.clone());
+        const contentType = response.headers.get("content-type") || "";
+        // SPA rewrites can return index.html with HTTP 200 for a missing JS chunk.
+        // Never persist that HTML under a hashed asset URL in the PWA cache.
+        if (response.ok && !contentType.toLowerCase().includes("text/html")) {
+          await cache.put(request, response.clone());
+        }
         return response;
       }),
     );

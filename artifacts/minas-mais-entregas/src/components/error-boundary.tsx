@@ -35,13 +35,20 @@ function toError(value: unknown): Error {
   }
 }
 
-function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
+function DefaultFallback({ error }: ErrorFallbackProps) {
+  const needsRefresh = /failed to fetch dynamically imported module|loading chunk|importing a module script failed/i.test(
+    error.message,
+  );
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 p-6">
       <div className="max-w-lg w-full text-center">
-        <h1 className="text-xl font-semibold text-gray-900">Não foi possível abrir esta tela</h1>
+        <h1 className="text-xl font-semibold text-gray-900">
+          {needsRefresh ? 'Atualize o aplicativo' : 'Não foi possível abrir esta tela'}
+        </h1>
         <p className="mt-2 text-sm text-gray-600">
-          Sua sessão continua ativa. Tente novamente ou volte ao painel principal.
+          {needsRefresh
+            ? 'Uma parte do aplicativo está desatualizada. Recarregue para baixar a versão mais recente.'
+            : 'Sua sessão continua ativa. Recarregue ou volte ao painel principal.'}
         </p>
         {/* Dev only: messages can carry API responses and other internals. */}
         {import.meta.env.DEV ? (
@@ -51,10 +58,10 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
         ) : null}
         <button
           type="button"
-          onClick={resetError}
+          onClick={() => window.location.reload()}
           className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-700"
         >
-          Tentar novamente
+          Recarregar aplicativo
         </button>
         <a
           href={`${import.meta.env.BASE_URL}user-portal`}

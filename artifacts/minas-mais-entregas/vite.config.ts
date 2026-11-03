@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -27,12 +29,41 @@ if (!basePath) {
   );
 }
 
+const versionPwaCache = {
+  name: 'version-pwa-cache',
+  apply: 'build' as const,
+  async closeBundle() {
+    const outputDirectory = path.resolve(import.meta.dirname, 'dist/public');
+    const assetsDirectory = path.join(outputDirectory, 'assets');
+    const assetNames = (await readdir(assetsDirectory))
+      .filter((name) => /\.(?:m?js|css)$/.test(name))
+      .sort();
+    const serviceWorkerPath = path.join(outputDirectory, 'sw.js');
+    const serviceWorker = await readFile(serviceWorkerPath, 'utf8');
+    const marker = /const CACHE_NAME = "minas-mais-static-[^"]+";/;
+    if (!marker.test(serviceWorker)) {
+      throw new Error('Could not version the PWA service worker cache.');
+    }
+    const version = createHash('sha256')
+      .update(assetNames.join('\n'))
+      .update(serviceWorker)
+      .digest('hex')
+      .slice(0, 12);
+    const versionedWorker = serviceWorker.replace(
+      marker,
+      `const CACHE_NAME = "minas-mais-static-${version}";`,
+    );
+    await writeFile(serviceWorkerPath, versionedWorker);
+  },
+};
+
 export default defineConfig({
   base: basePath,
   plugins: [
     react(),
     tailwindcss({ optimize: false }),
     runtimeErrorOverlay(),
+    versionPwaCache,
     ...(process.env.NODE_ENV !== 'production' &&
     process.env.REPL_ID !== undefined
       ? [
