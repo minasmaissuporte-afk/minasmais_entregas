@@ -8,3 +8,4 @@
 - [Estilo e tamanho dos mapas Mapbox](mapbox-style-choice.md) — Preserve `streets-v12`/`pt` e dê altura responsiva explícita ao elemento entregue ao Mapbox.
 - [Formato das chaves VAPID](web-push-vapid-keys.md) — Ao configurar Web Push, aceite a saída rotulada do gerador e extraia as linhas pública e privada sem expor os valores.
 - [Exclusão definitiva de entregas](delivery-hard-delete.md) — Proteja rotas agrupadas ativas e remova somente dados e arquivos vinculados à entrega excluída.
+- [Git protegido no workspace](protected-git-mutations.md) — Para commits solicitados, a proteção do shell pode exigir `DANGEROUSLY_ALLOW_GIT=1`; confira se há lock real antes de assumir bloqueio.
