@@ -129,7 +129,7 @@ export default function NativeCourierSetupGate({
         >
           <span>Uma permissão necessária foi removida. Reative localização em segundo plano, notificações e a liberação de bateria nas configurações.</span>
           <button
-            className="button-secondary shrink-0"
+            className="button-secondary min-h-12 shrink-0"
             type="button"
             onClick={() => setHasCompletedSetup(false)}
           >

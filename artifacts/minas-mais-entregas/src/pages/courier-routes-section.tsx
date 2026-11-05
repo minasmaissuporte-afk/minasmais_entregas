@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/react";
 import { App as CapacitorApp } from "@capacitor/app";
@@ -21,8 +21,9 @@ import {
   useUpdateCourierLocation,
   type CourierLocationInput,
   type CourierDeliveryRoute,
+  type Delivery,
 } from "@workspace/api-client-react";
-import { Check, Clock3, Map, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
+import { Check, CheckCircle2, Clock3, Map, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
 import type { MapCoordinate } from "@/components/live-map";
 import EvidencePhotoAction from "@/components/evidence-photo-action";
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
@@ -33,6 +34,14 @@ const nativeApiBaseUrl = (
   import.meta.env.VITE_NATIVE_API_BASE_URL || "https://minas-mais-entregas.replit.app"
 ).replace(/\/+$/, "");
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>("BackgroundGeolocation");
+
+export type CourierGpsStatus = {
+  tone: "green" | "yellow" | "red";
+  ageSeconds: number;
+  accuracyMeters: number | null;
+  locationMessage: string;
+  hasSent: boolean;
+};
 
 function distanceInMeters(
   first: Pick<CourierLocationInput, "latitude" | "longitude"> | null,
@@ -78,19 +87,25 @@ function navigateToStop(latitude: number, longitude: number) {
 export default function CourierRoutesSection({
   courierId,
   routes,
+  deliveries,
   isLoading,
   isError,
   onRetry,
   onShowMap,
   onCurrentPositionChange,
+  onGpsStatusChange,
+  renderIndividualDelivery,
 }: {
   courierId: string;
   routes: CourierDeliveryRoute[];
+  deliveries: Delivery[];
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
   onShowMap: () => void;
   onCurrentPositionChange: (position: MapCoordinate) => void;
+  onGpsStatusChange: (status: CourierGpsStatus, refresh: () => void) => void;
+  renderIndividualDelivery: (delivery: Delivery) => ReactNode;
 }) {
   const queryClient = useQueryClient();
   const acceptRoute = useAcceptCourierRoute();
@@ -110,6 +125,8 @@ export default function CourierRoutesSection({
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [lastGpsSentAt, setLastGpsSentAt] = useState<number | null>(null);
   const [gpsClock, setGpsClock] = useState(Date.now());
+  const gpsStartedAt = useRef(Date.now());
+  const gpsRefreshRef = useRef<() => void>(() => undefined);
   const [arrivedStoreStopId, setArrivedStoreStopId] = useState<string | null>(null);
   const activeRoute = routes.find((route) => route.status === "ACCEPTED");
   const offeredRoutes = routes.filter((route) => route.status === "OFFERED");
@@ -233,6 +250,26 @@ export default function CourierRoutesSection({
           });
       };
 
+      gpsRefreshRef.current = () => {
+        void requestCurrentLocation()
+          .then(async (position) => {
+            setGpsAccuracy(position.accuracyMeters ?? null);
+            onCurrentPositionChangeRef.current({
+              latitude: position.latitude,
+              longitude: position.longitude,
+            });
+            try {
+              await sendNativeLocation(position);
+              setLastGpsSentAt(Date.now());
+              setLocationMessage("");
+            } catch (error) {
+              setLocationMessage(error instanceof Error ? error.message : "Não foi possível atualizar o GPS.");
+            }
+          })
+          .catch((error: unknown) => {
+            setLocationMessage(error instanceof Error ? error.message : "Não foi possível obter a localização.");
+          });
+      };
       gpsClockInterval = window.setInterval(() => setGpsClock(Date.now()), 5_000);
       setLocationMessage("Ative o rastreamento para compartilhar o GPS em segundo plano.");
       void BackgroundGeolocation.addWatcher(
@@ -279,6 +316,7 @@ export default function CourierRoutesSection({
 
       return () => {
         watching = false;
+        gpsRefreshRef.current = () => undefined;
         window.clearInterval(gpsClockInterval);
         if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
         void networkListener?.remove();
@@ -288,7 +326,8 @@ export default function CourierRoutesSection({
 
     if (!navigator.geolocation) {
       setLocationMessage("Este navegador não oferece localização GPS.");
-      return;
+      const gpsClockInterval = window.setInterval(() => setGpsClock(Date.now()), 5_000);
+      return () => window.clearInterval(gpsClockInterval);
     }
 
     let watching = true;
@@ -348,6 +387,7 @@ export default function CourierRoutesSection({
       if (document.visibilityState !== "visible") return;
       navigator.geolocation.getCurrentPosition(sendPosition, handleLocationError, options);
     };
+    gpsRefreshRef.current = requestCurrentPosition;
     const watchId = navigator.geolocation.watchPosition(
       sendPosition,
       handleLocationError,
@@ -377,6 +417,7 @@ export default function CourierRoutesSection({
     setLocationMessage("Compartilhando GPS a cada 15 segundos enquanto você estiver conectado. Mantenha o PWA aberto.");
     return () => {
       watching = false;
+      gpsRefreshRef.current = () => undefined;
       navigator.geolocation.clearWatch(watchId);
       window.clearInterval(heartbeat);
       window.clearInterval(gpsClockInterval);
@@ -384,24 +425,27 @@ export default function CourierRoutesSection({
       if (wakeLock) void wakeLock.release();
     };
   }, [courierId]);
-  const gpsAgeSeconds =
-    lastGpsSentAt == null ? null : Math.max(0, Math.floor((gpsClock - lastGpsSentAt) / 1000));
+  const gpsAgeSeconds = lastGpsSentAt == null
+    ? Math.max(0, Math.floor((gpsClock - gpsStartedAt.current) / 1000))
+    : Math.max(0, Math.floor((gpsClock - lastGpsSentAt) / 1000));
   const gpsTone =
-    gpsAgeSeconds == null || gpsAgeSeconds > 60
+    gpsAgeSeconds > 60
       ? "red"
-      : (gpsAccuracy ?? 0) > 50
+      : lastGpsSentAt == null || (gpsAccuracy ?? 0) > 50
         ? "yellow"
         : "green";
-  const gpsStatusText =
-    gpsAgeSeconds == null || gpsAgeSeconds > 60
-      ? "Sem envio GPS há mais de 1 min"
-      : `GPS ativo · último envio há ${gpsAgeSeconds} s`;
-  const gpsToneClass =
-    gpsTone === "green"
-      ? "border-green-200 bg-green-50 text-green-900"
-      : gpsTone === "yellow"
-        ? "border-amber-200 bg-amber-50 text-amber-950"
-        : "border-red-200 bg-red-50 text-red-900";
+  useEffect(() => {
+    onGpsStatusChange(
+      {
+        tone: gpsTone,
+        ageSeconds: gpsAgeSeconds,
+        accuracyMeters: gpsAccuracy,
+        locationMessage,
+        hasSent: lastGpsSentAt != null,
+      },
+      () => gpsRefreshRef.current(),
+    );
+  }, [gpsTone, gpsAgeSeconds, gpsAccuracy, lastGpsSentAt, locationMessage, onGpsStatusChange]);
 
   const refreshRouteData = async () => {
     await Promise.all([
@@ -462,105 +506,127 @@ export default function CourierRoutesSection({
     }
   };
 
-  const hasRouteContent = isLoading || isError || Boolean(activeRoute) || offeredRoutes.length > 0;
+  const availableRoutes = activeRoute ? [activeRoute] : offeredRoutes;
+  const activeDeliveryStatuses = new Set([
+    "OFFERED",
+    "AWAITING_COURIER",
+    "ACCEPTED",
+    "TO_STORE",
+    "AT_STORE",
+    "IN_TRANSIT",
+    "RETURNING_TO_STORE",
+  ]);
+  const priorityByStatus: Record<string, number> = {
+    IN_TRANSIT: 0,
+    AT_STORE: 1,
+    TO_STORE: 2,
+    ACCEPTED: 3,
+    RETURNING_TO_STORE: 4,
+    OFFERED: 5,
+    AWAITING_COURIER: 5,
+  };
+  const workItems = [
+    ...availableRoutes.map((route) => ({
+      kind: "route" as const,
+      route,
+      priority: priorityByStatus[route.status] ?? 8,
+    })),
+    ...deliveries
+      .filter((delivery) => activeDeliveryStatuses.has(delivery.status))
+      .map((delivery) => ({
+        kind: "delivery" as const,
+        delivery,
+        priority: priorityByStatus[delivery.status] ?? 8,
+      })),
+  ].sort((first, second) => first.priority - second.priority);
   return (
-    <>
-    <div className={`mt-4 rounded-lg border px-3 py-2 text-xs ${gpsToneClass}`} role="status" aria-live="polite">
-      <MapPin size={14} className="mr-1 inline-block align-text-bottom" />
-      <strong>{gpsStatusText}</strong>
-      {gpsAccuracy != null && gpsAgeSeconds != null && gpsAgeSeconds <= 60 && (
-        <span className="ml-2">Precisão {Math.round(gpsAccuracy)} m</span>
-      )}
-      <span className="mt-1 block">
-        {Capacitor.isNativePlatform()
-          ? "O Android mantém o rastreamento ativo em segundo plano enquanto você estiver conectado."
-          : "O GPS é enviado a cada 15 segundos enquanto o PWA estiver aberto."}
-      </span>
-      {locationMessage && <span className="mt-1 block">{locationMessage}</span>}
-    </div>
-    {hasRouteContent && <section className="mt-6 space-y-4" aria-label="Rotas do motoboy">
-      <div className="flex items-end justify-between">
-        <div>
-          <div className="eyebrow">ROTAS AGRUPADAS</div>
-          <h2 className="mt-1 text-lg font-bold">Rotas e sequência de paradas</h2>
-        </div>
-        <button className="button-quiet" type="button" onClick={onRetry} aria-label="Atualizar rotas">
-          <RefreshCw size={15} /> Atualizar
-        </button>
-      </div>
-
+    <section className="mt-4 space-y-3" aria-label="Entregas e rotas">
       {errorMessage && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{errorMessage}</div>}
 
       {isLoading ? (
-        <div className="panel p-5 text-sm text-muted-foreground">Carregando rotas…</div>
+        <div className="panel p-5 text-sm text-muted-foreground">Carregando suas entregas…</div>
       ) : isError ? (
         <div className="panel p-5">
-          <p className="text-sm text-red-700">Não foi possível carregar as rotas.</p>
+          <p className="text-sm text-red-700">Não foi possível carregar suas entregas.</p>
           <button className="button-secondary mt-3" type="button" onClick={onRetry}>Tentar novamente</button>
+        </div>
+      ) : workItems.length === 0 ? (
+        <div className="panel flex min-h-28 items-center gap-4 p-5" role="status">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-green-50 text-green-700">
+            <CheckCircle2 size={23} />
+          </span>
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-[.12em] text-green-700">Disponível</span>
+            <h2 className="mt-1 text-base font-bold">Você está disponível</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Aguardando novas entregas</p>
+          </div>
         </div>
       ) : (
         <>
-          {activeRoute && (
-            <ActiveRouteCard
-              route={activeRoute}
-              busy={busyRouteId === activeRoute.id}
-              locationMessage={locationMessage}
-              arrivedStoreStopId={arrivedStoreStopId}
-              onShowMap={onShowMap}
-              onArrive={(stopId) => void handleStoreArrival(activeRoute.id, stopId)}
-              onComplete={(stopId, evidencePath) => void handleCompleteStop(activeRoute.id, stopId, evidencePath)}
-            />
-          )}
-
-          {!activeRoute && offeredRoutes.map((route) => (
-            <article key={route.id} className="panel p-4 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-bold"><RouteIcon size={17} className="text-primary" />{route.deliveryCount} {route.deliveryCount === 1 ? "entrega" : "entregas"}</div>
-                  <p className="mt-1 text-xs text-muted-foreground">A sequência otimizada será travada quando você aceitar.</p>
-                </div>
-                <div className="text-right">
-                  <div className="eyebrow">TOTAL PREVISTO</div>
-                  <div className="mt-1 text-lg font-bold text-primary">{money(route.amountToReceive)}</div>
-                </div>
-              </div>
-              <div className="mt-4 divide-y divide-border border-y border-border">
-                {route.deliveries.map((delivery) => (
-                  <div key={delivery.id} className="flex items-start justify-between gap-3 py-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold">{delivery.code} · {delivery.storeName}</div>
-                      <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{delivery.destination}</div>
-                    </div>
-                    <div className="shrink-0 text-sm font-semibold">{money(delivery.deliveryAmount)}</div>
-                  </div>
-                ))}
-              </div>
-              <button
-                className="button-primary mt-4 min-h-11 w-full justify-center"
-                type="button"
-                disabled={busyRouteId !== null}
-                onClick={() => void handleAccept(route)}
-              >
-                <Navigation size={16} />
-                {busyRouteId === route.id ? "Calculando melhor rota…" : "Aceitar e calcular rota"}
-              </button>
-              <p className="mt-2 text-center text-[11px] text-muted-foreground">
-                O navegador pedirá sua localização para ordenar as paradas a partir de onde você está.
-              </p>
-            </article>
-          ))}
-
-          {!activeRoute && offeredRoutes.length === 0 && (
-            <div className="panel p-5 text-center">
-              <PackageCheck className="mx-auto text-muted-foreground" size={22} />
-              <p className="mt-2 text-sm font-semibold">Nenhuma rota agrupada disponível</p>
-              <p className="mt-1 text-xs text-muted-foreground">Novas ofertas enviadas pela central aparecerão aqui.</p>
+          <div className="flex items-end justify-between">
+            <div>
+              <div className="eyebrow">SUA PRÓXIMA PARADA</div>
+              <h2 className="mt-1 text-lg font-bold">Entregas</h2>
             </div>
-          )}
+            <button className="button-quiet min-h-12" type="button" onClick={onRetry} aria-label="Atualizar entregas">
+              <RefreshCw size={15} /> Atualizar
+            </button>
+          </div>
+          <div className="space-y-3">
+            {workItems.map((item) => item.kind === "delivery" ? (
+              <div key={item.delivery.id}>{renderIndividualDelivery(item.delivery)}</div>
+            ) : item.route.status === "ACCEPTED" ? (
+              <ActiveRouteCard
+                key={item.route.id}
+                route={item.route}
+                busy={busyRouteId === item.route.id}
+                locationMessage={locationMessage}
+                arrivedStoreStopId={arrivedStoreStopId}
+                onShowMap={onShowMap}
+                onArrive={(stopId) => void handleStoreArrival(item.route.id, stopId)}
+                onComplete={(stopId, evidencePath) => void handleCompleteStop(item.route.id, stopId, evidencePath)}
+              />
+            ) : (
+              <article key={item.route.id} className="panel p-4 sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-bold"><RouteIcon size={17} className="text-primary" />{item.route.deliveryCount} {item.route.deliveryCount === 1 ? "entrega" : "entregas"}</div>
+                    <p className="mt-1 text-xs text-muted-foreground">A sequência otimizada será travada quando você aceitar.</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="eyebrow">TOTAL PREVISTO</div>
+                    <div className="mt-1 text-lg font-bold text-primary">{money(item.route.amountToReceive)}</div>
+                  </div>
+                </div>
+                <div className="mt-4 divide-y divide-border border-y border-border">
+                  {item.route.deliveries.map((delivery) => (
+                    <div key={delivery.id} className="flex items-start justify-between gap-3 py-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold">{delivery.code} · {delivery.storeName}</div>
+                        <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{delivery.destination}</div>
+                      </div>
+                      <div className="shrink-0 text-sm font-semibold">{money(delivery.deliveryAmount)}</div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="button-primary mt-4 min-h-12 w-full justify-center"
+                  type="button"
+                  disabled={busyRouteId !== null}
+                  onClick={() => void handleAccept(item.route)}
+                >
+                  <Navigation size={16} />
+                  {busyRouteId === item.route.id ? "Calculando melhor rota…" : "Aceitar e calcular rota"}
+                </button>
+                <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                  O navegador pedirá sua localização para ordenar as paradas a partir de onde você está.
+                </p>
+              </article>
+            ))}
+          </div>
         </>
       )}
-    </section>}
-    </>
+    </section>
   );
 }
 
