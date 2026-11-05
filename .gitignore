@@ -53,3 +53,5 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+keystore-base64.txt
+keystore-base64.txt
