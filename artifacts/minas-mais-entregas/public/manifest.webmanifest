@@ -7,8 +7,8 @@
   "start_url": "/motoboy-pwa",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f4f3f1",
-  "theme_color": "#a91d2a",
+  "background_color": "#E20210",
+  "theme_color": "#E20210",
   "categories": ["business", "navigation"],
   "icons": [
     {
@@ -21,7 +21,13 @@
       "src": "/pwa-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

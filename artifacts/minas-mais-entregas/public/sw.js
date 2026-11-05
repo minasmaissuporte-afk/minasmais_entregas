@@ -1,10 +1,11 @@
-const CACHE_NAME = "minas-mais-static-v1";
+const CACHE_NAME = "minas-mais-static-v2";
 const PRECACHE_URLS = [
   "/manifest.webmanifest",
-  "/pwa-icon.svg",
+  "/favicon.png",
   "/pwa-icon-180.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",
+  "/pwa-icon-maskable-512.png",
   "/offline.html",
 ];
 
@@ -81,12 +82,12 @@ self.addEventListener("fetch", (event) => {
   if (
     url.pathname.startsWith("/assets/") ||
     [
-      "/favicon.svg",
+      "/favicon.png",
       "/logo.svg",
-      "/pwa-icon.svg",
       "/pwa-icon-180.png",
       "/pwa-icon-192.png",
       "/pwa-icon-512.png",
+      "/pwa-icon-maskable-512.png",
       "/manifest.webmanifest",
     ].includes(url.pathname)
   ) {

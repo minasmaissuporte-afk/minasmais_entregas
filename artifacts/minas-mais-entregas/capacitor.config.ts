@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: "dist/public",
   android: {
     useLegacyBridge: true,
-    backgroundColor: "#f4f3f1",
+    backgroundColor: "#E20210",
   },
   server: {
     androidScheme: "https",
