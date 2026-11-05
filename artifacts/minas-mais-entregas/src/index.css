@@ -387,6 +387,204 @@
 .icon-button { width:32px; height:32px; }
 .icon-button-sm { width:29px; height:28px; border:1px solid #e7e6e3; }
 .icon-button:hover,.icon-button-sm:hover { color:#a91d2a; background:#f8eeee; }
+
+/* Courier PWA: short tab transitions, accessible touch feedback, and MD3 actions. */
+.courier-pwa .button-primary {
+  color: #fff;
+  background: #E20210;
+}
+.courier-pwa .button-primary:hover:not(:disabled) {
+  background: #c9000d;
+  transform: none;
+}
+.courier-pwa .button-secondary {
+  border-color: #f2c7cb;
+  color: #a80d19;
+  background: #fff0f1;
+}
+.courier-pwa .button-secondary:hover:not(:disabled) {
+  border-color: #e9aeb4;
+  background: #ffe6e8;
+}
+.courier-pwa .button-outlined {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #E20210;
+  border-radius: 7px;
+  padding: 0 14px;
+  color: #b5000c;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.courier-pwa .button-outlined:hover:not(:disabled) {
+  background: #fff4f5;
+}
+.courier-pwa .button-outlined:disabled,
+.courier-pwa .button-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.courier-pwa :is(button, a.button-primary, a.button-secondary, a.button-quiet):not(:disabled) {
+  --courier-ripple-color: rgb(160 20 32 / 14%);
+  -webkit-tap-highlight-color: transparent;
+  background-image: radial-gradient(circle, var(--courier-ripple-color) 8%, transparent 9%);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 0 0;
+  transition: transform 100ms ease-out, background-size 180ms ease-out;
+}
+.courier-pwa :is(.button-primary, a.button-primary) {
+  --courier-ripple-color: rgb(255 255 255 / 32%);
+}
+.courier-pwa :is(button, a.button-primary, a.button-secondary, a.button-quiet):active:not(:disabled) {
+  transform: scale(0.97);
+  background-size: 1000% 1000%;
+}
+.courier-pwa .courier-pwa-tabs {
+  position: relative;
+  isolation: isolate;
+}
+.courier-pwa .courier-pwa-tabs::before {
+  position: absolute;
+  z-index: 0;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  border-radius: 0.75rem;
+  background: #fbe9eb;
+  content: "";
+  pointer-events: none;
+  transform: translateX(0);
+  transition: transform 200ms ease-out;
+}
+.courier-pwa .courier-pwa-tabs[data-active-tab="map"]::before {
+  transform: translateX(100%);
+}
+.courier-pwa .courier-pwa-tabs[data-transitioning="true"]::before {
+  will-change: transform;
+}
+.courier-pwa .courier-pwa-tabs--no-transition::before {
+  transition: none !important;
+}
+.courier-pwa .courier-pwa-tabs--map {
+  position: fixed;
+  z-index: 60;
+  top: max(12px, env(safe-area-inset-top));
+  right: 12px;
+  left: 12px;
+  width: auto;
+  margin-top: 0;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 14%);
+  backdrop-filter: blur(12px);
+}
+.courier-pwa .courier-pwa-tabs [role="tab"] {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.courier-pwa .courier-pwa-tabs [role="tab"][data-state="active"] {
+  color: #b5000c;
+}
+.courier-pwa .courier-tab-panel {
+  transition: transform 200ms ease-out, opacity 200ms ease-out;
+}
+.courier-pwa .courier-tab-panel[data-state="active"] {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+.courier-pwa .courier-tab-panel[data-state="inactive"] {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.courier-pwa .courier-tab-panel--deliveries[data-state="inactive"] {
+  transform: translateX(-24px);
+}
+.courier-pwa .courier-tab-panel--map[data-state="inactive"] {
+  transform: translateX(24px);
+}
+.courier-pwa .courier-tab-panel[data-transitioning="true"] {
+  will-change: transform, opacity;
+}
+.courier-pwa .courier-tab-panel--no-transition {
+  transition: none !important;
+}
+.courier-cancellation-dialog .button-primary {
+  color: #fff;
+  background: #E20210;
+}
+.courier-cancellation-dialog .button-secondary {
+  border-color: #f2c7cb;
+  color: #a80d19;
+  background: #fff0f1;
+}
+.courier-menu-sheet .button-primary {
+  color: #fff;
+  background: #E20210;
+}
+.courier-menu-sheet .button-secondary {
+  border-color: #f2c7cb;
+  color: #a80d19;
+  background: #fff0f1;
+}
+.courier-menu-sheet :is(button, a.button-primary, a.button-secondary, a.button-quiet):not(:disabled) {
+  --courier-ripple-color: rgb(160 20 32 / 14%);
+  -webkit-tap-highlight-color: transparent;
+  background-image: radial-gradient(circle, var(--courier-ripple-color) 8%, transparent 9%);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 0 0;
+  transition: transform 100ms ease-out, background-size 180ms ease-out;
+}
+.courier-menu-sheet :is(.button-primary, a.button-primary) {
+  --courier-ripple-color: rgb(255 255 255 / 32%);
+}
+.courier-menu-sheet :is(button, a.button-primary, a.button-secondary, a.button-quiet):active:not(:disabled) {
+  transform: scale(0.97);
+  background-size: 1000% 1000%;
+}
+.courier-cancellation-dialog button:not(:disabled) {
+  min-height: 48px;
+  -webkit-tap-highlight-color: transparent;
+  background-image: radial-gradient(circle, rgb(160 20 32 / 14%) 8%, transparent 9%);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 0 0;
+  transition: transform 100ms ease-out, background-size 180ms ease-out;
+}
+.courier-cancellation-dialog .button-primary:not(:disabled) {
+  background-image: radial-gradient(circle, rgb(255 255 255 / 32%) 8%, transparent 9%);
+}
+.courier-cancellation-dialog button:active:not(:disabled) {
+  transform: scale(0.97);
+  background-size: 1000% 1000%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .courier-pwa .courier-pwa-tabs::before,
+  .courier-pwa .courier-tab-panel,
+  .courier-pwa :is(button, a.button-primary, a.button-secondary, a.button-quiet),
+  .courier-cancellation-dialog button,
+  .courier-menu-sheet :is(button, a.button-primary, a.button-secondary, a.button-quiet) {
+    transition: none !important;
+  }
+  .courier-pwa :is(button, a.button-primary, a.button-secondary, a.button-quiet):active:not(:disabled) {
+    transform: none;
+  }
+  .courier-cancellation-dialog button:active:not(:disabled) {
+    transform: none;
+  }
+  .courier-menu-sheet :is(button, a.button-primary, a.button-secondary, a.button-quiet):active:not(:disabled) {
+    transform: none;
+  }
+}
 .delivery-table { border-collapse:collapse; }
 .delivery-table th { padding:11px 15px; text-align:left; color:#929397; background:#fbfaf9; font-size:9px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; border-bottom:1px solid #ecebe9; }
 .delivery-table td { padding:13px 15px; border-bottom:1px solid #f0efed; vertical-align:middle; font-size:12px; }

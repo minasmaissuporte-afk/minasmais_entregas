@@ -24,7 +24,7 @@ import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
-import { ArrowLeft, Bell, BellOff, Bike, ChevronDown, KeyRound, LocateFixed, LogOut, Map as MapIcon, Menu, PackageCheck } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, Bike, CheckCircle2, ChevronDown, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, Menu, MessageCircle, PackageCheck, Phone } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
@@ -35,6 +35,7 @@ import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import type { MapCoordinate } from "@/components/live-map";
+import { triggerCourierLightHaptic } from "@/lib/courier-haptics";
 
 type Period = "day" | "week" | "month";
 const isNativeApp = Capacitor.isNativePlatform();
@@ -107,6 +108,13 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"deliveries" | "map">("deliveries");
+  const activeTabRef = useRef<"deliveries" | "map">("deliveries");
+  const tabTransitionTimerRef = useRef<number | null>(null);
+  const mapResizeTimerRef = useRef<number | null>(null);
+  const tabTransitioningRef = useRef(false);
+  const [tabTransitioning, setTabTransitioning] = useState(false);
+  const [skipTabTransition, setSkipTabTransition] = useState(false);
+  const [mapResizeVersion, setMapResizeVersion] = useState(0);
   const [currentPosition, setCurrentPosition] = useState<MapCoordinate | null>(null);
   const [period, setPeriod] = useState<Period>("day");
   const [earningsOpen, setEarningsOpen] = useState(false);
@@ -118,6 +126,56 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   const [nativePushStatusReady, setNativePushStatusReady] = useState(!isNativeApp);
   const [actionError, setActionError] = useState("");
   const [pushMessage, setPushMessage] = useState("");
+  const changeActiveTab = useCallback((value: string) => {
+    if (value !== "deliveries" && value !== "map") return;
+    const nextTab = value as "deliveries" | "map";
+    if (activeTabRef.current === nextTab) return;
+
+    const interruptedTransition = tabTransitioningRef.current;
+    const skipMotion = interruptedTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    activeTabRef.current = nextTab;
+    if (tabTransitionTimerRef.current !== null) {
+      window.clearTimeout(tabTransitionTimerRef.current);
+      tabTransitionTimerRef.current = null;
+    }
+    if (mapResizeTimerRef.current !== null) {
+      window.clearTimeout(mapResizeTimerRef.current);
+      mapResizeTimerRef.current = null;
+    }
+
+    if (interruptedTransition) {
+      tabTransitioningRef.current = false;
+      setTabTransitioning(false);
+      setSkipTabTransition(true);
+      window.setTimeout(() => setSkipTabTransition(false), 34);
+    } else if (skipMotion) {
+      tabTransitioningRef.current = false;
+      setTabTransitioning(false);
+      setSkipTabTransition(true);
+      window.setTimeout(() => setSkipTabTransition(false), 34);
+    } else {
+      tabTransitioningRef.current = true;
+      setTabTransitioning(true);
+      tabTransitionTimerRef.current = window.setTimeout(() => {
+        tabTransitioningRef.current = false;
+        tabTransitionTimerRef.current = null;
+        setTabTransitioning(false);
+      }, 200);
+    }
+
+    setActiveTab(nextTab);
+    if (nextTab === "map") {
+      const resizeDelay = skipMotion ? 0 : 200;
+      mapResizeTimerRef.current = window.setTimeout(() => {
+        mapResizeTimerRef.current = null;
+        setMapResizeVersion((version) => version + 1);
+      }, resizeDelay);
+    }
+  }, []);
+  useEffect(() => () => {
+    if (tabTransitionTimerRef.current !== null) window.clearTimeout(tabTransitionTimerRef.current);
+    if (mapResizeTimerRef.current !== null) window.clearTimeout(mapResizeTimerRef.current);
+  }, []);
   const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
   const [nativePushActive, setNativePushActive] = useState(false);
   const [nativePushToken, setNativePushToken] = useState<string | null>(null);
@@ -521,6 +579,9 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           ...(evidencePath ? { evidencePath } : {}),
         },
       });
+      if (status === "ACCEPTED" || status === "COMPLETED") {
+        void triggerCourierLightHaptic();
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
         queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period: "day" }) }),
@@ -541,7 +602,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       nextStatus={nextCourierStatus[delivery.status]}
       nextStatusLabel={nextStatusLabel[delivery.status]}
       onUpdate={updateDelivery}
-      onShowMap={() => setActiveTab("map")}
+      onShowMap={() => changeActiveTab("map")}
     />
   );
 
@@ -561,7 +622,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                   <Menu size={20} />
                 </button>
               </SheetTrigger>
-              <SheetContent side="left" className="flex w-[min(20rem,calc(100vw-2rem))] flex-col border-r-[#e7e6e3] bg-[#f8f7f4] p-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-[max(20px,env(safe-area-inset-top))] [&>button]:grid [&>button]:h-12 [&>button]:min-h-12 [&>button]:min-w-12 [&>button]:w-12 [&>button]:place-items-center">
+              <SheetContent side="left" className="courier-menu-sheet flex w-[min(20rem,calc(100vw-2rem))] flex-col border-r-[#e7e6e3] bg-[#f8f7f4] p-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-[max(20px,env(safe-area-inset-top))] [&>button]:grid [&>button]:h-12 [&>button]:min-h-12 [&>button]:min-w-12 [&>button]:w-12 [&>button]:place-items-center">
                 <SheetHeader className="text-left">
                   <SheetTitle className="flex items-center gap-3 text-base">
                     <span className="brand-mark"><Bike size={18} /></span>
@@ -685,20 +746,28 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
 
         <Tabs
           value={activeTab}
-          onValueChange={(value) => setActiveTab(value as "deliveries" | "map")}
+          onValueChange={changeActiveTab}
         >
-          {activeTab !== "map" && <TabsList className="mt-2 grid h-14 w-full grid-cols-2 rounded-xl border border-[#e7e6e3] bg-white p-1">
+          <TabsList
+            aria-label="Seções do app do motoboy"
+            data-active-tab={activeTab}
+            data-transitioning={tabTransitioning ? "true" : "false"}
+            data-skip-transition={skipTabTransition ? "true" : "false"}
+            className={`courier-pwa-tabs mt-2 grid h-14 w-full grid-cols-2 rounded-xl border border-[#e7e6e3] bg-white p-1 ${activeTab === "map" ? "courier-pwa-tabs--map" : ""} ${skipTabTransition ? "courier-pwa-tabs--no-transition" : ""}`}
+          >
             <TabsTrigger value="deliveries" className="gap-2 rounded-lg text-sm" data-testid="tab-courier-deliveries">
               <PackageCheck size={16} /> Entregas
             </TabsTrigger>
             <TabsTrigger value="map" className="gap-2 rounded-lg text-sm" data-testid="tab-courier-map">
               <MapIcon size={16} /> Mapa e rota
             </TabsTrigger>
-          </TabsList>}
+          </TabsList>
           <TabsContent
             value="deliveries"
             forceMount
-            className={activeTab === "deliveries" ? "mt-4" : "hidden"}
+            aria-hidden={activeTab !== "deliveries"}
+            data-transitioning={tabTransitioning ? "true" : "false"}
+            className={`courier-tab-panel courier-tab-panel--deliveries mt-4 ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}
           >
         {returningDeliveries.length > 0 && (
           <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-950" role="status">
@@ -762,7 +831,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             void routes.refetch();
             void deliveries.refetch();
           }}
-          onShowMap={() => setActiveTab("map")}
+          onShowMap={() => changeActiveTab("map")}
           onCurrentPositionChange={setCurrentPosition}
           onGpsStatusChange={handleGpsStatusChange}
           renderIndividualDelivery={renderIndividualDelivery}
@@ -816,30 +885,31 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           )}
         </section>
           </TabsContent>
-          <TabsContent value="map" className="fixed inset-0 z-50 m-0 h-[100dvh] overflow-hidden">
+          <TabsContent
+            value="map"
+            forceMount
+            aria-hidden={activeTab !== "map"}
+            data-transitioning={tabTransitioning ? "true" : "false"}
+            className={`courier-tab-panel courier-tab-panel--map fixed inset-0 z-50 m-0 h-[100dvh] overflow-hidden ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}
+          >
             {activeRoute ? (
               <CourierRouteMapTab
                 route={activeRoute}
                 currentPosition={currentPosition}
-                onBack={() => setActiveTab("deliveries")}
+                onBack={() => changeActiveTab("deliveries")}
                 onRefresh={() => void routes.refetch()}
                 activeDelivery={activeRouteDelivery}
+                resizeVersion={mapResizeVersion}
               />
             ) : activeIndividualDelivery ? (
               <CourierDeliveryNavigation
                 deliveryId={activeIndividualDelivery.id}
-                onBack={() => setActiveTab("deliveries")}
+                onBack={() => changeActiveTab("deliveries")}
                 delivery={activeIndividualDelivery}
+                resizeVersion={mapResizeVersion}
               />
             ) : (
               <section className="grid h-full place-items-center p-6 text-center">
-                <button
-                  type="button"
-                  className="absolute left-4 top-4 z-20 min-h-12 rounded-lg bg-white px-4 font-semibold shadow"
-                  onClick={() => setActiveTab("deliveries")}
-                >
-                  <ArrowLeft size={15} className="mr-2 inline" /> Entregas
-                </button>
                 <div>
                 <MapIcon className="mx-auto text-muted-foreground" size={24} />
                 <h2 className="mt-3 text-base font-bold">Nenhuma rota ativa no momento</h2>
@@ -853,8 +923,8 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                 )}
                 <button
                   type="button"
-                  className="button-primary mt-4 min-h-10"
-                  onClick={() => setActiveTab("deliveries")}
+                  className="button-primary mt-4 min-h-12"
+                  onClick={() => changeActiveTab("deliveries")}
                 >
                   <PackageCheck size={15} /> Ver entregas
                 </button>
@@ -890,6 +960,11 @@ function CourierIndividualDeliveryCard({
   const whatsappNumber = phoneDigits
     ? phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`
     : null;
+  const actionIcon = nextStatus === "ACCEPTED"
+    ? <PackageCheck size={16} />
+    : nextStatus === "COMPLETED"
+      ? <CheckCircle2 size={16} />
+      : <MapPin size={16} />;
 
   return (
     <article className={`panel p-4 sm:p-5 ${active ? "border-l-4 border-l-[#a91d2a]" : ""}`}>
@@ -916,15 +991,17 @@ function CourierIndividualDeliveryCard({
         <div className="mt-3 flex flex-wrap gap-2">
           {delivery.customerPhone && (
             <>
-              <a className="button-secondary min-h-12" href={`tel:${delivery.customerPhone}`}>Telefone</a>
+              <a className="button-secondary min-h-12" href={`tel:${delivery.customerPhone}`}>
+                <Phone size={15} /> Telefone
+              </a>
               {whatsappNumber && (
                 <a className="button-secondary min-h-12" href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer">
-                  WhatsApp
+                  <MessageCircle size={15} /> WhatsApp
                 </a>
               )}
             </>
           )}
-          <button type="button" className="button-secondary min-h-12" onClick={onShowMap}>
+          <button type="button" className="button-outlined min-h-12" onClick={onShowMap}>
             <MapIcon size={15} /> Ver rota no mapa
           </button>
           {active && <CourierUnableToDeliverAction deliveryId={delivery.id} disabled={busy} />}
@@ -942,15 +1019,19 @@ function CourierIndividualDeliveryCard({
             {active && <CourierUnableToDeliverAction deliveryId={delivery.id} disabled={busy} />}
           </div>
         ) : nextStatus ? (
-          <div className="flex w-full flex-wrap gap-2">
+          <div className="flex w-full flex-col gap-2">
             <button
               type="button"
-              className="button-primary min-h-12"
+              className="button-primary min-h-12 w-full justify-center"
               disabled={busy}
               onClick={() => void onUpdate(delivery.id, nextStatus)}
+              aria-busy={busy}
             >
-              {busy ? "Salvando…" : actionLabel ?? "Continuar"}
+              {busy
+                ? <><LoaderCircle size={16} className="animate-spin" /> Salvando…</>
+                : <>{actionIcon} {actionLabel ?? "Continuar"}</>}
             </button>
+            {busy && <p className="text-xs text-muted-foreground" role="status">Aguarde a resposta para evitar uma ação duplicada.</p>}
             {active && <CourierUnableToDeliverAction deliveryId={delivery.id} disabled={busy} />}
           </div>
         ) : null}

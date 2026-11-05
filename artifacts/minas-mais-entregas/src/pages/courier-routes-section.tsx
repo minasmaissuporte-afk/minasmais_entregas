@@ -23,10 +23,11 @@ import {
   type CourierDeliveryRoute,
   type Delivery,
 } from "@workspace/api-client-react";
-import { Check, CheckCircle2, Clock3, Map, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
+import { Check, CheckCircle2, Clock3, LoaderCircle, Map, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
 import type { MapCoordinate } from "@/components/live-map";
 import EvidencePhotoAction from "@/components/evidence-photo-action";
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
+import { triggerCourierLightHaptic } from "@/lib/courier-haptics";
 
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -471,6 +472,7 @@ export default function CourierRoutesSection({
         routeId: route.id,
         data: { latitude: location.latitude, longitude: location.longitude },
       });
+      void triggerCourierLightHaptic();
       await refreshRouteData();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Não foi possível aceitar a rota.");
@@ -483,7 +485,9 @@ export default function CourierRoutesSection({
     setErrorMessage("");
     setBusyRouteId(routeId);
     try {
+      const stop = routes.find((route) => route.id === routeId)?.stops.find((item) => item.id === stopId);
       await completeStop.mutateAsync({ routeId, stopId, data: evidencePath ? { evidencePath } : {} });
+      if (stop?.kind === "delivery") void triggerCourierLightHaptic();
       await refreshRouteData();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Não foi possível concluir esta parada.");
@@ -614,12 +618,16 @@ export default function CourierRoutesSection({
                   type="button"
                   disabled={busyRouteId !== null}
                   onClick={() => void handleAccept(item.route)}
+                  aria-busy={busyRouteId === item.route.id}
                 >
-                  <Navigation size={16} />
-                  {busyRouteId === item.route.id ? "Calculando melhor rota…" : "Aceitar e calcular rota"}
+                  {busyRouteId === item.route.id
+                    ? <><LoaderCircle size={16} className="animate-spin" /> Calculando melhor rota…</>
+                    : <><Navigation size={16} /> Aceitar e calcular rota</>}
                 </button>
-                <p className="mt-2 text-center text-[11px] text-muted-foreground">
-                  O navegador pedirá sua localização para ordenar as paradas a partir de onde você está.
+                <p className="mt-2 text-center text-[11px] text-muted-foreground" role={busyRouteId !== null ? "status" : undefined}>
+                  {busyRouteId !== null
+                    ? "Aguarde a ação atual terminar para evitar envio duplicado."
+                    : "O navegador pedirá sua localização para ordenar as paradas a partir de onde você está."}
                 </p>
               </article>
             ))}
@@ -673,8 +681,8 @@ function ActiveRouteCard({
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/15">
         <div className="h-full rounded-full bg-white transition-all" style={{ width: `${progress}%` }} />
       </div>
-      <button
-        className="button-secondary mt-4 min-h-10 w-full justify-center"
+        <button
+          className="button-outlined mt-4 min-h-12 w-full justify-center"
         type="button"
         onClick={onShowMap}
       >
@@ -697,7 +705,7 @@ function ActiveRouteCard({
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             <a
-              className="button-secondary min-h-10 justify-center"
+              className="button-outlined min-h-12 justify-center"
               href={`https://www.google.com/maps/dir/?api=1&destination=${nextStop.latitude},${nextStop.longitude}&travelmode=driving`}
               target="_blank"
               rel="noreferrer"
@@ -720,24 +728,35 @@ function ActiveRouteCard({
               </>
             ) : !hasArrivedAtNextStore ? (
               <button
-                className="button-primary min-h-10 justify-center"
+                className="button-primary min-h-12 justify-center"
                 type="button"
                 disabled={busy}
                 onClick={() => onArrive(nextStop.id)}
+                aria-busy={busy}
               >
-                <MapPin size={15} />{busy ? "Registrando chegada…" : "Registrar chegada à loja"}
+                {busy
+                  ? <><LoaderCircle size={15} className="animate-spin" /> Registrando chegada…</>
+                  : <><MapPin size={15} /> Registrar chegada à loja</>}
               </button>
             ) : (
               <button
-                className="button-primary min-h-10 justify-center"
+                className="button-primary min-h-12 justify-center"
                 type="button"
                 disabled={busy}
                 onClick={() => onComplete(nextStop.id)}
+                aria-busy={busy}
               >
-                <Check size={15} />{busy ? "Confirmando saída…" : "Confirmar saída da loja"}
+                {busy
+                  ? <><LoaderCircle size={15} className="animate-spin" /> Confirmando saída…</>
+                  : <><Check size={15} /> Confirmar saída da loja</>}
               </button>
             )}
           </div>
+          {busy && (
+            <p className="mt-2 text-xs text-muted-foreground" role="status">
+              Aguarde a confirmação para evitar registrar a ação novamente.
+            </p>
+          )}
         </div>
       ) : (
         <div className="mt-4 rounded-xl bg-white p-4 text-sm font-semibold text-[#24272d]">Rota concluída. Todas as paradas foram finalizadas.</div>

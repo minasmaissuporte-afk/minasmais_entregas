@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Camera, Check } from "lucide-react";
+import { Camera, Check, LoaderCircle } from "lucide-react";
 import { useRequestDeliveryEvidenceUploadUrl } from "@workspace/api-client-react";
 import SwipeToConfirm from "./swipe-to-confirm";
 
@@ -57,7 +57,7 @@ export default function EvidencePhotoAction({
 
   return (
     <div className="space-y-2">
-      <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#d8c6c3] bg-[#fbf7f5] px-3 py-2 text-xs font-semibold text-[#85434a] transition hover:bg-[#f8efed]">
+      <label className={`flex min-h-12 items-center justify-center gap-2 rounded-lg border border-dashed border-[#d8c6c3] bg-[#fbf7f5] px-3 py-2 text-xs font-semibold text-[#85434a] transition hover:bg-[#f8efed] ${disabled || submitting || requestUpload.isPending ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
         <Camera size={16} />
         <span>{file ? "Trocar foto de comprovação" : "Capturar ou anexar foto"}</span>
         <input
@@ -65,6 +65,7 @@ export default function EvidencePhotoAction({
           type="file"
           accept="image/jpeg,image/png,image/webp"
           capture="environment"
+          disabled={disabled || submitting || requestUpload.isPending}
           onChange={(event) => {
             setError("");
             setFile(event.target.files?.[0] ?? null);
@@ -85,14 +86,24 @@ export default function EvidencePhotoAction({
       )}
       {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-800">{error}</p>}
       {file ? (
-        <SwipeToConfirm
-          disabled={disabled || submitting || requestUpload.isPending}
-          onConfirm={() => void submit()}
-          label="Deslize para enviar a foto e concluir"
-        />
+        <>
+          <SwipeToConfirm
+            disabled={disabled || submitting || requestUpload.isPending}
+            onConfirm={() => void submit()}
+            label="Deslize para enviar a foto e concluir"
+          />
+          {(disabled || submitting || requestUpload.isPending) && (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status" aria-live="polite">
+              <LoaderCircle size={14} className="animate-spin" />
+              {disabled ? "Aguarde a ação atual terminar." : "Enviando a foto e confirmando a entrega…"}
+            </p>
+          )}
+        </>
       ) : (
         <p className="rounded-md bg-[#f7f4f1] px-3 py-2 text-center text-xs text-muted-foreground">
-          Anexe a foto para liberar a confirmação por deslize.
+          {disabled
+            ? "Aguarde a ação atual terminar antes de anexar a confirmação."
+            : "Anexe a foto para liberar a confirmação por deslize."}
         </p>
       )}
     </div>

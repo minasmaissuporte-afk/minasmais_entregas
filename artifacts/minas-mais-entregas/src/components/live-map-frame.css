@@ -40,7 +40,11 @@
   background: #f4f3f1;
   color: #24272d;
   --courier-controls-right: 0.75rem;
-  --courier-center-controls-top: 6.5rem;
+  --courier-center-controls-top: 10rem;
+}
+
+.courier-route-map-screen__top-actions {
+  top: calc(env(safe-area-inset-top) + 72px);
 }
 
 .courier-route-map-screen__map {

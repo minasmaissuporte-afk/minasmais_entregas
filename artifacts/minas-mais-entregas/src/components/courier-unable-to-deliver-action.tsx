@@ -5,7 +5,7 @@ import {
   useCreateCourierDeliveryCancellation,
   useListDeliveryCancellationReasons,
 } from "@workspace/api-client-react";
-import { AlertTriangle, ArrowLeft, LoaderCircle, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, LoaderCircle, XCircle } from "lucide-react";
 import { useState } from "react";
 import {
   Dialog,
@@ -17,6 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { triggerCourierLightHaptic } from "@/lib/courier-haptics";
 
 function errorMessage(error: unknown) {
   if (error && typeof error === "object" && "data" in error) {
@@ -74,6 +75,7 @@ export default function CourierUnableToDeliverAction({
         queryClient.invalidateQueries({ queryKey: getListCourierRoutesQueryKey() }),
         queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
       ]);
+      void triggerCourierLightHaptic();
       close(false);
       onCompleted?.();
     } catch (submitError) {
@@ -82,17 +84,18 @@ export default function CourierUnableToDeliverAction({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={close}>
       <DialogTrigger asChild>
         <button
           type="button"
           disabled={disabled}
-          className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+          className={`button-outlined min-h-12 ${className}`}
         >
           <XCircle size={16} /> Não consigo entregar
         </button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="courier-cancellation-dialog max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Informar problema na entrega</DialogTitle>
           <DialogDescription>
@@ -145,7 +148,7 @@ export default function CourierUnableToDeliverAction({
             </label>
             {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
             <DialogFooter className="gap-2 sm:gap-2">
-              <button type="button" className="button-secondary min-h-12" onClick={() => close(false)}>
+              <button type="button" className="button-quiet min-h-12" onClick={() => close(false)}>
                 Voltar
               </button>
               <button
@@ -154,9 +157,12 @@ export default function CourierUnableToDeliverAction({
                 disabled={!selectedReason || reasons.isLoading || reasons.isError}
                 onClick={() => setStep("confirm")}
               >
-                Continuar
+                <ArrowRight size={15} /> Continuar
               </button>
             </DialogFooter>
+            {!selectedReason && !reasons.isLoading && Boolean(reasons.data?.length) && (
+              <p className="text-xs text-muted-foreground" role="status">Selecione um motivo para liberar a continuação.</p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -174,7 +180,7 @@ export default function CourierUnableToDeliverAction({
             <DialogFooter className="gap-2 sm:gap-2">
               <button
                 type="button"
-                className="button-secondary min-h-12"
+                className="button-quiet min-h-12"
                 disabled={cancellation.isPending}
                 onClick={() => setStep("reason")}
               >
@@ -189,13 +195,22 @@ export default function CourierUnableToDeliverAction({
                 {cancellation.isPending ? (
                   <><LoaderCircle size={15} className="animate-spin" /> Enviando…</>
                 ) : (
-                  "Confirmar ocorrência"
+                  <><CheckCircle2 size={15} /> Confirmar ocorrência</>
                 )}
               </button>
             </DialogFooter>
+            {cancellation.isPending && (
+              <p className="text-xs text-muted-foreground" role="status">Enviando a ocorrência. Aguarde a resposta para evitar duplicidade.</p>
+            )}
           </div>
         )}
       </DialogContent>
     </Dialog>
+    {disabled && (
+      <p className="block text-xs text-muted-foreground" role="status">
+        Aguarde a ação atual terminar para informar outra ocorrência.
+      </p>
+    )}
+    </>
   );
 }

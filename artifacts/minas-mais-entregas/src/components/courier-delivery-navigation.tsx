@@ -8,7 +8,9 @@ import {
   ArrowLeft,
   Banknote,
   Clock3,
+  LoaderCircle,
   MapPin,
+  MessageCircle,
   Navigation,
   Phone,
   RefreshCw,
@@ -22,10 +24,12 @@ export default function CourierDeliveryNavigation({
   deliveryId,
   onBack,
   delivery,
+  resizeVersion,
 }: {
   deliveryId: string;
   onBack: () => void;
   delivery: Delivery;
+  resizeVersion: number;
 }) {
   const navigation = useGetCourierDeliveryNavigation(deliveryId, {
     query: {
@@ -66,7 +70,7 @@ export default function CourierDeliveryNavigation({
     ? `https://waze.com/ul?ll=${data.targetPosition.latitude}%2C${data.targetPosition.longitude}&navigate=yes`
     : null;
   const { panelRef, panelHeight, landscape, fitPadding } = useCourierMapPanel();
-  const resizeKey = `${Math.round(panelHeight)}:${landscape}`;
+  const resizeKey = `${resizeVersion}:${Math.round(panelHeight)}:${landscape}`;
   const phoneDigits = delivery.customerPhone?.replace(/\D/g, "");
   const whatsappDigits = phoneDigits
     ? phoneDigits.startsWith("55")
@@ -98,23 +102,30 @@ export default function CourierDeliveryNavigation({
           resizeKey={resizeKey}
           autoFitOnGeometryChange={false}
           singleAttribution
-          controlsTopOffset="calc(env(safe-area-inset-top) + var(--courier-center-controls-top, 104px))"
+          controlsTopOffset="calc(env(safe-area-inset-top) + var(--courier-center-controls-top, 160px))"
           controlsRightOffset="var(--courier-controls-right, 12px)"
         />
       </div>
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-start gap-2 p-3 pt-[max(env(safe-area-inset-top),12px)]">
+      <div className="courier-route-map-screen__top-actions pointer-events-none absolute inset-x-0 z-20 flex flex-wrap justify-start gap-2 p-3">
         <button type="button" className="courier-map-top-button pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-4 text-sm font-semibold shadow-lg" onClick={onBack}>
-          <ArrowLeft size={16} /> Entregas
+          <ArrowLeft size={16} /> Voltar para Entregas
         </button>
         <button
-          className="courier-map-top-button pointer-events-auto grid h-12 w-12 place-items-center rounded-xl bg-white/95 shadow-lg"
+          className="courier-map-top-button pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-3 text-sm font-semibold shadow-lg"
           type="button"
           disabled={navigation.isFetching}
           onClick={() => void navigation.refetch()}
           aria-label="Atualizar mapa e rota"
+          aria-describedby={navigation.isFetching ? "courier-map-refresh-status" : undefined}
         >
           <RefreshCw size={15} className={navigation.isFetching ? "animate-spin" : ""} />
+          {navigation.isFetching ? "Atualizando…" : "Atualizar"}
         </button>
+        {navigation.isFetching && (
+          <span id="courier-map-refresh-status" className="pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-3 text-xs font-semibold shadow-lg" role="status">
+            <LoaderCircle size={14} className="animate-spin" /> Atualizando mapa…
+          </span>
+        )}
       </div>
 
       <div
@@ -169,7 +180,7 @@ export default function CourierDeliveryNavigation({
                   target="_blank"
                   rel="noreferrer"
                 >
-                  WhatsApp
+                  <MessageCircle size={16} /> WhatsApp
                 </a>
               </div>
             ) : null}

@@ -5,6 +5,7 @@ import {
   Banknote,
   Clock3,
   MapPin,
+  MessageCircle,
   Navigation,
   Phone,
   RefreshCw,
@@ -23,12 +24,14 @@ export default function CourierRouteMapTab({
   onBack,
   onRefresh,
   activeDelivery,
+  resizeVersion,
 }: {
   route: CourierDeliveryRoute;
   currentPosition: MapCoordinate | null;
   onBack: () => void;
   onRefresh: () => void;
   activeDelivery: CourierDeliveryRoute["deliveries"][number] | null;
+  resizeVersion: number;
 }) {
   const markers: MapMarker[] = [
     ...route.stops.map((stop) => ({
@@ -69,7 +72,7 @@ export default function CourierRouteMapTab({
     ? `https://waze.com/ul?ll=${nextStop.latitude}%2C${nextStop.longitude}&navigate=yes`
     : null;
   const { panelRef, panelHeight, landscape, fitPadding } = useCourierMapPanel();
-  const resizeKey = `${Math.round(panelHeight)}:${landscape}`;
+  const resizeKey = `${resizeVersion}:${Math.round(panelHeight)}:${landscape}`;
   const phoneDigits = phone?.replace(/\D/g, "");
   const whatsappDigits = phoneDigits
     ? phoneDigits.startsWith("55")
@@ -100,16 +103,16 @@ export default function CourierRouteMapTab({
           fitPadding={fitPadding}
           resizeKey={resizeKey}
           singleAttribution
-          controlsTopOffset="calc(env(safe-area-inset-top) + var(--courier-center-controls-top, 104px))"
+          controlsTopOffset="calc(env(safe-area-inset-top) + var(--courier-center-controls-top, 160px))"
           controlsRightOffset="var(--courier-controls-right, 12px)"
         />
       </div>
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-start gap-2 p-3 pt-[max(env(safe-area-inset-top),12px)]">
+      <div className="courier-route-map-screen__top-actions pointer-events-none absolute inset-x-0 z-20 flex justify-start gap-2 p-3">
         <button type="button" className="courier-map-top-button pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-4 text-sm font-semibold shadow-lg" onClick={onBack}>
-          <ArrowLeft size={16} /> Entregas
+          <ArrowLeft size={16} /> Voltar para Entregas
         </button>
-        <button type="button" className="courier-map-top-button pointer-events-auto grid h-12 w-12 place-items-center rounded-xl bg-white/95 shadow-lg" onClick={onRefresh} aria-label="Atualizar rota">
-          <RefreshCw size={16} />
+        <button type="button" className="courier-map-top-button pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-3 text-sm font-semibold shadow-lg" onClick={onRefresh} aria-label="Atualizar rota">
+          <RefreshCw size={16} /> Atualizar
         </button>
       </div>
       <div
@@ -161,7 +164,7 @@ export default function CourierRouteMapTab({
               <Phone size={16} /> Telefone
             </a>
             <a className="button-secondary min-h-12 flex-1 justify-center" href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noreferrer">
-              WhatsApp
+              <MessageCircle size={16} /> WhatsApp
             </a>
           </div>
         )}
