@@ -174,6 +174,7 @@ function syncRouteLayer(
   map: MapboxMap,
   markers: MapMarker[],
   routeGeometry?: MapCoordinate[] | null,
+  routeColor = "#b91c2c",
 ) {
   const coordinates = getLineCoordinates(markers, routeGeometry);
   const source = map.getSource(ROUTE_SOURCE_ID) as GeoJSONSource | undefined;
@@ -208,13 +209,15 @@ function syncRouteLayer(
           "line-join": "round",
         },
         paint: {
-          "line-color": "#b91c2c",
-          "line-opacity": 0.88,
+          "line-color": routeColor,
+          "line-opacity": routeColor === "#E20210" ? 1 : 0.88,
           "line-width": 5,
         },
       },
       firstSymbolLayer,
     );
+  } else {
+    map.setPaintProperty(ROUTE_LAYER_ID, "line-color", routeColor);
   }
   return coordinates;
 }
@@ -291,6 +294,8 @@ export default function LiveMapbox({
   resizeKey,
   autoFitOnGeometryChange = true,
   singleAttribution = false,
+  interactive = true,
+  routeColor,
 }: {
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
@@ -309,6 +314,8 @@ export default function LiveMapbox({
   resizeKey?: string | number;
   autoFitOnGeometryChange?: boolean;
   singleAttribution?: boolean;
+  interactive?: boolean;
+  routeColor?: string;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapboxMap | null>(null);
@@ -319,9 +326,11 @@ export default function LiveMapbox({
   const fitPaddingRef = useRef(fitPadding);
   const fitBehindBottomPanelRef = useRef(fitBehindBottomPanel);
   const autoFitOnGeometryChangeRef = useRef(autoFitOnGeometryChange);
+  const routeColorRef = useRef(routeColor);
   fitPaddingRef.current = fitPadding;
   fitBehindBottomPanelRef.current = fitBehindBottomPanel;
   autoFitOnGeometryChangeRef.current = autoFitOnGeometryChange;
+  routeColorRef.current = routeColor;
   const initialViewSetRef = useRef(false);
   const lastFitGeometryRef = useRef<string | null>(null);
   const [mapMessage, setMapMessage] = useState<string | null>(null);
@@ -349,11 +358,14 @@ export default function LiveMapbox({
         attributionControl: !singleAttribution,
         logoPosition: "bottom-left",
         cooperativeGestures: true,
+        interactive,
       });
-      map.addControl(
-        new mapboxgl.NavigationControl({ showCompass: false }),
-        "top-right",
-      );
+      if (interactive) {
+        map.addControl(
+          new mapboxgl.NavigationControl({ showCompass: false }),
+          "top-right",
+        );
+      }
       if (singleAttribution) {
         map.addControl(
           new mapboxgl.AttributionControl({ compact: true }),
@@ -375,7 +387,7 @@ export default function LiveMapbox({
       const { markers: currentMarkers, routeGeometry: currentGeometry } =
         currentDataRef.current;
       try {
-        const lineCoordinates = syncRouteLayer(map!, currentMarkers, currentGeometry);
+        const lineCoordinates = syncRouteLayer(map!, currentMarkers, currentGeometry, routeColorRef.current);
         syncMarkers(map!, currentMarkers, markerEntriesRef.current);
         const markerCoordinates = currentMarkers.map(
           ({ longitude, latitude }) => [longitude, latitude] as [number, number],
@@ -463,7 +475,7 @@ export default function LiveMapbox({
       initialViewSetRef.current = false;
       lastFitGeometryRef.current = null;
     };
-  }, [mapboxToken]);
+  }, [mapboxToken, interactive, singleAttribution]);
 
   useEffect(() => {
     const map = mapRef.current;

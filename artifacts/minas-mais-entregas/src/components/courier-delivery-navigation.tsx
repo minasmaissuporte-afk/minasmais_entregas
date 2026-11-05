@@ -5,15 +5,12 @@ import {
 } from "@workspace/api-client-react";
 import type { CSSProperties } from "react";
 import {
-  ArrowLeft,
   Banknote,
   Clock3,
-  LoaderCircle,
   MapPin,
   MessageCircle,
   Navigation,
   Phone,
-  RefreshCw,
   Route,
 } from "lucide-react";
 import LiveMap, { type MapMarker } from "@/components/live-map";
@@ -22,12 +19,10 @@ import useCourierMapPanel from "@/hooks/use-courier-map-panel";
 
 export default function CourierDeliveryNavigation({
   deliveryId,
-  onBack,
   delivery,
   resizeVersion,
 }: {
   deliveryId: string;
-  onBack: () => void;
   delivery: Delivery;
   resizeVersion: number;
 }) {
@@ -94,38 +89,14 @@ export default function CourierDeliveryNavigation({
           routeGeometry={data?.routeGeometry}
           ariaLabel={`Rota do motoboy até ${data?.targetLabel.toLowerCase() ?? delivery.customerName.toLowerCase()}`}
           size="full-screen"
-          showCenterControls
-          showCenterOnMe
-          compactCenterControls
+          interactive={false}
+          routeColor="#E20210"
           fitBehindBottomPanel
           fitPadding={fitPadding}
           resizeKey={resizeKey}
-          autoFitOnGeometryChange={false}
+          autoFitOnGeometryChange
           singleAttribution
-          controlsTopOffset="calc(env(safe-area-inset-top) + var(--courier-center-controls-top, 160px))"
-          controlsRightOffset="var(--courier-controls-right, 12px)"
         />
-      </div>
-      <div className="courier-route-map-screen__top-actions pointer-events-none absolute inset-x-0 z-20 flex flex-wrap justify-start gap-2 p-3">
-        <button type="button" className="courier-map-top-button pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-4 text-sm font-semibold shadow-lg" onClick={onBack}>
-          <ArrowLeft size={16} /> Voltar para Entregas
-        </button>
-        <button
-          className="courier-map-top-button pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-3 text-sm font-semibold shadow-lg"
-          type="button"
-          disabled={navigation.isFetching}
-          onClick={() => void navigation.refetch()}
-          aria-label="Atualizar mapa e rota"
-          aria-describedby={navigation.isFetching ? "courier-map-refresh-status" : undefined}
-        >
-          <RefreshCw size={15} className={navigation.isFetching ? "animate-spin" : ""} />
-          {navigation.isFetching ? "Atualizando…" : "Atualizar"}
-        </button>
-        {navigation.isFetching && (
-          <span id="courier-map-refresh-status" className="pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-3 text-xs font-semibold shadow-lg" role="status">
-            <LoaderCircle size={14} className="animate-spin" /> Atualizando mapa…
-          </span>
-        )}
       </div>
 
       <div
@@ -144,7 +115,6 @@ export default function CourierDeliveryNavigation({
                 <MapPin size={16} aria-hidden="true" />
                 <span>{data.targetAddress}</span>
               </p>
-              {delivery.notes && <p className="courier-route-map-screen__notes">{delivery.notes}</p>}
             </div>
             <div className="courier-route-map-screen__summary" aria-label="Resumo da entrega">
               {data.distanceMeters != null && (
@@ -157,13 +127,13 @@ export default function CourierDeliveryNavigation({
             </div>
             <div className="courier-route-map-screen__actions">
               {mapsUrl && (
-                <a className="button-primary min-h-12 flex-1 justify-center" href={mapsUrl} target="_blank" rel="noreferrer">
-                  <Navigation size={16} /> Google Maps
+                  <a className="button-primary min-h-12 flex-1 justify-center" href={mapsUrl} target="_blank" rel="noreferrer" aria-label="Abrir rota no Google Maps" title="Google Maps">
+                    <Navigation size={16} /> <span>Google Maps</span>
                 </a>
               )}
               {wazeUrl && (
-                <a className="button-primary min-h-12 flex-1 justify-center" href={wazeUrl} target="_blank" rel="noreferrer">
-                  <Navigation size={16} /> Waze
+                  <a className="button-primary min-h-12 flex-1 justify-center" href={wazeUrl} target="_blank" rel="noreferrer" aria-label="Abrir rota no Waze" title="Waze">
+                    <Route size={16} /> <span>Waze</span>
                 </a>
               )}
             </div>
@@ -171,23 +141,25 @@ export default function CourierDeliveryNavigation({
               <p className="courier-route-map-screen__return-reminder">Devolva o produto na filial.</p>
             ) : delivery.customerPhone && whatsappDigits ? (
               <div className="courier-route-map-screen__actions courier-route-map-screen__actions--secondary">
-                <a className="button-secondary min-h-12 flex-1 justify-center" href={`tel:${delivery.customerPhone}`}>
-                  <Phone size={16} /> Telefone
+                <a className="button-secondary min-h-12 flex-1 justify-center" href={`tel:${delivery.customerPhone}`} aria-label="Telefone do cliente" title="Telefone">
+                  <Phone size={18} />
                 </a>
                 <a
                   className="button-secondary min-h-12 flex-1 justify-center"
                   href={`https://wa.me/${whatsappDigits}`}
                   target="_blank"
                   rel="noreferrer"
+                  aria-label="WhatsApp do cliente"
+                  title="WhatsApp"
                 >
-                  <MessageCircle size={16} /> WhatsApp
+                  <MessageCircle size={18} />
                 </a>
               </div>
             ) : null}
             {delivery.status !== "RETURNING_TO_STORE" && (
               <CourierUnableToDeliverAction
                 deliveryId={deliveryId}
-                className="courier-route-map-screen__unable"
+                className="courier-route-map-screen__unable courier-map-text-link"
               />
             )}
           </>
@@ -196,7 +168,7 @@ export default function CourierDeliveryNavigation({
             {navigation.isLoading
               ? "Obtendo GPS e calculando a rota…"
               : ((navigation.error as { data?: { error?: string } } | null)?.data?.error ??
-                "A rota depende de uma posição GPS atual. Permita a localização e mantenha o PWA aberto; depois toque em Atualizar.")}
+                "A rota depende de uma posição GPS atual. Permita a localização e mantenha o PWA aberto; o mapa atualizará automaticamente.")}
           </div>
         )}
       </div>

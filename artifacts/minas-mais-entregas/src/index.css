@@ -1820,3 +1820,536 @@ textarea { resize:vertical; }
     inset: -1px;
   }
 }
+
+/* Pixel-aligned courier PWA presentation from the official phone exports. */
+.courier-pwa {
+  --courier-red: #d8112b;
+  --courier-red-deep: #c70f27;
+  --courier-canvas: #f2f3f5;
+  background: #f2f3f5;
+  color: #292b30;
+}
+.courier-pwa .courier-header {
+  padding: max(10px, env(safe-area-inset-top)) 20px 12px;
+  background: #d8112b;
+}
+.courier-pwa .courier-header-inner { gap: 9px; }
+.courier-pwa .courier-header-top { min-height: 68px; align-items: flex-start; }
+.courier-pwa .courier-official-brand { display: grid; justify-items: start; gap: 3px; }
+.courier-pwa .courier-official-brand img {
+  display: block;
+  width: 174px;
+  max-width: min(54vw, 205px);
+  height: 54px;
+  border-radius: 5px;
+  background: transparent;
+  object-fit: cover;
+  object-position: center;
+}
+.courier-pwa .courier-official-brand span {
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: .17em;
+}
+.courier-pwa .courier-avatar-button {
+  width: 48px;
+  height: 48px;
+  min-height: 48px !important;
+  margin-top: 8px;
+  border: 0;
+  background: #fff;
+  color: #d8112b;
+  box-shadow: none;
+}
+.courier-pwa .courier-greeting { margin: 0; font-size: 23px; line-height: 1.18; letter-spacing: -.025em; }
+.courier-pwa .courier-online-card {
+  min-height: 72px;
+  border-radius: 18px;
+  padding: 11px 14px;
+  box-shadow: none;
+}
+.courier-pwa .courier-online-card > div > div > span:last-child { font-size: 16px; }
+.courier-pwa .courier-online-card p { margin-top: 2px; font-size: 12px; }
+.courier-pwa .courier-online-toggle { width: 60px; min-width: 60px; height: 48px; flex-basis: 60px; }
+.courier-pwa .courier-online-toggle::before { inset: 11px 0; }
+.courier-pwa .courier-online-knob { width: 28px; height: 28px; margin-left: 3px; }
+.courier-pwa .courier-online-knob.is-online { transform: translateX(26px); }
+.courier-pwa .courier-content-shell { padding-inline: 16px; }
+.courier-pwa .courier-tab-panel:not(.courier-tab-panel--map) {
+  padding-top: 0;
+  padding-bottom: calc(86px + env(safe-area-inset-bottom));
+}
+.courier-pwa .courier-bottom-nav {
+  --courier-bottom-nav-height: calc(74px + env(safe-area-inset-bottom));
+  min-height: var(--courier-bottom-nav-height);
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: end;
+  padding: 4px 10px calc(6px + env(safe-area-inset-bottom));
+  border-top-color: #e6e7e9;
+  background: rgb(255 255 255 / 98%);
+  box-shadow: 0 -2px 9px rgb(34 39 45 / 4%);
+}
+.courier-pwa .courier-bottom-nav > button { min-height: 52px; gap: 0; color: #777c82; font-size: 11px; font-weight: 500; }
+.courier-pwa .courier-bottom-nav > button.active { color: #d8112b; font-weight: 700; }
+.courier-pwa .courier-nav-icon { height: 28px; }
+.courier-pwa .courier-bottom-nav > .courier-nav-map { gap: 0; }
+.courier-pwa .courier-nav-map > span {
+  width: 70px;
+  height: 70px;
+  margin-top: -34px;
+  border-width: 0;
+  background: #d8112b;
+  box-shadow: 0 4px 11px rgb(125 0 20 / 18%);
+}
+.courier-pwa .courier-nav-map > small { margin-top: 0; font-size: 11px; font-weight: 500; }
+.courier-pwa .courier-offer-badge {
+  top: 0;
+  left: calc(50% + 5px);
+  width: 17px;
+  height: 17px;
+  min-width: 17px;
+  padding: 0;
+  border: 0;
+  background: #d8112b;
+  color: #fff;
+  font-size: 10px;
+}
+.courier-pwa .courier-device-notice {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  border: 1px solid #f0dfb8;
+  border-radius: 10px;
+  background: #fff9ec;
+  padding: 5px 8px 5px 10px;
+  color: #765b2a;
+  font-size: 11px;
+  line-height: 1.25;
+}
+.courier-pwa .courier-device-notice > svg { flex: none; }
+.courier-pwa .courier-device-notice > span { min-width: 0; flex: 1; }
+.courier-pwa .courier-device-notice > button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  padding: 0 8px;
+  color: #b40d23;
+  font-size: 11px;
+  font-weight: 800;
+}
+.courier-pwa .courier-device-notice--gps { margin-top: 6px; }
+.courier-pwa .courier-feed-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 2px 0 12px;
+  padding-inline: 1px;
+}
+.courier-pwa .courier-feed-heading h2 { font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
+.courier-pwa .courier-feed-heading span { color: #858990; font-size: 12px; white-space: nowrap; }
+.courier-pwa .courier-awaiting-card {
+  min-height: clamp(280px, 39dvh, 335px);
+  border-radius: 19px;
+  padding: 26px 22px;
+  background: #fff;
+  box-shadow: none;
+}
+.courier-pwa .courier-awaiting-icon { width: 100px; height: 100px; border-radius: 50%; background: #fff0f2; }
+.courier-pwa .courier-awaiting-icon--offline { background: #f1f2f4; }
+.courier-pwa .courier-awaiting-copy h2 { font-size: 21px; line-height: 1.27; letter-spacing: -.02em; }
+.courier-pwa .courier-awaiting-copy p { margin-top: 10px; font-size: 14px; }
+.courier-pwa .courier-live-label { margin-top: 14px; font-size: 11px; }
+.courier-pwa .courier-offline-note {
+  display: flex;
+  min-height: 82px;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  border-radius: 18px;
+  background: #fff;
+  padding: 16px 19px;
+  color: #d8112b;
+}
+.courier-pwa .courier-offline-note span { display: grid; gap: 4px; color: #34373c; }
+.courier-pwa .courier-offline-note strong { font-size: 13px; }
+.courier-pwa .courier-offline-note small { color: #858990; font-size: 12px; line-height: 1.4; }
+.courier-pwa .courier-daily-summary {
+  min-height: 82px;
+  gap: 12px;
+  margin-top: 12px;
+  border-radius: 18px;
+  padding: 14px 17px;
+}
+.courier-pwa .courier-daily-summary .courier-summary-icon { width: 28px; height: 32px; background: transparent; }
+.courier-pwa .courier-daily-summary strong { display: none; }
+.courier-pwa .courier-daily-summary .text-sm { font-size: 13px; }
+.courier-pwa .courier-daily-summary .mt-1 { font-size: 14px; }
+.courier-pwa .courier-keep-open-note { margin-top: 12px; color: #868a90; font-size: 11px; text-align: center; }
+.courier-pwa .courier-active-delivery {
+  display: grid;
+  gap: 0;
+  margin-top: 0;
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
+  padding: 15px 16px 13px;
+  box-shadow: none;
+}
+.courier-pwa .courier-active-delivery__topline { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.courier-pwa .courier-active-delivery__code {
+  color: #858990;
+  font-family: var(--app-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+.courier-pwa .courier-active-delivery__status { color: #858990; font-size: 11px; }
+.courier-pwa .courier-active-delivery__customer { margin-top: 5px; font-size: 18px; font-weight: 800; line-height: 1.25; }
+.courier-pwa .courier-active-delivery__destination {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 3px;
+  color: #747981;
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.courier-pwa .courier-active-delivery__details {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  color: #41464c;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.courier-pwa .courier-active-delivery__details strong { flex: none; color: #d8112b; font-size: 17px; font-weight: 800; }
+.courier-pwa .courier-active-delivery__actions { display: flex; gap: 8px; margin-top: 12px; }
+.courier-pwa .courier-icon-action {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  min-height: 44px !important;
+  flex: 0 0 44px;
+  place-items: center;
+  border: 1px solid #d8112b;
+  border-radius: 50%;
+  background: #fff;
+  color: #d8112b;
+}
+.courier-pwa .courier-active-delivery__evidence { margin-top: 12px; }
+.courier-pwa .courier-active-delivery__evidence > div > label {
+  min-height: 54px;
+  border: 1px dashed #e6aeb5;
+  border-radius: 12px;
+  background: #fff;
+  color: #c71a30;
+  font-size: 14px;
+}
+.courier-pwa .courier-active-delivery__evidence > div > p { margin: 5px 0 0; background: transparent; padding: 0; color: #8a8e94; font-size: 11px; }
+.courier-pwa .courier-active-delivery__evidence [role="group"] { margin-top: 8px; }
+.courier-pwa .courier-active-delivery__evidence [role="group"] > div:first-child {
+  height: 54px;
+  border-color: #e1e3e6;
+  border-radius: 28px;
+  background: #e9ebee;
+}
+.courier-pwa .courier-active-delivery__evidence [role="group"] > div:first-child > span { color: #72777e; font-size: 13px; }
+.courier-pwa .courier-active-delivery__evidence [role="group"] > div:first-child > button {
+  width: 46px;
+  height: 46px;
+  min-height: 46px;
+  border-radius: 50%;
+  background: #d8112b;
+}
+.courier-pwa .courier-active-delivery__unable {
+  width: fit-content;
+  min-height: 34px !important;
+  justify-self: center;
+  margin-top: 4px;
+  border: 0;
+  background: transparent;
+  padding-inline: 8px;
+  color: #c9152d;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.courier-pwa .courier-active-delivery__unable:hover { background: transparent; text-decoration: underline; }
+.courier-pwa .courier-route-map-screen {
+  height: calc(100dvh - var(--courier-bottom-nav-height, 74px));
+  max-height: calc(100dvh - var(--courier-bottom-nav-height, 74px));
+  --courier-panel-height: 220px;
+}
+.courier-pwa .courier-route-map-screen__panel {
+  max-height: 55%;
+  gap: 8px;
+  border-radius: 18px 18px 0 0;
+  padding: 10px 15px 12px;
+  padding-bottom: 12px;
+  box-shadow: 0 -4px 16px rgb(0 0 0 / 11%);
+  backdrop-filter: none;
+}
+.courier-pwa .courier-route-map-screen__handle { display: none; }
+.courier-pwa .courier-route-map-screen__eyebrow { font-size: 10px; letter-spacing: .04em; }
+.courier-pwa .courier-route-map-screen__customer { margin-top: 1px; font-size: 16px; }
+.courier-pwa .courier-route-map-screen__address { margin-top: 2px; font-size: 12px; line-height: 1.35; }
+.courier-pwa .courier-route-map-screen__summary {
+  gap: 4px;
+  border-top: 0;
+  padding-top: 0;
+  font-size: 12px;
+}
+.courier-pwa .courier-route-map-screen__summary span { min-height: 22px; gap: 0; }
+.courier-pwa .courier-route-map-screen__summary span + span::before { margin: 0 7px; color: #92979d; content: "·"; }
+.courier-pwa .courier-route-map-screen__summary svg { display: none; }
+.courier-pwa .courier-route-map-screen__summary span:last-child { margin-left: auto; color: #d8112b; font-weight: 800; }
+.courier-pwa .courier-route-map-screen__actions { gap: 8px; }
+.courier-pwa .courier-route-map-screen__actions:not(.courier-route-map-screen__actions--secondary) {
+  grid-template-columns: repeat(2, 42px);
+  justify-content: start;
+}
+.courier-pwa .courier-route-map-screen__actions:not(.courier-route-map-screen__actions--secondary) > a {
+  width: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 0;
+}
+.courier-pwa .courier-route-map-screen__actions > a { min-height: 42px; border-radius: 22px; font-size: 12px; }
+.courier-pwa .courier-route-map-screen__actions--secondary { display: flex; justify-content: flex-start; }
+.courier-pwa .courier-route-map-screen__actions--secondary > a {
+  width: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  flex: 0 0 42px;
+  border: 1px solid #e5b9bd;
+  border-radius: 50%;
+  padding: 0;
+  color: #d8112b;
+}
+.courier-pwa .courier-route-map-screen__unable.courier-map-text-link {
+  width: fit-content;
+  min-height: 30px !important;
+  align-self: center;
+  border: 0;
+  background: transparent;
+  color: #c9152d;
+  font-size: 12px;
+  text-decoration: none;
+}
+.courier-pwa .courier-route-map-screen__unable.courier-map-text-link:hover { background: transparent; text-decoration: underline; }
+.courier-pwa .courier-route-map-screen .mapboxgl-ctrl-top-right { display: none; }
+.courier-pwa .courier-route-map-screen .mapboxgl-ctrl-bottom-left,
+.courier-pwa .courier-route-map-screen .mapboxgl-ctrl-bottom-right {
+  bottom: calc(var(--courier-panel-height, 220px) + 5px) !important;
+}
+.courier-pwa .courier-route-map-screen .mapboxgl-ctrl-attrib {
+  max-width: min(70vw, 300px);
+  border-radius: 4px;
+  background: rgb(255 255 255 / 92%);
+  color: #343a40;
+  font-size: 9px;
+}
+.courier-pwa .courier-route-map-screen .mapboxgl-ctrl-logo { transform: scale(.82); transform-origin: bottom left; }
+.courier-pwa .courier-route-offer-card {
+  overflow: hidden;
+  border: 0;
+  border-radius: 19px;
+  background: #fff;
+  padding: 18px 16px 15px;
+  box-shadow: none;
+}
+.courier-pwa .courier-route-offer-heading { gap: 8px; }
+.courier-pwa .courier-route-offer-heading > div:first-child > div {
+  color: #2e3237;
+  font-size: 18px;
+}
+.courier-pwa .courier-route-offer-heading > div:first-child p { margin-top: 3px; color: #8a8f96; font-size: 11px; }
+.courier-pwa .courier-route-offer-heading > div:last-child { background: #fff0f2; }
+.courier-pwa .courier-route-offer-deliveries {
+  border-color: #eceef0;
+  margin-top: 8px;
+}
+.courier-pwa .courier-route-offer-deliveries > div { padding: 8px 0; }
+.courier-pwa .courier-route-offer-controls { justify-content: center; margin-top: 0; }
+.courier-pwa .courier-route-offer-controls > button:first-child { display: none; }
+.courier-pwa .courier-route-offer-controls > button:last-child {
+  min-height: 36px;
+  border: 0;
+  background: transparent;
+  color: #c9152d;
+  font-size: 13px;
+  font-weight: 700;
+}
+.courier-pwa .courier-route-offer-accept { min-height: 50px; border-radius: 28px; }
+.courier-pwa .courier-delivery-card[data-delivery-status="OFFERED"] .courier-delivery-footer .courier-delivery-amount {
+  display: block;
+  width: 100%;
+  background: #fff0f2;
+  padding: 10px 12px;
+  color: #d8112b;
+  text-align: left;
+}
+.courier-pwa .courier-delivery-card[data-delivery-status="OFFERED"] .courier-delivery-footer .flex { gap: 0; }
+@media (orientation: landscape) and (max-height: 600px) {
+  .courier-pwa .courier-route-map-screen {
+    height: calc(100dvh - var(--courier-bottom-nav-height, 74px));
+    max-height: calc(100dvh - var(--courier-bottom-nav-height, 74px));
+  }
+  .courier-pwa .courier-route-map-screen__panel { top: 0; right: 0; bottom: 0; width: 40%; max-height: 100%; }
+}
+@media (max-width: 370px) {
+  .courier-pwa .courier-header { padding-right: 15px; padding-left: 15px; }
+  .courier-pwa .courier-official-brand img { width: 156px; height: 50px; }
+  .courier-pwa .courier-official-brand span { font-size: 9px; }
+  .courier-pwa .courier-greeting { font-size: 21px; }
+  .courier-pwa .courier-content-shell { padding-inline: 12px; }
+}
+.courier-pwa { --courier-bottom-nav-height: calc(74px + env(safe-area-inset-bottom)); }
+.courier-pwa .courier-official-brand img {
+  width: 170px;
+  max-width: min(54vw, 205px);
+  height: 42px;
+}
+.courier-pwa .courier-official-brand span { font-size: 10px; }
+.courier-pwa .courier-nav-map > span {
+  width: 58px;
+  height: 58px;
+  margin-top: -28px;
+}
+.courier-pwa .courier-active-delivery-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0 1px;
+}
+.courier-pwa .courier-active-delivery-heading h2 {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+.courier-pwa .courier-active-delivery-heading span {
+  color: #858990;
+  font-size: 12px;
+  font-family: var(--app-font-mono);
+}
+.courier-pwa .courier-active-delivery { padding-top: 16px; }
+.courier-pwa .courier-active-delivery__customer { margin-top: 0; }
+.courier-pwa .courier-active-delivery__status {
+  margin-top: 1px;
+  color: #858990;
+  font-size: 12px;
+}
+.courier-pwa .courier-active-delivery__destination { margin-top: 10px; }
+.courier-pwa .courier-active-delivery__notes {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  border-radius: 11px;
+  background: #f1f2f4;
+  padding: 10px 11px;
+  color: #4d535b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.courier-pwa .courier-active-delivery__notes svg { flex: none; margin-top: 1px; }
+.courier-pwa .courier-offer-estimate {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  border-radius: 12px;
+  background: #fff0f2;
+  padding: 9px 12px;
+  color: #343941;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.courier-pwa .courier-offer-estimate strong { color: #d8112b; font-size: 18px; font-weight: 800; }
+.courier-pwa .courier-delivery-card[data-delivery-status="OFFERED"] .courier-delivery-footer .courier-delivery-amount {
+  display: none !important;
+}
+.courier-pwa .courier-grouped-offer-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.courier-pwa .courier-grouped-offer-title h3 { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+.courier-pwa .courier-grouped-offer-title > span {
+  border-radius: 999px;
+  background: #fff0f2;
+  padding: 4px 9px;
+  color: #c9152d;
+  font-size: 11px;
+  font-weight: 700;
+}
+.courier-pwa .courier-route-offer-heading > div:first-child p { max-width: 280px; }
+.courier-pwa .courier-route-pickup {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  color: #666c73;
+  font-size: 12px;
+}
+.courier-pwa .courier-route-pickup svg { flex: none; color: #d8112b; }
+.courier-pwa .courier-route-numbered-stops {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+.courier-pwa .courier-route-numbered-stops > li {
+  border-radius: 0;
+  background: transparent;
+  padding: 4px 0;
+  color: #4a4f55;
+  font-size: 12px;
+}
+.courier-pwa .courier-route-numbered-stops > li > span:first-child {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff0f2;
+  color: #d8112b;
+  font-size: 11px;
+}
+.courier-pwa .courier-route-offer-total {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  border-radius: 12px;
+  background: #fff0f2;
+  padding: 9px 12px;
+  color: #343941;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.courier-pwa .courier-route-offer-total strong { color: #d8112b; font-size: 18px; font-weight: 800; }
+.courier-pwa .courier-route-map-screen__actions:not(.courier-route-map-screen__actions--secondary) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.courier-pwa .courier-route-map-screen__actions:not(.courier-route-map-screen__actions--secondary) > a {
+  width: auto;
+  min-width: 0;
+  min-height: 42px;
+  border-radius: 22px;
+  padding-inline: 9px;
+  font-size: 12px;
+}

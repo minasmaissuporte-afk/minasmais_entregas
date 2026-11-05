@@ -60,8 +60,8 @@
 }
 
 .courier-route-map-screen__map .live-mapbox-frame--full-screen {
-  height: 100dvh;
-  min-height: 40dvh;
+  height: 100%;
+  min-height: 0;
 }
 
 .courier-route-map-screen__panel {

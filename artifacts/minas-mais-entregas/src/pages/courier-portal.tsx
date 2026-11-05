@@ -27,7 +27,7 @@ import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
-import { ArrowLeft, Bell, BellOff, Check, CheckCircle2, Clock3, Hand, History, House, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, PackageCheck, Phone, Route as RouteIcon, TrendingUp } from "lucide-react";
+import { Bell, BellOff, Check, CheckCircle2, Clock3, Hand, History, House, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, PackageCheck, Phone, Route as RouteIcon, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
@@ -747,7 +747,8 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           <div className="courier-header-inner mx-auto max-w-2xl">
             <div className="courier-header-top">
               <div className="courier-official-brand" aria-label="Minas Mais Entregas">
-                <img src={`${import.meta.env.BASE_URL}brand-logo-transparent.png`} alt="Drogarias MinasMais" />
+                <img src={`${import.meta.env.BASE_URL}brand-logo-source.png`} alt="Drogarias MinasMais" />
+                <span>MINAS MAIS ENTREGAS</span>
               </div>
               <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
                 <SheetTrigger asChild>
@@ -811,11 +812,18 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       <div className={activeTab === "map" ? "h-full w-full" : "courier-content-shell mx-auto w-full max-w-2xl px-3 sm:px-5"}>
         <Tabs value={activeTab} onValueChange={changeActiveTab}>
           <TabsContent value="deliveries" forceMount aria-hidden={activeTab !== "deliveries"} className={`courier-tab-panel courier-tab-panel--deliveries ${activeTab === "deliveries" ? "mt-0" : ""} ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`} data-transitioning={tabTransitioning ? "true" : "false"}>
-            {(notificationsNeedAttention || gpsNeedsAttention) && (
-              <section className="mt-3 flex items-start gap-2 rounded-xl border border-[#ead9b4] bg-[#fff8e9] p-3 text-[#6d5121]" role="status" data-testid="alert-courier-device">
-                {notificationsNeedAttention ? <BellOff size={16} className="mt-0.5 shrink-0" /> : <LocateFixed size={16} className="mt-0.5 shrink-0" />}
-                <div className="min-w-0 flex-1 text-xs leading-relaxed">{notificationsNeedAttention && <p>Notificações desativadas neste aparelho.</p>}{gpsNeedsAttention && <p>Sem envio de GPS há mais de 1 minuto.</p>}</div>
-                <button type="button" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white text-[#755b2c]" aria-label="Abrir perfil do aparelho" onClick={() => setMenuOpen(true)} data-testid="button-courier-device-alert"><ArrowLeft size={15} className="rotate-180" /></button>
+            {notificationsNeedAttention && (
+              <section className="courier-device-notice" role="status" data-testid="alert-courier-device">
+                <BellOff size={15} aria-hidden="true" />
+                <span>Notificações desativadas neste aparelho.</span>
+                <button type="button" onClick={() => void togglePush()} disabled={pushToggleDisabled} data-testid="button-courier-device-alert">Ativar</button>
+              </section>
+            )}
+            {gpsNeedsAttention && (
+              <section className="courier-device-notice courier-device-notice--gps" role="status" data-testid="alert-courier-gps">
+                <LocateFixed size={15} aria-hidden="true" />
+                <span>Sem envio de GPS há mais de 1 minuto.</span>
+                <button type="button" onClick={() => refreshGps()} data-testid="button-courier-device-gps">Verificar</button>
               </section>
             )}
             {returningDeliveries.length > 0 && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-950" role="status">{returningDeliveries.length} {returningDeliveries.length === 1 ? "produto para devolver" : "produtos para devolver"} na filial. A Central confirmará quando receber.</p>}
@@ -834,11 +842,11 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
               onGpsStatusChange={handleGpsStatusChange}
               renderIndividualDelivery={renderIndividualDelivery}
             />
-            <button type="button" className="courier-daily-summary mt-3 w-full text-left" onClick={() => changeActiveTab("earnings")} data-testid="button-courier-daily-summary">
+            {!hasActiveWork && pendingOffers === 0 && isOnline && <button type="button" className="courier-daily-summary mt-3 w-full text-left" onClick={() => changeActiveTab("earnings")} data-testid="button-courier-daily-summary">
               <span className="courier-summary-icon"><TrendingUp size={17} /></span>
-              <span className="min-w-0 flex-1"><span className="block text-[10px] font-bold uppercase tracking-[.12em] text-[#827a71]">Resumo de hoje</span><span className="mt-1 block text-sm font-bold">{dailyEarnings.isLoading ? "Atualizando seus totais…" : `${dailyEarnings.data?.completedDeliveries ?? "—"} ${(dailyEarnings.data?.completedDeliveries ?? 0) === 1 ? "entrega concluída" : "entregas concluídas"}`}</span></span>
-              <strong className="shrink-0 text-sm">{dailyEarnings.isLoading ? "—" : money(dailyEarnings.data?.amountToReceive ?? 0)}</strong>
-            </button>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-extrabold">Seu dia está rendendo</span><span className="mt-1 block text-sm font-bold">{dailyEarnings.isLoading ? "Atualizando seus totais…" : `Hoje: ${dailyEarnings.data?.completedDeliveries ?? "—"} ${(dailyEarnings.data?.completedDeliveries ?? 0) === 1 ? "entrega" : "entregas"} · ${money(dailyEarnings.data?.amountToReceive ?? 0)}`}</span></span>
+            </button>}
+            {!hasActiveWork && pendingOffers === 0 && isOnline && <p className="courier-keep-open-note">Mantenha o app aberto para não perder pedidos.</p>}
           </TabsContent>
 
           <TabsContent value="history" forceMount aria-hidden={activeTab !== "history"} className={`courier-tab-panel courier-tab-panel--deliveries ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
@@ -886,20 +894,20 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           </TabsContent>
 
           <TabsContent value="map" forceMount aria-hidden={activeTab !== "map"} data-transitioning={tabTransitioning ? "true" : "false"} className={`courier-tab-panel courier-tab-panel--map fixed inset-0 z-50 m-0 h-[100dvh] overflow-hidden ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
-            {activeRoute ? <CourierRouteMapTab route={activeRoute} currentPosition={currentPosition} onBack={() => changeActiveTab("deliveries")} onRefresh={() => void routes.refetch()} activeDelivery={activeRouteDelivery} resizeVersion={mapResizeVersion} />
-              : activeIndividualDelivery ? <CourierDeliveryNavigation deliveryId={activeIndividualDelivery.id} onBack={() => changeActiveTab("deliveries")} delivery={activeIndividualDelivery} resizeVersion={mapResizeVersion} />
+            {activeRoute ? <CourierRouteMapTab route={activeRoute} currentPosition={currentPosition} activeDelivery={activeRouteDelivery} resizeVersion={mapResizeVersion} />
+              : activeIndividualDelivery ? <CourierDeliveryNavigation deliveryId={activeIndividualDelivery.id} delivery={activeIndividualDelivery} resizeVersion={mapResizeVersion} />
                 : <section className="grid h-full place-items-center p-6 text-center"><div><MapIcon className="mx-auto text-muted-foreground" size={24} /><h2 className="mt-3 text-base font-bold">Nenhuma rota ativa no momento</h2><p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">Quando você aceitar uma rota ou entrega, o mapa com o destino aparecerá aqui.</p>{(routes.data ?? []).some((route) => route.status === "OFFERED") && <p className="mt-2 text-xs text-muted-foreground">Há uma rota aguardando aceite. Acesse Início para aceitar e calcular o trajeto.</p>}<button type="button" className="button-primary mt-4 min-h-12" onClick={() => changeActiveTab("deliveries")}><PackageCheck size={15} /> Ver início</button></div></section>}
           </TabsContent>
         </Tabs>
       </div>
 
-      {activeTab !== "map" && <nav className="courier-bottom-nav" aria-label="Navegação principal">
+      <nav className="courier-bottom-nav" aria-label="Navegação principal">
         <button type="button" className={activeTab === "deliveries" ? "active" : ""} onClick={() => changeActiveTab("deliveries")} aria-current={activeTab === "deliveries" ? "page" : undefined} data-testid="nav-courier-home">
           <span className="courier-nav-icon"><House size={19} /></span><span>Início</span>{pendingOffers > 0 && <i className="courier-offer-badge">{pendingOffers}</i>}
         </button>
         <button type="button" className="courier-nav-map" onClick={() => changeActiveTab("map")} aria-label="Abrir mapa" data-testid="nav-courier-map"><span><MapIcon size={22} /></span><small>Mapa</small></button>
         <button type="button" className={activeTab === "history" || activeTab === "earnings" ? "active" : ""} onClick={() => changeActiveTab("history")} aria-current={activeTab === "history" || activeTab === "earnings" ? "page" : undefined} data-testid="nav-courier-history"><span className="courier-nav-icon"><History size={19} /></span><span>Histórico e ganhos</span></button>
-      </nav>}
+      </nav>
     </main>
   );
 }
@@ -935,6 +943,53 @@ function CourierIndividualDeliveryCard({
     : nextStatus === "COMPLETED"
       ? <CheckCircle2 size={16} />
       : <MapPin size={16} />;
+
+  if (delivery.status === "IN_TRANSIT") {
+    return (
+      <article className="courier-active-delivery" data-delivery-status={delivery.status} data-testid={`card-delivery-${delivery.id}`}>
+        <h3 className="courier-active-delivery__customer">{delivery.customerName}</h3>
+        <p className="courier-active-delivery__status">A caminho do cliente</p>
+        <p className="courier-active-delivery__destination" title={delivery.destination}>{delivery.destination}</p>
+        {delivery.notes && (
+          <p className="courier-active-delivery__notes">
+            <MessageCircle size={16} aria-hidden="true" />
+            <span>Observação: {delivery.notes}</span>
+          </p>
+        )}
+        <div className="courier-active-delivery__details">
+          <span>
+            {[delivery.distanceKm != null ? `${Number(delivery.distanceKm).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km` : null, delivery.estimatedMinutes != null ? `${delivery.estimatedMinutes} min` : null].filter(Boolean).join(" · ")}
+          </span>
+          <strong>{money(delivery.deliveryAmount)}</strong>
+        </div>
+        <div className="courier-active-delivery__actions" aria-label="Contato e rota">
+          {delivery.customerPhone && (
+            <a className="courier-icon-action" href={`tel:${delivery.customerPhone}`} aria-label="Telefone do cliente" title="Telefone">
+              <Phone size={19} aria-hidden="true" />
+            </a>
+          )}
+          {whatsappNumber && (
+            <a className="courier-icon-action" href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer" aria-label="WhatsApp do cliente" title="WhatsApp">
+              <MessageCircle size={19} aria-hidden="true" />
+            </a>
+          )}
+          <button type="button" className="courier-icon-action" onClick={onShowMap} aria-label="Ver rota no mapa" title="Mapa">
+            <MapIcon size={19} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="courier-active-delivery__evidence">
+          {nextStatus && <EvidencePhotoAction
+            deliveryId={delivery.id}
+            disabled={busy}
+            label="Tirar foto da entrega"
+            confirmationLabel="Deslize para confirmar"
+            onComplete={async (evidencePath) => onUpdate(delivery.id, nextStatus, evidencePath)}
+          />}
+        </div>
+        <CourierUnableToDeliverAction deliveryId={delivery.id} disabled={busy} className="courier-active-delivery__unable" />
+      </article>
+    );
+  }
 
   return (
     <article className={`panel courier-delivery-card ${active ? "courier-delivery-card--active border-l-4 border-l-[#a91d2a]" : ""}`} data-delivery-status={delivery.status} data-testid={`card-delivery-${delivery.id}`}>
@@ -984,7 +1039,15 @@ function CourierIndividualDeliveryCard({
         <p><MapPin size={15} aria-hidden="true" /><span><b>Destino:</b> {delivery.destination}</span></p>
       </div>
       {delivery.notes && <p className="mt-2 rounded-lg bg-[#f6f4f1] p-3 text-xs">Observações: {delivery.notes}</p>}
-      {(delivery.estimatedMinutes != null || delivery.distanceKm != null) && (
+      {delivery.status === "OFFERED" && (delivery.estimatedMinutes != null || delivery.distanceKm != null || delivery.deliveryAmount != null) && (
+        <div className="courier-offer-estimate" aria-label="Estimativa da entrega">
+          <span>
+            {[delivery.distanceKm != null ? `${Number(delivery.distanceKm).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km` : null, delivery.estimatedMinutes != null ? `${delivery.estimatedMinutes} min` : null].filter(Boolean).join(" · ")}
+          </span>
+          <strong>{money(delivery.deliveryAmount)}</strong>
+        </div>
+      )}
+      {delivery.status !== "OFFERED" && (delivery.estimatedMinutes != null || delivery.distanceKm != null) && (
         <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-[#6d625a]" aria-label="Estimativa da entrega">
           {delivery.estimatedMinutes != null && <span className="inline-flex items-center gap-1 rounded-full bg-[#f4f0eb] px-2.5 py-1.5"><Clock3 size={13} />{delivery.estimatedMinutes} min</span>}
           {delivery.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-[#f4f0eb] px-2.5 py-1.5"><RouteIcon size={13} />{delivery.distanceKm} km</span>}
@@ -1012,7 +1075,6 @@ function CourierIndividualDeliveryCard({
           <button type="button" className="button-outlined min-h-12" onClick={onShowMap}>
             <MapIcon size={15} /> Ver rota no mapa
           </button>
-          {active && <CourierUnableToDeliverAction deliveryId={delivery.id} disabled={busy} />}
         </div>
       )}
       <div className="courier-delivery-footer mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">

@@ -26,7 +26,7 @@ import {
   type CourierDeliveryRoute,
   type Delivery,
 } from "@workspace/api-client-react";
-import { Check, Clock3, LoaderCircle, Map, MapPin, Navigation, PackageCheck, PackageSearch, Power, RefreshCw, Route as RouteIcon } from "lucide-react";
+import { Check, Clock3, Coffee, LoaderCircle, Map, MapPin, Navigation, PackageCheck, PackageSearch, Power, Route as RouteIcon } from "lucide-react";
 import LiveMap, { type MapCoordinate, type MapMarker } from "@/components/live-map";
 import EvidencePhotoAction from "@/components/evidence-photo-action";
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
@@ -576,6 +576,13 @@ export default function CourierRoutesSection({
         priority: priorityByStatus[delivery.status] ?? 8,
       })),
   ].sort((first, second) => first.priority - second.priority);
+  const hasInProgressWork = workItems.some((item) =>
+    item.kind === "route"
+      ? item.route.status === "ACCEPTED"
+      : ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT", "RETURNING_TO_STORE"].includes(item.delivery.status),
+  );
+  const offeredCount = offeredRoutes.reduce((sum, route) => sum + route.deliveryCount, 0) +
+    deliveries.filter((delivery) => delivery.status === "OFFERED").length;
   return (
     <section className="mt-4 space-y-3" aria-label="Entregas e rotas">
       {errorMessage && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{errorMessage}</div>}
@@ -591,30 +598,36 @@ export default function CourierRoutesSection({
           <button className="button-secondary mt-3" type="button" onClick={onRetry}>Tentar novamente</button>
         </div>
       ) : workItems.length === 0 ? (
-        <div className="courier-awaiting-card" role="status" data-testid="status-courier-awaiting">
-          <span className={`courier-awaiting-icon ${online ? "" : "courier-awaiting-icon--offline"}`}>
-            {online ? <PackageSearch size={34} strokeWidth={1.5} /> : <Power size={34} strokeWidth={1.5} />}
-          </span>
-          <div className="courier-awaiting-copy">
-            <h2>{online ? "Aguardando pedidos..." : "Você está offline — ative para receber pedidos"}</h2>
-            <p>{online ? "Tudo pronto por aqui. Vamos avisar quando uma nova entrega chegar." : "Quando estiver pronto, ligue a disponibilidade no cabeçalho."}</p>
-            {online && <span className="courier-live-label"><i /> Buscando entregas próximas</span>}
+        <>
+          <div className="courier-awaiting-card" role="status" data-testid="status-courier-awaiting">
+            <span className={`courier-awaiting-icon ${online ? "" : "courier-awaiting-icon--offline"}`}>
+              {online ? <PackageSearch size={34} strokeWidth={1.5} /> : <Power size={34} strokeWidth={1.5} />}
+            </span>
+            <div className="courier-awaiting-copy">
+              <h2>{online ? "Aguardando pedidos..." : "Você está offline — ative para receber pedidos"}</h2>
+              <p>{online ? "Tudo pronto por aqui. Vamos avisar quando uma nova entrega chegar." : "Quando estiver pronto, ligue a disponibilidade no cabeçalho."}</p>
+              {online && <span className="courier-live-label"><i /> Buscando entregas próximas</span>}
+            </div>
           </div>
-        </div>
+          {!online && <div className="courier-offline-note"><Coffee size={21} aria-hidden="true" /><span><strong>Uma pausa também faz parte.</strong><small>Você não receberá novos pedidos enquanto estiver offline.</small></span></div>}
+        </>
       ) : (
         <>
-          <div className="flex items-end justify-between">
-            <div>
-              <div className="eyebrow">SUA PRÓXIMA PARADA</div>
-              <h2 className="mt-1 text-lg font-bold">Entregas</h2>
-            </div>
-            <button className="button-quiet min-h-12" type="button" onClick={onRetry} aria-label="Atualizar entregas">
-              <RefreshCw size={15} /> Atualizar
-            </button>
-          </div>
+          {!hasInProgressWork && <div className="courier-feed-heading">
+            <h2>{offeredRoutes.length ? "Mais entregas, uma só rota" : "Disponível para você"}</h2>
+            <span>{offeredCount} {offeredCount === 1 ? "novo pedido" : "novos pedidos"}</span>
+          </div>}
           <div className="space-y-3">
             {workItems.map((item) => item.kind === "delivery" ? (
-              <div key={item.delivery.id}>{renderIndividualDelivery(item.delivery)}</div>
+              <div key={item.delivery.id}>
+                {item.delivery.status === "IN_TRANSIT" && (
+                  <div className="courier-active-delivery-heading">
+                    <h2>Entrega em andamento</h2>
+                    <span>{item.delivery.code}</span>
+                  </div>
+                )}
+                {renderIndividualDelivery(item.delivery)}
+              </div>
             ) : item.route.status === "ACCEPTED" ? (
               <ActiveRouteCard
                 key={item.route.id}
@@ -691,25 +704,9 @@ function CourierRouteOfferCard({
     <article className="panel courier-route-offer-card p-4 sm:p-5" data-testid={`card-route-offer-${route.id}`}>
       <div className="courier-route-offer-heading flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-sm font-bold"><RouteIcon size={17} className="text-primary" />{route.deliveryCount} {route.deliveryCount === 1 ? "entrega" : "entregas"}</div>
+          <div className="courier-grouped-offer-title"><h3>Rota com {route.deliveryCount} {route.deliveryCount === 1 ? "entrega" : "entregas"}</h3><span>Agrupada</span></div>
           <p className="mt-1 text-xs text-muted-foreground">Confira a sequência antes de aceitar. Ela será travada ao confirmar.</p>
         </div>
-        <div className="text-right">
-          <div className="eyebrow">TOTAL PREVISTO</div>
-          <div className="mt-1 text-lg font-bold text-primary">{money(route.amountToReceive)}</div>
-        </div>
-      </div>
-
-      <div className="courier-route-offer-deliveries mt-4 divide-y divide-border border-y border-border">
-        {route.deliveries.map((delivery) => (
-          <div key={delivery.id} className="flex items-start justify-between gap-3 py-3">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold">{delivery.code} · {delivery.storeName}</div>
-              <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{delivery.destination}</div>
-            </div>
-            <div className="shrink-0 text-sm font-semibold">{money(delivery.deliveryAmount)}</div>
-          </div>
-        ))}
       </div>
 
       <div className="courier-route-offer-controls mt-3 flex gap-2">
@@ -759,20 +756,21 @@ function CourierRouteOfferCard({
                   autoFitOnGeometryChange
                 />
               </div>
-              {(preview.data.distanceKm != null || preview.data.estimatedMinutes != null) && (
-                <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-[#6d625a]" aria-label="Estimativa da rota">
-                  {preview.data.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-[#f4f0eb] px-2.5 py-1.5"><RouteIcon size={13} />{preview.data.distanceKm} km</span>}
-                  {preview.data.estimatedMinutes != null && <span className="inline-flex items-center gap-1 rounded-full bg-[#f4f0eb] px-2.5 py-1.5"><Clock3 size={13} />{preview.data.estimatedMinutes} min</span>}
-                </div>
+              {route.deliveries[0]?.storeName && (
+                <p className="courier-route-pickup"><MapPin size={15} aria-hidden="true" /><span>Retirada única: {route.deliveries[0].storeName}</span></p>
               )}
-              <ol className="mt-2 space-y-1.5" aria-label="Paradas da prévia">
-                {preview.data.stops.map((stop, index) => (
+              <ol className="courier-route-numbered-stops" aria-label="Paradas da prévia">
+                {preview.data.stops.filter((stop) => stop.kind === "delivery").map((stop, index) => (
                   <li key={`${stop.deliveryId}-${stop.kind}-${index}`} className="flex items-start gap-2 rounded-lg bg-[#f8f6f3] px-3 py-2 text-xs">
                     <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white text-[10px] font-bold text-[#a91d2a]">{index + 1}</span>
-                    <span className="min-w-0"><b>{stop.kind === "pickup" ? "Retirada" : "Entrega"} · </b>{stop.address}</span>
+                    <span className="min-w-0"><b>{stop.address}</b></span>
                   </li>
                 ))}
               </ol>
+              <div className="courier-route-offer-total" aria-label="Estimativa total da rota">
+                <span>{[preview.data.distanceKm != null ? `${Number(preview.data.distanceKm).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km` : null, preview.data.estimatedMinutes != null ? `${preview.data.estimatedMinutes} min` : null].filter(Boolean).join(" · ")}</span>
+                <strong>{money(route.amountToReceive)}</strong>
+              </div>
             </>
           ) : null}
         </section>

@@ -11,11 +11,13 @@ export default function EvidencePhotoAction({
   onComplete,
   disabled = false,
   label = "Enviar foto e concluir entrega",
+  confirmationLabel = "Deslize para enviar a foto e concluir",
 }: {
   deliveryId: string;
   onComplete: (evidencePath: string) => Promise<void>;
   disabled?: boolean;
   label?: string;
+  confirmationLabel?: string;
 }) {
   const requestUpload = useRequestDeliveryEvidenceUploadUrl();
   const [file, setFile] = useState<File | null>(null);
@@ -90,7 +92,7 @@ export default function EvidencePhotoAction({
           <SwipeToConfirm
             disabled={disabled || submitting || requestUpload.isPending}
             onConfirm={() => void submit()}
-            label="Deslize para enviar a foto e concluir"
+            label={confirmationLabel}
           />
           {(disabled || submitting || requestUpload.isPending) && (
             <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status" aria-live="polite">
@@ -103,7 +105,7 @@ export default function EvidencePhotoAction({
         <p className="rounded-md bg-[#f7f4f1] px-3 py-2 text-center text-xs text-muted-foreground">
           {disabled
             ? "Aguarde a ação atual terminar antes de anexar a confirmação."
-            : "Anexe a foto para liberar a confirmação por deslize."}
+            : "Adicione uma foto para confirmar."}
         </p>
       )}
     </div>

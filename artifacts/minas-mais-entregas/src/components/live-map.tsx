@@ -24,6 +24,8 @@ export default function LiveMap({
   resizeKey,
   autoFitOnGeometryChange = true,
   singleAttribution = false,
+  interactive = true,
+  routeColor,
 }: {
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
@@ -42,6 +44,8 @@ export default function LiveMap({
   resizeKey?: string | number;
   autoFitOnGeometryChange?: boolean;
   singleAttribution?: boolean;
+  interactive?: boolean;
+  routeColor?: string;
 }) {
   return (
     <Suspense
@@ -73,6 +77,8 @@ export default function LiveMap({
         resizeKey={resizeKey}
         autoFitOnGeometryChange={autoFitOnGeometryChange}
         singleAttribution={singleAttribution}
+        interactive={interactive}
+        routeColor={routeColor}
       />
     </Suspense>
   );
