@@ -60,10 +60,24 @@ import {
   notifyAvailableCouriers,
   notifyCouriers,
 } from "../lib/webPush";
+import {
+  getCourierDisplayName,
+  getCourierInitials,
+  getOptionalCourierDisplayName,
+} from "../lib/courierName";
 
 const router: IRouter = Router();
 
 router.use(requireAuthentication);
+
+const linkedCourierEmail = sql<string | null>`(
+  SELECT ${appUsersTable.email}
+  FROM ${appUsersTable}
+  WHERE ${appUsersTable.courierId} = ${couriersTable.id}
+    AND ${appUsersTable.role} = 'COURIER'
+  ORDER BY ${appUsersTable.updatedAt} DESC
+  LIMIT 1
+)`;
 
 const defaultCourierCancellationReasons = [
   { id: "CLIENT_ABSENT", label: "Cliente ausente / não atende" },
@@ -170,6 +184,7 @@ router.get(
         customerName: deliveriesTable.customerName,
         storeName: storesTable.name,
         courierName: couriersTable.name,
+        courierEmail: linkedCourierEmail,
       })
       .from(deliveryCancellationsTable)
       .innerJoin(
@@ -188,9 +203,10 @@ router.get(
       .orderBy(desc(deliveryCancellationsTable.priority), desc(deliveryCancellationsTable.requestedAt));
     res.json(
       ListDeliveryCancellationsResponse.parse(
-        rows.map(({ cancellation, ...row }) => ({
+        rows.map(({ cancellation, courierName, courierEmail, ...row }) => ({
           ...cancellation,
           ...row,
+          courierName: getOptionalCourierDisplayName(courierName, courierEmail),
           requestedAt: cancellation.requestedAt.toISOString(),
         })),
       ),
@@ -394,12 +410,48 @@ router.get("/me", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Não foi possível identificar o e-mail da conta." });
     return;
   }
+  if (profile.role === "COURIER") {
+    const [courier] = profile.courierId
+      ? await db
+          .select({ name: couriersTable.name, phone: couriersTable.phone })
+          .from(couriersTable)
+          .where(eq(couriersTable.id, profile.courierId))
+          .limit(1)
+      : [];
+    res.json(
+      GetMyProfileResponse.parse({
+        ...profile,
+        name: getCourierDisplayName(courier?.name ?? profile.name, profile.email),
+        phone: courier?.phone ?? null,
+      }),
+    );
+    return;
+  }
   res.json(GetMyProfileResponse.parse(profile));
 });
 
 router.get("/access/users", requireRole("ADMIN"), async (_req, res): Promise<void> => {
-  const users = await db.select().from(appUsersTable).orderBy(appUsersTable.email);
-  res.json(ListAccessUsersResponse.parse(users));
+  const rows = await db
+    .select({
+      user: appUsersTable,
+      courierName: couriersTable.name,
+      courierPhone: couriersTable.phone,
+    })
+    .from(appUsersTable)
+    .leftJoin(couriersTable, eq(appUsersTable.courierId, couriersTable.id))
+    .orderBy(appUsersTable.email);
+  res.json(
+    ListAccessUsersResponse.parse(
+      rows.map(({ user, courierName, courierPhone }) => ({
+        ...user,
+        name:
+          user.role === "COURIER"
+            ? getCourierDisplayName(courierName ?? user.name, user.email)
+            : user.name,
+        phone: user.role === "COURIER" ? courierPhone ?? null : null,
+      })),
+    ),
+  );
 });
 
 router.patch(
@@ -475,10 +527,14 @@ router.patch(
         return;
       }
     }
-    const storeId = ["STORE_MANAGER", "STORE_STAFF"].includes(role)
-      ? body.data.storeId ?? null
-      : null;
-    const courierId = role === "COURIER" ? body.data.courierId ?? null : null;
+    const isCourier = role === "COURIER";
+    const storeId =
+      ["STORE_MANAGER", "STORE_STAFF"].includes(role) || isCourier
+        ? body.data.storeId ?? null
+        : null;
+    const requestedCourierId = isCourier ? body.data.courierId ?? null : null;
+    const courierName = body.data.name?.trim() ?? "";
+    const courierPhone = body.data.phone?.trim() || null;
     if (role === "STORE_MANAGER" || role === "STORE_STAFF") {
       if (!storeId) {
         res.status(400).json({ error: "Selecione a unidade desta conta." });
@@ -494,28 +550,84 @@ router.patch(
         return;
       }
     }
-    if (role === "COURIER") {
-      if (!courierId) {
-        res.status(400).json({ error: "Vincule o motoboy a um cadastro." });
+    if (isCourier) {
+      if (!courierName) {
+        res.status(400).json({ error: "Informe o nome do motoboy para aprovar o acesso." });
         return;
       }
-      const [courier] = await db
-        .select({ id: couriersTable.id })
-        .from(couriersTable)
-        .where(eq(couriersTable.id, courierId))
-        .limit(1);
-      if (!courier) {
-        res.status(400).json({ error: "Cadastro de motoboy não encontrado." });
-        return;
+      if (storeId) {
+        const [store] = await db
+          .select({ id: storesTable.id })
+          .from(storesTable)
+          .where(eq(storesTable.id, storeId))
+          .limit(1);
+        if (!store) {
+          res.status(400).json({ error: "Unidade não encontrada." });
+          return;
+        }
+      }
+      if (requestedCourierId) {
+        const [courier] = await db
+          .select({ id: couriersTable.id })
+          .from(couriersTable)
+          .where(eq(couriersTable.id, requestedCourierId))
+          .limit(1);
+        if (!courier) {
+          res.status(400).json({ error: "Cadastro de motoboy não encontrado." });
+          return;
+        }
       }
     }
 
-    const [updated] = await db
-      .update(appUsersTable)
-      .set({ role, storeId, courierId, updatedAt: new Date() })
-      .where(eq(appUsersTable.id, target.id))
-      .returning();
-    res.json(UpdateAccessUserResponse.parse(updated));
+    const result = await db.transaction(async (tx) => {
+      let courierId: string | null = null;
+      if (isCourier) {
+        courierId = requestedCourierId ?? randomUUID();
+        if (requestedCourierId) {
+          const [updatedCourier] = await tx
+            .update(couriersTable)
+            .set({
+              name: courierName,
+              initials: getCourierInitials(courierName),
+              phone: courierPhone,
+            })
+            .where(eq(couriersTable.id, requestedCourierId))
+            .returning({ id: couriersTable.id });
+          if (!updatedCourier) return null;
+        } else {
+          await tx.insert(couriersTable).values({
+            id: courierId,
+            name: courierName,
+            initials: getCourierInitials(courierName),
+            phone: courierPhone,
+            status: "AVAILABLE",
+          });
+        }
+      }
+      const [updated] = await tx
+        .update(appUsersTable)
+        .set({
+          role,
+          storeId,
+          courierId,
+          ...(isCourier ? { name: courierName } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(appUsersTable.id, target.id))
+        .returning();
+      return updated ? { user: updated, courierId } : null;
+    });
+    if (!result) {
+      res.status(404).json({ error: "Cadastro de motoboy não encontrado." });
+      return;
+    }
+    res.json(
+      UpdateAccessUserResponse.parse({
+        ...result.user,
+        name: isCourier ? courierName : result.user.name,
+        phone: isCourier ? courierPhone : null,
+      }),
+    );
   },
 );
 
@@ -711,6 +823,7 @@ async function deliveryView(deliveryId: string) {
       storeAddress: storesTable.address,
       storeCity: storesTable.city,
       courierName: couriersTable.name,
+      courierEmail: linkedCourierEmail,
       courierInitials: couriersTable.initials,
     })
     .from(deliveriesTable)
@@ -735,7 +848,7 @@ async function deliveryView(deliveryId: string) {
     storeName: row.storeName,
     storeAddress: row.storeAddress,
     storeCity: row.storeCity,
-    courierName: row.courierName,
+    courierName: getOptionalCourierDisplayName(row.courierName, row.courierEmail),
     courierInitials: row.courierInitials,
     events,
   };
@@ -827,6 +940,7 @@ router.get(
         delivery: deliveriesTable,
         storeName: storesTable.name,
         courierName: couriersTable.name,
+        courierEmail: linkedCourierEmail,
       })
       .from(deliveriesTable)
       .innerJoin(storesTable, eq(deliveriesTable.storeId, storesTable.id))
@@ -851,13 +965,13 @@ router.get(
       eventsByDelivery
         .get(deliveryId)
         ?.find((event) => kinds.includes(event.kind))?.timestamp ?? null;
-    const reportRows = rows.map(({ delivery, storeName, courierName }) => ({
+    const reportRows = rows.map(({ delivery, storeName, courierName, courierEmail }) => ({
       id: delivery.id,
       code: delivery.code,
       customerName: delivery.customerName,
       destination: delivery.destination,
       storeName,
-      courierName,
+      courierName: getOptionalCourierDisplayName(courierName, courierEmail),
       status: delivery.status,
       deliveryAmount: delivery.deliveryAmountCents / 100,
       createdAt: delivery.createdAt.toISOString(),
@@ -898,6 +1012,7 @@ router.get(
         customerName: deliveriesTable.customerName,
         storeName: storesTable.name,
         courierName: couriersTable.name,
+        courierEmail: linkedCourierEmail,
       })
       .from(deliveryCancellationsTable)
       .innerJoin(
@@ -913,10 +1028,11 @@ router.get(
       )
       .orderBy(desc(deliveryCancellationsTable.requestedAt));
     const cancellationReportRows = cancellationRows.map(
-      ({ cancellation, ...row }) => ({
+      ({ cancellation, courierName, courierEmail, ...row }) => ({
         id: cancellation.id,
         deliveryId: cancellation.deliveryId,
         ...row,
+        courierName: getOptionalCourierDisplayName(courierName, courierEmail),
         reason: cancellation.reason,
         observation: cancellation.observation,
         status: cancellation.status,
@@ -963,12 +1079,12 @@ router.get(
         dailyMap.set(completedDate, completedDay);
       }
     }
-    for (const { delivery, courierName } of rows) {
+    for (const { delivery, courierName, courierEmail } of rows) {
       if (delivery.status !== "COMPLETED" || !delivery.courierId) continue;
       const completedAt = firstEvent(delivery.id, ["completed"]);
       const record = courierMap.get(delivery.courierId) ?? {
         courierId: delivery.courierId,
-        courierName: courierName ?? "Motoboy",
+        courierName: getCourierDisplayName(courierName, courierEmail),
         completedDeliveries: 0,
         courierAmount: 0,
         totalMinutes: [],
@@ -1923,9 +2039,16 @@ router.get(
   async (req, res): Promise<void> => {
   const profile = res.locals.appUser as AppUserProfile;
   const linkedCourierRows = await db
-    .select({ courierId: appUsersTable.courierId })
+    .select({
+      courierId: appUsersTable.courierId,
+      email: appUsersTable.email,
+    })
     .from(appUsersTable)
     .where(eq(appUsersTable.role, "COURIER"));
+  const emailByCourierId = new Map<string, string>();
+  for (const row of linkedCourierRows) {
+    if (row.courierId) emailByCourierId.set(row.courierId, row.email);
+  }
   const linkedCourierIds = new Set(
     linkedCourierRows
       .map((row) => row.courierId)
@@ -1983,6 +2106,10 @@ router.get(
     ListCouriersResponse.parse(
       couriers.map((courier) => ({
         ...courier,
+        name: getCourierDisplayName(
+          courier.name,
+          emailByCourierId.get(courier.id),
+        ),
         currentLatitude: courier.currentLatitude ?? null,
         currentLongitude: courier.currentLongitude ?? null,
         currentAccuracyMeters: courier.currentAccuracyMeters ?? null,

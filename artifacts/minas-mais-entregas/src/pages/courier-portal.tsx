@@ -238,10 +238,19 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     : serviceWorkerStatus !== "checking" && !pushKey.isLoading;
   const notificationsNeedAttention = notificationStatusReady && !pushIsActive;
   const gpsNeedsAttention = gpsStatus.ageSeconds > 60;
-  const firstNameCandidate = profile.name.trim().split(/\s+/)[0] || "";
-  const firstName = firstNameCandidate && !firstNameCandidate.includes("@")
-    ? firstNameCandidate
-    : "motoboy";
+  const profileName = profile.name.trim();
+  const genericName = /^(motoboy|motobói|entregador|courier|driver)(\s+\d+)?$/i;
+  const nameIsUsable =
+    Boolean(profileName) &&
+    !profileName.includes("@") &&
+    !genericName.test(profileName);
+  const emailName = profile.email.split("@")[0]?.trim() ?? "";
+  const firstNameCandidate = (nameIsUsable ? profileName : emailName)
+    .split(/\s+/)[0]
+    ?.trim() ?? "";
+  const firstName = firstNameCandidate
+    ? firstNameCandidate.charAt(0).toLocaleUpperCase("pt-BR") + firstNameCandidate.slice(1)
+    : "Sem nome";
   const pushToggleDisabled =
     pushKey.isLoading ||
     (!isNativeApp && serviceWorkerStatus !== "active") ||

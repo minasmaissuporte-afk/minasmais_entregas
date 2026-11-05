@@ -24,6 +24,7 @@ import {
   type CourierDeliveryRoute,
 } from "@workspace/api-zod";
 import {
+  appUsersTable,
   couriersTable,
   db,
   deliveriesTable,
@@ -49,9 +50,19 @@ import {
 } from "../lib/mapbox";
 import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
 import { notifyAvailableCouriers, notifyCentralUsers } from "../lib/webPush";
+import { getCourierDisplayName, getCourierFirstName } from "../lib/courierName";
 
 const router: IRouter = Router();
 router.use(requireAuthentication);
+
+const linkedCourierEmail = sql<string | null>`(
+  SELECT ${appUsersTable.email}
+  FROM ${appUsersTable}
+  WHERE ${appUsersTable.courierId} = ${couriersTable.id}
+    AND ${appUsersTable.role} = 'COURIER'
+  ORDER BY ${appUsersTable.updatedAt} DESC
+  LIMIT 1
+)`;
 
 type DeliveryRow = {
   delivery: typeof deliveriesTable.$inferSelect;
@@ -537,6 +548,7 @@ router.get(
         courierId: deliveryRoutesTable.courierId,
         routeGeometry: deliveryRoutesTable.routeGeometry,
         courierName: couriersTable.name,
+        courierEmail: linkedCourierEmail,
       })
       .from(deliveryRoutesTable)
       .innerJoin(
@@ -551,8 +563,10 @@ router.get(
             ? [{
                 id: route.id,
                 courierId: route.courierId!,
-                courierFirstName:
-                  route.courierName.trim().split(/\s+/)[0] || route.courierName,
+                courierFirstName: getCourierFirstName(
+                  route.courierName,
+                  route.courierEmail,
+                ),
                 routeGeometry: route.routeGeometry,
               }]
             : [],
@@ -915,7 +929,7 @@ router.post(
     }
 
     const now = new Date();
-    const actor = courier.name;
+    const actor = getCourierDisplayName(courier.name, profile.email);
     const result = await db.transaction(async (tx) => {
       if (belongsToRoute && activeRoute) {
         const [lockedRoute] = await tx
@@ -1228,7 +1242,7 @@ router.post(
       title: result.priority
         ? "URGENTE: rota interrompida"
         : "Ocorrência de entrega",
-      body: `${courier.name} · pedido ${targetRow.delivery.code} · ${targetRow.delivery.customerName} · ${reason.label}${result.routeContinues ? " — rota continua com os pedidos restantes." : ""}`,
+      body: `${getCourierDisplayName(courier.name, profile.email)} · pedido ${targetRow.delivery.code} · ${targetRow.delivery.customerName} · ${reason.label}${result.routeContinues ? " — rota continua com os pedidos restantes." : ""}`,
       url: "/",
     });
     res.json(

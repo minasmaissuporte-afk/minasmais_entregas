@@ -1,5 +1,6 @@
 - [API client codegen](api-client-codegen.md) — Keep generated React Query hooks aligned with TanStack Query v5 and DOM iterable types.
 - [PWA do motoboy e repasses](courier-mobile-and-earnings.md) — PWA em iOS/Android, repasses e devolução após cancelamento em rota.
+- [Nome do motoboy](courier-name-authority.md) — Nome definido pelo administrador prevalece sobre o Clerk; se faltar, use o trecho do e-mail antes do @.
 - [Senha da conta](account-password-management.md) — Contas que entram por código de e-mail também precisam conseguir criar e trocar senha dentro do webapp.
 - [Cache dos assets do PWA](pwa-asset-cache.md) — Versione o cache pelo build e nunca guarde HTML de fallback sob uma URL JavaScript com hash.
 - [Empacotamento Expo de produção](expo-production-builds.md) — Libere a porta Metro 8081 antes do build local; previews concorrentes podem fazer o Metro mudar de porta enquanto o script segue usando 8081.

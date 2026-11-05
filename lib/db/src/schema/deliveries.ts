@@ -40,6 +40,7 @@ export const couriersTable = pgTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
+    phone: text("phone"),
     initials: text("initials").notNull(),
     status: text("status").notNull().default("AVAILABLE"),
     currentDeliveryCode: text("current_delivery_code"),

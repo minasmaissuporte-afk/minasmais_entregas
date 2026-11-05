@@ -9,6 +9,16 @@ import type { UserRoleInputRole } from './userRoleInputRole';
 
 export interface UserRoleInput {
   role: UserRoleInputRole;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name?: string;
+  /**
+     * @maxLength 40
+     * @nullable
+     */
+  phone?: string | null;
   /** @nullable */
   storeId?: string | null;
   /** @nullable */

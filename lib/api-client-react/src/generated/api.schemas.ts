@@ -499,6 +499,8 @@ export const CourierStatus = {
 export interface Courier {
   id: string;
   name: string;
+  /** @nullable */
+  phone?: string | null;
   initials: string;
   status: CourierStatus;
   /** @nullable */
@@ -560,6 +562,8 @@ export interface AppUser {
   clerkUserId: string | null;
   email: string;
   name: string;
+  /** @nullable */
+  phone?: string | null;
   role: AppUserRole;
   /** @nullable */
   storeId: string | null;
@@ -581,6 +585,16 @@ export const UserRoleInputRole = {
 
 export interface UserRoleInput {
   role: UserRoleInputRole;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name?: string;
+  /**
+     * @maxLength 40
+     * @nullable
+     */
+  phone?: string | null;
   /** @nullable */
   storeId?: string | null;
   /** @nullable */

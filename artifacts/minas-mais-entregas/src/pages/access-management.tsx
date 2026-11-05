@@ -106,7 +106,7 @@ function UserAccessRow({
 }: {
   user: AppUser;
   stores: { id: string; name: string; city: string; active: boolean }[];
-  couriers: { id: string; name: string; status: string }[];
+  couriers: { id: string; name: string; phone?: string | null; status: string }[];
   isCurrentUser: boolean;
   isLastAdmin: boolean;
   hasActiveWork: boolean;
@@ -117,20 +117,26 @@ function UserAccessRow({
   const [role, setRole] = useState<AppUser["role"]>(user.role);
   const [storeId, setStoreId] = useState(user.storeId ?? "");
   const [courierId, setCourierId] = useState(user.courierId ?? "");
+  const [name, setName] = useState(user.role === "COURIER" ? user.name : "");
+  const [phone, setPhone] = useState(user.role === "COURIER" ? user.phone ?? "" : "");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     setRole(user.role);
     setStoreId(user.storeId ?? "");
     setCourierId(user.courierId ?? "");
-  }, [user.role, user.storeId, user.courierId]);
+    setName(user.role === "COURIER" ? user.name : "");
+    setPhone(user.role === "COURIER" ? user.phone ?? "" : "");
+  }, [user.role, user.storeId, user.courierId, user.name, user.phone]);
 
   const needsStore = role === "STORE_MANAGER" || role === "STORE_STAFF";
   const needsCourier = role === "COURIER";
   const isChanged =
     role !== user.role ||
     storeId !== (user.storeId ?? "") ||
-    courierId !== (user.courierId ?? "");
+    courierId !== (user.courierId ?? "") ||
+    (needsCourier && name.trim() !== user.name) ||
+    (needsCourier && (phone.trim() || "") !== (user.phone ?? ""));
   const save = () => {
     setMessage("");
     update.mutate(
@@ -139,7 +145,14 @@ function UserAccessRow({
         data: {
           role,
           ...(needsStore ? { storeId } : {}),
-          ...(needsCourier ? { courierId } : {}),
+          ...(needsCourier
+            ? {
+                name: name.trim(),
+                phone: phone.trim() || null,
+                storeId: storeId || null,
+                courierId: courierId || null,
+              }
+            : {}),
         },
       },
       {
@@ -152,7 +165,15 @@ function UserAccessRow({
             queryKey: getListCouriersQueryKey(),
           });
         },
-        onError: () => setMessage("Não foi possível salvar. Confira o vínculo escolhido."),
+        onError: (error) => {
+          const apiError = error as Error & { data?: { error?: string } };
+          setMessage(
+            apiError.data?.error ??
+              (error instanceof Error
+                ? error.message
+                : "Não foi possível salvar. Confira os dados informados."),
+          );
+        },
       },
     );
   };
@@ -196,9 +217,43 @@ function UserAccessRow({
       : hasActiveWork
         ? "Conclua ou cancele o trabalho ativo do motoboy"
         : "Excluir cadastro e login";
+  const storeSelect = (
+    <select
+      className="filter-select w-full"
+      aria-label={`Filial de ${user.email}`}
+      value={storeId}
+      onChange={(event) => setStoreId(event.target.value)}
+    >
+      <option value="">
+        {needsCourier ? "Sem filial vinculada" : "Selecione a filial"}
+      </option>
+      {stores.filter((store) => store.active).map((store) => (
+        <option key={store.id} value={store.id}>{store.name} · {store.city}</option>
+      ))}
+    </select>
+  );
+  const courierSelect = (
+    <select
+      className="filter-select w-full"
+      aria-label={`Cadastro de motoboy de ${user.email}`}
+      value={courierId}
+      onChange={(event) => {
+        const selectedId = event.target.value;
+        const selectedCourier = couriers.find((courier) => courier.id === selectedId);
+        setCourierId(selectedId);
+        setName(selectedCourier?.name ?? "");
+        setPhone(selectedCourier?.phone ?? "");
+      }}
+    >
+      <option value="">Criar novo cadastro de motoboy</option>
+      {couriers.map((courier) => (
+        <option key={courier.id} value={courier.id}>{courier.name}</option>
+      ))}
+    </select>
+  );
 
   return (
-    <div className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(180px,1fr)_220px_220px_auto] lg:items-center">
+    <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_180px_minmax(240px,1.1fr)_minmax(280px,1.3fr)_auto] xl:items-center">
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold">{user.name}</div>
         <div className="mt-1 truncate text-xs text-muted-foreground">{user.email}</div>
@@ -214,33 +269,40 @@ function UserAccessRow({
           <option key={item.value} value={item.value}>{item.label}</option>
         ))}
       </select>
-      {needsStore ? (
-        <select
-          className="filter-select w-full"
-          aria-label={`Unidade de ${user.name}`}
-          value={storeId}
-          onChange={(event) => setStoreId(event.target.value)}
-        >
-          <option value="">Selecione a unidade</option>
-          {stores.filter((store) => store.active).map((store) => (
-            <option key={store.id} value={store.id}>{store.name} · {store.city}</option>
-          ))}
-        </select>
-      ) : needsCourier ? (
-        <select
-          className="filter-select w-full"
-          aria-label={`Cadastro de motoboy de ${user.name}`}
-          value={courierId}
-          onChange={(event) => setCourierId(event.target.value)}
-        >
-          <option value="">Selecione o motoboy</option>
-          {couriers.map((courier) => (
-            <option key={courier.id} value={courier.id}>{courier.name}</option>
-          ))}
-        </select>
+      {needsCourier ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <input
+            className="filter-select w-full"
+            aria-label={`Nome do motoboy ${user.email}`}
+            placeholder="Nome completo *"
+            value={name}
+            maxLength={120}
+            required
+            aria-invalid={!name.trim()}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <input
+            className="filter-select w-full"
+            type="tel"
+            inputMode="tel"
+            aria-label={`Telefone do motoboy ${user.email}`}
+            placeholder="Telefone"
+            value={phone}
+            maxLength={40}
+            onChange={(event) => setPhone(event.target.value)}
+          />
+        </div>
+      ) : needsStore ? (
+        storeSelect
       ) : (
-        <span className="text-xs text-muted-foreground">Sem vínculo de unidade</span>
+        <span className="text-xs text-muted-foreground">Sem vínculo adicional</span>
       )}
+      {needsCourier ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {storeSelect}
+          {courierSelect}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 lg:justify-end">
         {message && (
           <span className={`text-[11px] ${message.startsWith("Acesso") ? "text-green-700" : "text-red-700"}`}>
@@ -251,7 +313,12 @@ function UserAccessRow({
           className="button-secondary"
           type="button"
           onClick={save}
-          disabled={!isChanged || update.isPending || (needsStore && !storeId) || (needsCourier && !courierId)}
+          disabled={
+            !isChanged ||
+            update.isPending ||
+            (needsStore && !storeId) ||
+            (needsCourier && !name.trim())
+          }
         >
           <Check size={14} />
           {update.isPending ? "Salvando…" : "Salvar"}

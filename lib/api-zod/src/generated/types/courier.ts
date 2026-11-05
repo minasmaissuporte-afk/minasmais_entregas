@@ -10,6 +10,8 @@ import type { CourierStatus } from './courierStatus';
 export interface Courier {
   id: string;
   name: string;
+  /** @nullable */
+  phone?: string | null;
   initials: string;
   status: CourierStatus;
   /** @nullable */

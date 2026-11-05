@@ -894,6 +894,7 @@ export const listCouriersResponseCurrentSpeedMetersPerSecondMin = 0;
 export const ListCouriersResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "phone": zod.string().nullish(),
   "initials": zod.string(),
   "status": zod.enum(['AVAILABLE', 'BUSY', 'OFFLINE']),
   "currentDeliveryCode": zod.string().nullish(),
@@ -915,6 +916,7 @@ export const GetMyProfileResponse = zod.object({
   "clerkUserId": zod.string().nullable(),
   "email": zod.string(),
   "name": zod.string(),
+  "phone": zod.string().nullish(),
   "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
   "storeId": zod.string().nullable(),
   "courierId": zod.string().nullable()
@@ -929,6 +931,7 @@ export const ListAccessUsersResponseItem = zod.object({
   "clerkUserId": zod.string().nullable(),
   "email": zod.string(),
   "name": zod.string(),
+  "phone": zod.string().nullish(),
   "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
   "storeId": zod.string().nullable(),
   "courierId": zod.string().nullable()
@@ -943,8 +946,16 @@ export const UpdateAccessUserParams = zod.object({
   "userId": zod.coerce.string()
 })
 
+export const updateAccessUserBodyNameMax = 120;
+
+export const updateAccessUserBodyPhoneMax = 40;
+
+
+
 export const UpdateAccessUserBody = zod.object({
   "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
+  "name": zod.string().min(1).max(updateAccessUserBodyNameMax).optional(),
+  "phone": zod.string().max(updateAccessUserBodyPhoneMax).nullish(),
   "storeId": zod.string().nullish(),
   "courierId": zod.string().nullish()
 })
@@ -954,6 +965,7 @@ export const UpdateAccessUserResponse = zod.object({
   "clerkUserId": zod.string().nullable(),
   "email": zod.string(),
   "name": zod.string(),
+  "phone": zod.string().nullish(),
   "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
   "storeId": zod.string().nullable(),
   "courierId": zod.string().nullable()

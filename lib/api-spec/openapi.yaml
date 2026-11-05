@@ -1182,6 +1182,7 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
+        phone: { type: ["string", "null"] }
         initials: { type: string }
         status: { type: string, enum: [AVAILABLE, BUSY, OFFLINE] }
         currentDeliveryCode: { type: ["string", "null"] }
@@ -1217,6 +1218,7 @@ components:
         clerkUserId: { type: ["string", "null"] }
         email: { type: string }
         name: { type: string }
+        phone: { type: ["string", "null"] }
         role:
           type: string
           enum: [ADMIN, CENTRAL, STORE_MANAGER, STORE_STAFF, COURIER, PENDING]
@@ -1229,6 +1231,8 @@ components:
         role:
           type: string
           enum: [ADMIN, CENTRAL, STORE_MANAGER, STORE_STAFF, COURIER, PENDING]
+        name: { type: string, minLength: 1, maxLength: 120 }
+        phone: { type: ["string", "null"], maxLength: 40 }
         storeId: { type: ["string", "null"] }
         courierId: { type: ["string", "null"] }
     CourierEarnings:

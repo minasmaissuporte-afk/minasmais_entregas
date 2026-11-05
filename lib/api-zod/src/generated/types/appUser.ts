@@ -13,6 +13,8 @@ export interface AppUser {
   clerkUserId: string | null;
   email: string;
   name: string;
+  /** @nullable */
+  phone?: string | null;
   role: AppUserRole;
   /** @nullable */
   storeId: string | null;

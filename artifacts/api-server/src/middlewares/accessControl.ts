@@ -69,7 +69,7 @@ export async function resolveAppUser(clerkUserId: string) {
     .toLowerCase();
   if (!email) return null;
 
-  const name =
+  const clerkDisplayName =
     [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim() ||
     email;
   const initialRole = await getInitialRole(email);
@@ -84,7 +84,6 @@ export async function resolveAppUser(clerkUserId: string) {
       .update(appUsersTable)
       .set({
         clerkUserId,
-        name,
         role: initialRole === "ADMIN" ? "ADMIN" : emailProfile.role,
         updatedAt: new Date(),
       })
@@ -99,7 +98,7 @@ export async function resolveAppUser(clerkUserId: string) {
       id: randomUUID(),
       clerkUserId,
       email,
-      name,
+      name: clerkDisplayName,
       role: initialRole,
     })
     .onConflictDoNothing()
