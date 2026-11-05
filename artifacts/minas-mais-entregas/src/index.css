@@ -916,21 +916,6 @@
   gap: 12px;
 }
 .courier-pwa .courier-official-brand { display: grid; justify-items: start; gap: 2px; }
-.courier-pwa .courier-official-brand img {
-  display: block;
-  width: clamp(148px, 44vw, 174px);
-  height: 43px;
-  border-radius: 5px;
-  object-fit: cover;
-  object-position: center 53%;
-}
-.courier-pwa .courier-official-brand span {
-  font-size: 8px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: .2em;
-  color: rgb(255 255 255 / 95%);
-}
 .courier-pwa .courier-avatar-button {
   width: 42px;
   height: 42px;
@@ -1242,17 +1227,6 @@
   align-items: center;
 }
 .courier-pwa .courier-official-brand { display: block; }
-.courier-pwa .courier-official-brand img {
-  width: auto;
-  max-width: clamp(145px, 44vw, 174px);
-  height: 40px;
-  max-height: 40px;
-  border-radius: 0;
-  object-fit: contain;
-  object-position: left center;
-  background: transparent;
-  filter: brightness(0) invert(1);
-}
 .courier-pwa .courier-avatar-button {
   width: 48px;
   height: 48px;
@@ -1836,23 +1810,6 @@ textarea { resize:vertical; }
 .courier-pwa .courier-header-inner { gap: 9px; }
 .courier-pwa .courier-header-top { min-height: 68px; align-items: flex-start; }
 .courier-pwa .courier-official-brand { display: grid; justify-items: start; gap: 3px; }
-.courier-pwa .courier-official-brand img {
-  display: block;
-  width: 174px;
-  max-width: min(54vw, 205px);
-  height: 54px;
-  border-radius: 5px;
-  background: transparent;
-  object-fit: cover;
-  object-position: center;
-}
-.courier-pwa .courier-official-brand span {
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: .17em;
-}
 .courier-pwa .courier-avatar-button {
   width: 48px;
   height: 48px;
@@ -2209,18 +2166,10 @@ textarea { resize:vertical; }
 }
 @media (max-width: 370px) {
   .courier-pwa .courier-header { padding-right: 15px; padding-left: 15px; }
-  .courier-pwa .courier-official-brand img { width: 156px; height: 50px; }
-  .courier-pwa .courier-official-brand span { font-size: 9px; }
   .courier-pwa .courier-greeting { font-size: 21px; }
   .courier-pwa .courier-content-shell { padding-inline: 12px; }
 }
 .courier-pwa { --courier-bottom-nav-height: calc(74px + env(safe-area-inset-bottom)); }
-.courier-pwa .courier-official-brand img {
-  width: 170px;
-  max-width: min(54vw, 205px);
-  height: 42px;
-}
-.courier-pwa .courier-official-brand span { font-size: 10px; }
 .courier-pwa .courier-nav-map > span {
   width: 58px;
   height: 58px;
@@ -2352,4 +2301,34 @@ textarea { resize:vertical; }
   border-radius: 22px;
   padding-inline: 9px;
   font-size: 12px;
+}
+.courier-pwa .courier-header-top {
+  min-height: 48px;
+  align-items: center;
+}
+.courier-pwa .courier-official-brand {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 2px;
+  min-width: 0;
+}
+.courier-pwa .courier-official-brand .courier-official-brand__name {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.courier-pwa .courier-official-brand .courier-official-brand__subtitle {
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 2px;
+}
+@media (max-width: 370px) {
+  .courier-pwa .courier-official-brand .courier-official-brand__name { font-size: 18px; }
+  .courier-pwa .courier-official-brand .courier-official-brand__subtitle { font-size: 9px; }
 }

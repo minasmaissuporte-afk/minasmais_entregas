@@ -747,8 +747,8 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           <div className="courier-header-inner mx-auto max-w-2xl">
             <div className="courier-header-top">
               <div className="courier-official-brand" aria-label="Minas Mais Entregas">
-                <img src={`${import.meta.env.BASE_URL}brand-logo-source.png`} alt="Drogarias MinasMais" />
-                <span>MINAS MAIS ENTREGAS</span>
+                <span className="courier-official-brand__name" data-testid="text-brand-name">MINAS MAIS</span>
+                <span className="courier-official-brand__subtitle" data-testid="text-brand-subtitle">ENTREGAS</span>
               </div>
               <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
                 <SheetTrigger asChild>
