@@ -17,6 +17,13 @@ export default function LiveMap({
   controlsAboveAttribution = false,
   fitBehindBottomPanel = false,
   controlsBottomOffset,
+  controlsTopOffset,
+  controlsRightOffset,
+  compactCenterControls = false,
+  fitPadding,
+  resizeKey,
+  autoFitOnGeometryChange = true,
+  singleAttribution = false,
 }: {
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
@@ -28,6 +35,13 @@ export default function LiveMap({
   controlsAboveAttribution?: boolean;
   fitBehindBottomPanel?: boolean;
   controlsBottomOffset?: string | number;
+  controlsTopOffset?: string | number;
+  controlsRightOffset?: string | number;
+  compactCenterControls?: boolean;
+  fitPadding?: { top?: number; right?: number; bottom?: number; left?: number };
+  resizeKey?: string | number;
+  autoFitOnGeometryChange?: boolean;
+  singleAttribution?: boolean;
 }) {
   return (
     <Suspense
@@ -52,6 +66,13 @@ export default function LiveMap({
         controlsAboveAttribution={controlsAboveAttribution}
         fitBehindBottomPanel={fitBehindBottomPanel}
         controlsBottomOffset={controlsBottomOffset}
+        controlsTopOffset={controlsTopOffset}
+        controlsRightOffset={controlsRightOffset}
+        compactCenterControls={compactCenterControls}
+        fitPadding={fitPadding}
+        resizeKey={resizeKey}
+        autoFitOnGeometryChange={autoFitOnGeometryChange}
+        singleAttribution={singleAttribution}
       />
     </Suspense>
   );

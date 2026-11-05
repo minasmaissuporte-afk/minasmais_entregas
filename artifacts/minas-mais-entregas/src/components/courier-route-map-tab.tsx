@@ -1,7 +1,18 @@
 import type { CourierDeliveryRoute } from "@workspace/api-client-react";
-import { ArrowLeft, Clock3, MapPin, Navigation, RefreshCw } from "lucide-react";
+import type { CSSProperties } from "react";
+import {
+  ArrowLeft,
+  Banknote,
+  Clock3,
+  MapPin,
+  Navigation,
+  Phone,
+  RefreshCw,
+  Route,
+} from "lucide-react";
 import LiveMap, { type MapCoordinate, type MapMarker } from "@/components/live-map";
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
+import useCourierMapPanel from "@/hooks/use-courier-map-panel";
 
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -41,69 +52,124 @@ export default function CourierRouteMapTab({
       : []),
   ];
   const nextStop = route.stops.find((stop) => stop.status === "PENDING");
+  const nextDelivery = nextStop
+    ? route.deliveries.find((delivery) => delivery.id === nextStop.deliveryId)
+    : null;
+  const nextStopName = nextStop
+    ? nextStop.kind === "pickup"
+      ? nextStop.storeName
+      : nextStop.customerName
+    : null;
+  const phone = nextStop?.kind === "delivery" ? nextDelivery?.customerPhone : null;
+  const amount = activeDelivery?.deliveryAmount ?? nextStop?.deliveryAmount ?? route.amountToReceive;
   const nextStopUrl = nextStop
     ? `https://www.google.com/maps/dir/?api=1&destination=${nextStop.latitude},${nextStop.longitude}&travelmode=driving`
     : null;
   const nextStopWazeUrl = nextStop
     ? `https://waze.com/ul?ll=${nextStop.latitude}%2C${nextStop.longitude}&navigate=yes`
     : null;
+  const { panelRef, panelHeight, landscape, fitPadding } = useCourierMapPanel();
+  const resizeKey = `${Math.round(panelHeight)}:${landscape}`;
+  const phoneDigits = phone?.replace(/\D/g, "");
+  const whatsappDigits = phoneDigits
+    ? phoneDigits.startsWith("55")
+      ? phoneDigits
+      : `55${phoneDigits}`
+    : null;
+  const screenStyle = {
+    "--courier-panel-height": `${panelHeight}px`,
+  } as CSSProperties;
 
   return (
-    <section className="relative h-[100dvh] w-full overflow-hidden bg-[#f4f3f1]" aria-label="Mapa da rota aceita">
-      <LiveMap
-        markers={markers}
-        routeGeometry={route.routeGeometry}
-        ariaLabel="Mapa da rota ativa com a localização do motoboy"
-        size="full-screen"
-        showCenterControls
-        fitBehindBottomPanel
-        controlsBottomOffset="calc(30dvh + 64px + env(safe-area-inset-bottom))"
-      />
+    <section
+      className="courier-route-map-screen"
+      data-layout={landscape ? "landscape" : "portrait"}
+      style={screenStyle}
+      aria-label="Mapa da rota aceita"
+    >
+      <div className="courier-route-map-screen__map">
+        <LiveMap
+          markers={markers}
+          routeGeometry={route.routeGeometry}
+          ariaLabel="Mapa da rota ativa com a localização do motoboy"
+          size="full-screen"
+          showCenterControls
+          showCenterOnMe
+          compactCenterControls
+          fitBehindBottomPanel
+          fitPadding={fitPadding}
+          resizeKey={resizeKey}
+          singleAttribution
+          controlsTopOffset="calc(env(safe-area-inset-top) + var(--courier-center-controls-top, 104px))"
+          controlsRightOffset="var(--courier-controls-right, 12px)"
+        />
+      </div>
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-start gap-2 p-3 pt-[max(env(safe-area-inset-top),12px)]">
-        <button type="button" className="pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-4 text-sm font-semibold shadow-lg" onClick={onBack}>
+        <button type="button" className="courier-map-top-button pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-4 text-sm font-semibold shadow-lg" onClick={onBack}>
           <ArrowLeft size={16} /> Entregas
         </button>
-        <button type="button" className="pointer-events-auto grid h-12 w-12 place-items-center rounded-xl bg-white/95 shadow-lg" onClick={onRefresh} aria-label="Atualizar rota">
+        <button type="button" className="courier-map-top-button pointer-events-auto grid h-12 w-12 place-items-center rounded-xl bg-white/95 shadow-lg" onClick={onRefresh} aria-label="Atualizar rota">
           <RefreshCw size={16} />
         </button>
       </div>
       <div
-        className="absolute inset-x-0 bottom-0 z-20 max-h-[30dvh] overflow-y-auto rounded-t-2xl border-t border-border bg-white/95 p-4 shadow-[0_-8px_24px_rgba(0,0,0,.12)] backdrop-blur"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
+        ref={panelRef}
+        className="courier-route-map-screen__panel"
+        role="region"
+        aria-label="Detalhes da próxima parada"
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {nextStop ? `${nextStop.kind === "pickup" ? "Próxima parada · retirada" : "Próxima parada · entrega"}` : "Rota concluída"}
-            </div>
-            <h2 className="mt-1 truncate text-sm font-bold">
-              {nextStop ? `${nextStop.code} · ${nextStop.customerName}` : "Todas as paradas foram concluídas"}
-            </h2>
-            <p className="mt-1 flex items-start gap-1 text-xs leading-relaxed text-muted-foreground">
-              <MapPin size={13} className="mt-0.5 shrink-0" />
-              {nextStop?.address ?? "A rota não tem paradas pendentes."}
-            </p>
+        <div className="courier-route-map-screen__handle" aria-hidden="true" />
+        <div className="courier-route-map-screen__stop-heading">
+          <div className="courier-route-map-screen__eyebrow">
+            {nextStop
+              ? `${nextStop.kind === "pickup" ? "Próxima parada · retirada" : "Próxima parada · entrega"} · ${nextStop.code}`
+              : "Rota concluída"}
           </div>
-          <div className="shrink-0 text-right text-xs font-semibold text-muted-foreground">
-            {route.distanceKm != null && <div>{route.distanceKm} km</div>}
-            {route.estimatedMinutes != null && <div className="mt-1 flex items-center gap-1"><Clock3 size={12} />{route.estimatedMinutes} min</div>}
-          </div>
+          <h2 className="courier-route-map-screen__customer">
+            {nextStopName ?? "Todas as paradas foram concluídas"}
+          </h2>
+          <p className="courier-route-map-screen__address">
+            <MapPin size={16} aria-hidden="true" />
+            <span>{nextStop?.address ?? "A rota não tem paradas pendentes."}</span>
+          </p>
+          {nextDelivery?.notes && (
+            <p className="courier-route-map-screen__notes">{nextDelivery.notes}</p>
+          )}
         </div>
-        {activeDelivery && (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-            <span className="text-sm font-bold">{money(activeDelivery.deliveryAmount)}</span>
-            <CourierUnableToDeliverAction deliveryId={activeDelivery.id} className="min-h-12" />
+        <div className="courier-route-map-screen__summary" aria-label="Resumo da rota">
+          {route.distanceKm != null && (
+            <span><Route size={16} aria-hidden="true" />{route.distanceKm} km</span>
+          )}
+          {route.estimatedMinutes != null && (
+            <span><Clock3 size={16} aria-hidden="true" />{route.estimatedMinutes} min</span>
+          )}
+          <span><Banknote size={16} aria-hidden="true" />{money(amount)}</span>
+        </div>
+        {nextStopUrl && nextStopWazeUrl && (
+          <div className="courier-route-map-screen__actions">
+            <a className="button-primary min-h-12 flex-1 justify-center" href={nextStopUrl} target="_blank" rel="noreferrer">
+              <Navigation size={16} /> Google Maps
+            </a>
+            <a className="button-primary min-h-12 flex-1 justify-center" href={nextStopWazeUrl} target="_blank" rel="noreferrer">
+              <Navigation size={16} /> Waze
+            </a>
           </div>
         )}
-        {nextStopUrl && nextStopWazeUrl && (
-          <div className="mt-3 flex gap-2">
-            <a className="button-secondary min-h-12 flex-1 justify-center" href={nextStopUrl} target="_blank" rel="noreferrer">
-              <Navigation size={15} /> Google Maps
+        {phone && whatsappDigits && (
+          <div className="courier-route-map-screen__actions courier-route-map-screen__actions--secondary">
+            <a className="button-secondary min-h-12 flex-1 justify-center" href={`tel:${phone}`}>
+              <Phone size={16} /> Telefone
             </a>
-            <a className="button-secondary min-h-12 flex-1 justify-center" href={nextStopWazeUrl} target="_blank" rel="noreferrer">
-              <Navigation size={15} /> Waze
+            <a className="button-secondary min-h-12 flex-1 justify-center" href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noreferrer">
+              WhatsApp
             </a>
           </div>
+        )}
+        {activeDelivery && (
+          <CourierUnableToDeliverAction
+            deliveryId={activeDelivery.id}
+            className="courier-route-map-screen__unable"
+          />
         )}
       </div>
     </section>

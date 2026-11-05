@@ -4,6 +4,7 @@ import mapboxgl, {
   type Map as MapboxMap,
   type Marker,
 } from "mapbox-gl";
+import { Crosshair, LocateFixed } from "lucide-react";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 export type MapCoordinate = {
@@ -145,6 +146,7 @@ function fitMapToCoordinates(
   map: MapboxMap,
   coordinates: [number, number][],
   fitBehindBottomPanel = false,
+  fitPadding?: { top?: number; right?: number; bottom?: number; left?: number },
 ) {
   if (!coordinates.length) return;
   if (coordinates.length === 1) {
@@ -157,7 +159,12 @@ function fitMapToCoordinates(
     ? Math.max(60, Math.round(map.getContainer().clientHeight * 0.32))
     : 60;
   map.fitBounds(bounds, {
-    padding: { top: 60, right: 60, bottom: bottomPadding, left: 60 },
+    padding: fitPadding ?? {
+      top: 60,
+      right: 60,
+      bottom: bottomPadding,
+      left: 60,
+    },
     maxZoom: 15,
     duration: 350,
   });
@@ -277,6 +284,13 @@ export default function LiveMapbox({
   controlsAboveAttribution = false,
   fitBehindBottomPanel = false,
   controlsBottomOffset,
+  controlsTopOffset,
+  controlsRightOffset,
+  compactCenterControls = false,
+  fitPadding,
+  resizeKey,
+  autoFitOnGeometryChange = true,
+  singleAttribution = false,
 }: {
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
@@ -288,6 +302,13 @@ export default function LiveMapbox({
   controlsAboveAttribution?: boolean;
   fitBehindBottomPanel?: boolean;
   controlsBottomOffset?: string | number;
+  controlsTopOffset?: string | number;
+  controlsRightOffset?: string | number;
+  compactCenterControls?: boolean;
+  fitPadding?: { top?: number; right?: number; bottom?: number; left?: number };
+  resizeKey?: string | number;
+  autoFitOnGeometryChange?: boolean;
+  singleAttribution?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapboxMap | null>(null);
@@ -295,6 +316,12 @@ export default function LiveMapbox({
   const userLocationMarkerRef = useRef<Marker | null>(null);
   const syncMapDataRef = useRef<() => void>(() => {});
   const currentDataRef = useRef({ markers, routeGeometry });
+  const fitPaddingRef = useRef(fitPadding);
+  const fitBehindBottomPanelRef = useRef(fitBehindBottomPanel);
+  const autoFitOnGeometryChangeRef = useRef(autoFitOnGeometryChange);
+  fitPaddingRef.current = fitPadding;
+  fitBehindBottomPanelRef.current = fitBehindBottomPanel;
+  autoFitOnGeometryChangeRef.current = autoFitOnGeometryChange;
   const initialViewSetRef = useRef(false);
   const lastFitGeometryRef = useRef<string | null>(null);
   const [mapMessage, setMapMessage] = useState<string | null>(null);
@@ -319,7 +346,7 @@ export default function LiveMapbox({
         center: INITIAL_CENTER,
         zoom: 12,
         language: "pt",
-        attributionControl: true,
+        attributionControl: !singleAttribution,
         logoPosition: "bottom-left",
         cooperativeGestures: true,
       });
@@ -327,6 +354,12 @@ export default function LiveMapbox({
         new mapboxgl.NavigationControl({ showCompass: false }),
         "top-right",
       );
+      if (singleAttribution) {
+        map.addControl(
+          new mapboxgl.AttributionControl({ compact: true }),
+          "bottom-right",
+        );
+      }
     } catch (error) {
       logMapError("Não foi possível iniciar o mapa.", error);
       map?.remove();
@@ -356,9 +389,16 @@ export default function LiveMapbox({
               .join(";")
           : "";
         const shouldFit =
-          !initialViewSetRef.current || geometryKey !== lastFitGeometryRef.current;
+          !initialViewSetRef.current ||
+          (autoFitOnGeometryChangeRef.current &&
+            geometryKey !== lastFitGeometryRef.current);
         if (fitCoordinates.length && shouldFit) {
-          fitMapToCoordinates(map!, fitCoordinates, fitBehindBottomPanel);
+          fitMapToCoordinates(
+            map!,
+            fitCoordinates,
+            fitBehindBottomPanelRef.current,
+            fitPaddingRef.current,
+          );
           initialViewSetRef.current = true;
           lastFitGeometryRef.current = geometryKey;
         }
@@ -430,6 +470,18 @@ export default function LiveMapbox({
     if (map?.isStyleLoaded()) syncMapDataRef.current();
   }, [markers, routeGeometry]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const frame = window.requestAnimationFrame(() => {
+      map.resize();
+      if (!initialViewSetRef.current && map.isStyleLoaded()) {
+        syncMapDataRef.current();
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [resizeKey]);
+
   const centerAll = () => {
     const map = mapRef.current;
     if (!map) return;
@@ -450,7 +502,7 @@ export default function LiveMapbox({
       return;
     }
     setLocationMessage(null);
-    fitMapToCoordinates(map, coordinates, fitBehindBottomPanel);
+    fitMapToCoordinates(map, coordinates, fitBehindBottomPanel, fitPaddingRef.current);
   };
 
   const centerOnMe = () => {
@@ -530,30 +582,43 @@ export default function LiveMapbox({
       )}
       {showCenterControls && (
         <div
-          className="absolute right-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2"
+          className="absolute z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2"
           style={{
-            bottom:
-              controlsBottomOffset ??
-              (controlsAboveAttribution ? 40 : 12),
+            ...(controlsTopOffset != null
+              ? { top: controlsTopOffset }
+              : {
+                  bottom:
+                    controlsBottomOffset ??
+                    (controlsAboveAttribution ? 40 : 12),
+                }),
+            right: controlsRightOffset ?? 12,
           }}
         >
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className={compactCenterControls ? "flex flex-col gap-2" : "flex flex-wrap justify-end gap-2"}>
             <button
-              className="rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-foreground shadow-md hover:bg-muted"
+              className={compactCenterControls
+                ? "grid h-12 w-12 place-items-center rounded-xl border border-border bg-white text-foreground shadow-md hover:bg-muted"
+                : "rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-foreground shadow-md hover:bg-muted"}
               type="button"
               onClick={centerAll}
               data-testid="button-map-center-all"
+              aria-label={centerOnStoresOnly ? "Centralizar filiais" : "Centralizar todos"}
+              title={centerOnStoresOnly ? "Centralizar filiais" : "Centralizar todos"}
             >
-              {centerOnStoresOnly ? "Centralizar filiais" : "Centralizar todos"}
+              {compactCenterControls ? <Crosshair size={18} /> : (centerOnStoresOnly ? "Centralizar filiais" : "Centralizar todos")}
             </button>
             {showCenterOnMe && (
               <button
-                className="rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-foreground shadow-md hover:bg-muted"
+                className={compactCenterControls
+                  ? "grid h-12 w-12 place-items-center rounded-xl border border-border bg-white text-foreground shadow-md hover:bg-muted"
+                  : "rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-foreground shadow-md hover:bg-muted"}
                 type="button"
                 onClick={centerOnMe}
                 data-testid="button-map-center-me"
+                aria-label="Centralizar em mim"
+                title="Centralizar em mim"
               >
-                Centralizar em mim
+                {compactCenterControls ? <LocateFixed size={18} /> : "Centralizar em mim"}
               </button>
             )}
           </div>

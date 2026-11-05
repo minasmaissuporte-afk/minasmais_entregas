@@ -3,9 +3,20 @@ import {
   useGetCourierDeliveryNavigation,
   type Delivery,
 } from "@workspace/api-client-react";
-import { ArrowLeft, Clock3, MapPin, Navigation, RefreshCw } from "lucide-react";
+import type { CSSProperties } from "react";
+import {
+  ArrowLeft,
+  Banknote,
+  Clock3,
+  MapPin,
+  Navigation,
+  Phone,
+  RefreshCw,
+  Route,
+} from "lucide-react";
 import LiveMap, { type MapMarker } from "@/components/live-map";
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
+import useCourierMapPanel from "@/hooks/use-courier-map-panel";
 
 export default function CourierDeliveryNavigation({
   deliveryId,
@@ -54,26 +65,49 @@ export default function CourierDeliveryNavigation({
   const wazeUrl = data
     ? `https://waze.com/ul?ll=${data.targetPosition.latitude}%2C${data.targetPosition.longitude}&navigate=yes`
     : null;
+  const { panelRef, panelHeight, landscape, fitPadding } = useCourierMapPanel();
+  const resizeKey = `${Math.round(panelHeight)}:${landscape}`;
+  const phoneDigits = delivery.customerPhone?.replace(/\D/g, "");
+  const whatsappDigits = phoneDigits
+    ? phoneDigits.startsWith("55")
+      ? phoneDigits
+      : `55${phoneDigits}`
+    : null;
+  const screenStyle = {
+    "--courier-panel-height": `${panelHeight}px`,
+  } as CSSProperties;
 
   return (
-    <section className="relative h-[100dvh] w-full overflow-hidden bg-[#f4f3f1] text-[#24272d]" aria-label="Mapa da entrega individual">
-      {data && (
+    <section
+      className="courier-route-map-screen"
+      data-layout={landscape ? "landscape" : "portrait"}
+      style={screenStyle}
+      aria-label="Mapa da entrega individual"
+    >
+      <div className="courier-route-map-screen__map">
         <LiveMap
           markers={markers}
-          routeGeometry={data.routeGeometry}
-          ariaLabel={`Rota do motoboy até ${data.targetLabel.toLowerCase()}`}
+          routeGeometry={data?.routeGeometry}
+          ariaLabel={`Rota do motoboy até ${data?.targetLabel.toLowerCase() ?? delivery.customerName.toLowerCase()}`}
           size="full-screen"
           showCenterControls
+          showCenterOnMe
+          compactCenterControls
           fitBehindBottomPanel
-          controlsBottomOffset="calc(30dvh + 64px + env(safe-area-inset-bottom))"
+          fitPadding={fitPadding}
+          resizeKey={resizeKey}
+          autoFitOnGeometryChange={false}
+          singleAttribution
+          controlsTopOffset="calc(env(safe-area-inset-top) + var(--courier-center-controls-top, 104px))"
+          controlsRightOffset="var(--courier-controls-right, 12px)"
         />
-      )}
+      </div>
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-start gap-2 p-3 pt-[max(env(safe-area-inset-top),12px)]">
-        <button type="button" className="pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-4 text-sm font-semibold shadow-lg" onClick={onBack}>
+        <button type="button" className="courier-map-top-button pointer-events-auto flex min-h-12 items-center gap-2 rounded-xl bg-white/95 px-4 text-sm font-semibold shadow-lg" onClick={onBack}>
           <ArrowLeft size={16} /> Entregas
         </button>
         <button
-          className="pointer-events-auto grid h-12 w-12 place-items-center rounded-xl bg-white/95 shadow-lg"
+          className="courier-map-top-button pointer-events-auto grid h-12 w-12 place-items-center rounded-xl bg-white/95 shadow-lg"
           type="button"
           disabled={navigation.isFetching}
           onClick={() => void navigation.refetch()}
@@ -84,36 +118,54 @@ export default function CourierDeliveryNavigation({
       </div>
 
       <div
-        className="absolute inset-x-0 bottom-0 z-20 max-h-[30dvh] overflow-y-auto rounded-t-2xl border-t border-border bg-white/95 p-4 shadow-[0_-8px_24px_rgba(0,0,0,.12)] backdrop-blur"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
+        ref={panelRef}
+        className="courier-route-map-screen__panel"
+        role="region"
+        aria-label="Detalhes da entrega"
       >
+        <div className="courier-route-map-screen__handle" aria-hidden="true" />
         {data ? (
           <>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{data.targetLabel}</div>
-                <h2 className="mt-1 truncate text-sm font-bold">{delivery.customerName} · {delivery.code}</h2>
-                <p className="mt-1 flex items-start gap-1 text-xs leading-relaxed text-muted-foreground">
-                  <MapPin size={13} className="mt-0.5 shrink-0" />{data.targetAddress}
-                </p>
-              </div>
-              <div className="shrink-0 text-right text-xs font-semibold text-muted-foreground">
-                {data.distanceMeters != null && <div>{(data.distanceMeters / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km</div>}
-                {data.durationSeconds != null && <div className="mt-1 flex items-center gap-1"><Clock3 size={12} />{Math.ceil(data.durationSeconds / 60)} min</div>}
-              </div>
+            <div className="courier-route-map-screen__stop-heading">
+              <div className="courier-route-map-screen__eyebrow">{data.targetLabel} · {delivery.code}</div>
+              <h2 className="courier-route-map-screen__customer">{delivery.customerName}</h2>
+              <p className="courier-route-map-screen__address">
+                <MapPin size={16} aria-hidden="true" />
+                <span>{data.targetAddress}</span>
+              </p>
+              {delivery.notes && <p className="courier-route-map-screen__notes">{delivery.notes}</p>}
             </div>
-            {delivery.notes && <p className="mt-2 text-xs text-muted-foreground">{delivery.notes}</p>}
+            <div className="courier-route-map-screen__summary" aria-label="Resumo da entrega">
+              {data.distanceMeters != null && (
+                <span><Route size={16} aria-hidden="true" />{(data.distanceMeters / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km</span>
+              )}
+              {data.durationSeconds != null && (
+                <span><Clock3 size={16} aria-hidden="true" />{Math.ceil(data.durationSeconds / 60)} min</span>
+              )}
+              <span><Banknote size={16} aria-hidden="true" />{delivery.deliveryAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+            </div>
+            <div className="courier-route-map-screen__actions">
+              {mapsUrl && (
+                <a className="button-primary min-h-12 flex-1 justify-center" href={mapsUrl} target="_blank" rel="noreferrer">
+                  <Navigation size={16} /> Google Maps
+                </a>
+              )}
+              {wazeUrl && (
+                <a className="button-primary min-h-12 flex-1 justify-center" href={wazeUrl} target="_blank" rel="noreferrer">
+                  <Navigation size={16} /> Waze
+                </a>
+              )}
+            </div>
             {delivery.status === "RETURNING_TO_STORE" ? (
-              <p className="mt-2 text-xs font-semibold text-amber-900">Devolva o produto na filial.</p>
-            ) : delivery.customerPhone ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                <a className="button-secondary min-h-12" href={`tel:${delivery.customerPhone}`}>Telefone</a>
+              <p className="courier-route-map-screen__return-reminder">Devolva o produto na filial.</p>
+            ) : delivery.customerPhone && whatsappDigits ? (
+              <div className="courier-route-map-screen__actions courier-route-map-screen__actions--secondary">
+                <a className="button-secondary min-h-12 flex-1 justify-center" href={`tel:${delivery.customerPhone}`}>
+                  <Phone size={16} /> Telefone
+                </a>
                 <a
-                  className="button-secondary min-h-12"
-                  href={`https://wa.me/${(() => {
-                    const digits = delivery.customerPhone!.replace(/\D/g, "");
-                    return digits.startsWith("55") ? digits : `55${digits}`;
-                  })()}`}
+                  className="button-secondary min-h-12 flex-1 justify-center"
+                  href={`https://wa.me/${whatsappDigits}`}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -121,27 +173,15 @@ export default function CourierDeliveryNavigation({
                 </a>
               </div>
             ) : null}
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-              <span className="text-sm font-bold">
-                {delivery.deliveryAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-              </span>
-              {delivery.status !== "RETURNING_TO_STORE" && <CourierUnableToDeliverAction deliveryId={deliveryId} />}
-            </div>
-            <div className="mt-3 flex gap-2">
-              {mapsUrl && (
-                <a className="button-secondary min-h-12 flex-1 justify-center" href={mapsUrl} target="_blank" rel="noreferrer">
-                  <Navigation size={14} /> Google Maps
-                </a>
-              )}
-              {wazeUrl && (
-                <a className="button-secondary min-h-12 flex-1 justify-center" href={wazeUrl} target="_blank" rel="noreferrer">
-                  <Navigation size={14} /> Waze
-                </a>
-              )}
-            </div>
+            {delivery.status !== "RETURNING_TO_STORE" && (
+              <CourierUnableToDeliverAction
+                deliveryId={deliveryId}
+                className="courier-route-map-screen__unable"
+              />
+            )}
           </>
         ) : (
-          <div className="min-h-24 py-3 text-sm text-muted-foreground" aria-live="polite">
+          <div className="courier-route-map-screen__loading" aria-live="polite">
             {navigation.isLoading
               ? "Obtendo GPS e calculando a rota…"
               : ((navigation.error as { data?: { error?: string } } | null)?.data?.error ??
