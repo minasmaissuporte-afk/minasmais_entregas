@@ -313,6 +313,8 @@ export const ListDeliveriesResponseItem = zod.object({
   "storeName": zod.string(),
   "storeAddress": zod.string().optional(),
   "storeCity": zod.string().optional(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
   "courierId": zod.string().nullish(),
   "courierName": zod.string().nullish(),
   "courierInitials": zod.string().nullish(),
@@ -385,6 +387,8 @@ export const CreateDeliveryResponse = zod.object({
   "storeName": zod.string(),
   "storeAddress": zod.string().optional(),
   "storeCity": zod.string().optional(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
   "courierId": zod.string().nullish(),
   "courierName": zod.string().nullish(),
   "courierInitials": zod.string().nullish(),
@@ -432,6 +436,8 @@ export const GetDeliveryResponse = zod.object({
   "storeName": zod.string(),
   "storeAddress": zod.string().optional(),
   "storeCity": zod.string().optional(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
   "courierId": zod.string().nullish(),
   "courierName": zod.string().nullish(),
   "courierInitials": zod.string().nullish(),
@@ -494,6 +500,8 @@ export const DispatchDeliveryResponse = zod.object({
   "storeName": zod.string(),
   "storeAddress": zod.string().optional(),
   "storeCity": zod.string().optional(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
   "courierId": zod.string().nullish(),
   "courierName": zod.string().nullish(),
   "courierInitials": zod.string().nullish(),
@@ -551,6 +559,8 @@ export const UpdateDeliveryStatusResponse = zod.object({
   "storeName": zod.string(),
   "storeAddress": zod.string().optional(),
   "storeCity": zod.string().optional(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
   "courierId": zod.string().nullish(),
   "courierName": zod.string().nullish(),
   "courierInitials": zod.string().nullish(),
@@ -917,6 +927,8 @@ export const GetMyProfileResponse = zod.object({
   "email": zod.string(),
   "name": zod.string(),
   "phone": zod.string().nullish(),
+  "storeName": zod.string().nullish(),
+  "courierStatus": zod.string().nullish(),
   "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
   "storeId": zod.string().nullable(),
   "courierId": zod.string().nullable()
@@ -932,6 +944,8 @@ export const ListAccessUsersResponseItem = zod.object({
   "email": zod.string(),
   "name": zod.string(),
   "phone": zod.string().nullish(),
+  "storeName": zod.string().nullish(),
+  "courierStatus": zod.string().nullish(),
   "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
   "storeId": zod.string().nullable(),
   "courierId": zod.string().nullable()
@@ -966,6 +980,8 @@ export const UpdateAccessUserResponse = zod.object({
   "email": zod.string(),
   "name": zod.string(),
   "phone": zod.string().nullish(),
+  "storeName": zod.string().nullish(),
+  "courierStatus": zod.string().nullish(),
   "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
   "storeId": zod.string().nullable(),
   "courierId": zod.string().nullable()
@@ -1035,6 +1051,10 @@ export const CreateDeliveryRouteResponse = zod.object({
   "storeName": zod.string(),
   "storeAddress": zod.string(),
   "storeCity": zod.string(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
   "deliveryAmount": zod.number(),
   "status": zod.string()
 })),
@@ -1089,6 +1109,10 @@ export const ListCourierRoutesResponseItem = zod.object({
   "storeName": zod.string(),
   "storeAddress": zod.string(),
   "storeCity": zod.string(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
   "deliveryAmount": zod.number(),
   "status": zod.string()
 })),
@@ -1112,6 +1136,48 @@ export const ListCourierRoutesResponseItem = zod.object({
 })).nullable()
 })
 export const ListCourierRoutesResponse = zod.array(ListCourierRoutesResponseItem)
+
+
+/**
+ * @summary Preview an offered route without accepting or locking it
+ */
+export const GetCourierRoutePreviewParams = zod.object({
+  "routeId": zod.coerce.string()
+})
+
+export const getCourierRoutePreviewResponseStartPositionLatitudeMin = -90;
+export const getCourierRoutePreviewResponseStartPositionLatitudeMax = 90;
+
+export const getCourierRoutePreviewResponseStartPositionLongitudeMin = -180;
+export const getCourierRoutePreviewResponseStartPositionLongitudeMax = 180;
+
+export const getCourierRoutePreviewResponseRouteGeometryItemLatitudeMin = -90;
+export const getCourierRoutePreviewResponseRouteGeometryItemLatitudeMax = 90;
+
+export const getCourierRoutePreviewResponseRouteGeometryItemLongitudeMin = -180;
+export const getCourierRoutePreviewResponseRouteGeometryItemLongitudeMax = 180;
+
+
+
+export const GetCourierRoutePreviewResponse = zod.object({
+  "startPosition": zod.object({
+  "latitude": zod.number().min(getCourierRoutePreviewResponseStartPositionLatitudeMin).max(getCourierRoutePreviewResponseStartPositionLatitudeMax),
+  "longitude": zod.number().min(getCourierRoutePreviewResponseStartPositionLongitudeMin).max(getCourierRoutePreviewResponseStartPositionLongitudeMax)
+}),
+  "stops": zod.array(zod.object({
+  "deliveryId": zod.string(),
+  "kind": zod.enum(['pickup', 'delivery']),
+  "address": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number()
+})),
+  "routeGeometry": zod.array(zod.object({
+  "latitude": zod.number().min(getCourierRoutePreviewResponseRouteGeometryItemLatitudeMin).max(getCourierRoutePreviewResponseRouteGeometryItemLatitudeMax),
+  "longitude": zod.number().min(getCourierRoutePreviewResponseRouteGeometryItemLongitudeMin).max(getCourierRoutePreviewResponseRouteGeometryItemLongitudeMax)
+})).nullable(),
+  "distanceKm": zod.number().nullable(),
+  "estimatedMinutes": zod.number().int().nullable()
+})
 
 
 /**
@@ -1156,6 +1222,19 @@ export const UpdateCourierLocationResponse = zod.object({
   "speedMetersPerSecond": zod.number().min(updateCourierLocationResponseSpeedMetersPerSecondMin).nullable(),
   "measuredAt": zod.coerce.date(),
   "lastLocationAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Set the signed-in courier as online or offline
+ */
+export const UpdateCourierAvailabilityBody = zod.object({
+  "online": zod.boolean()
+})
+
+export const UpdateCourierAvailabilityResponse = zod.object({
+  "online": zod.boolean(),
+  "status": zod.enum(['AVAILABLE', 'BUSY', 'OFFLINE'])
 })
 
 
@@ -1254,6 +1333,10 @@ export const AcceptCourierRouteResponse = zod.object({
   "storeName": zod.string(),
   "storeAddress": zod.string(),
   "storeCity": zod.string(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
   "deliveryAmount": zod.number(),
   "status": zod.string()
 })),
@@ -1276,6 +1359,16 @@ export const AcceptCourierRouteResponse = zod.object({
   "longitude": zod.number().min(acceptCourierRouteResponseRouteGeometryItemLongitudeMin).max(acceptCourierRouteResponseRouteGeometryItemLongitudeMax)
 })).nullable()
 })
+
+
+/**
+ * @summary Decline a grouped route offer for the signed-in courier
+ */
+export const DeclineCourierRouteParams = zod.object({
+  "routeId": zod.coerce.string()
+})
+
+export const DeclineCourierRouteResponse = zod.void()
 
 
 /**
@@ -1317,6 +1410,10 @@ export const CompleteCourierRouteStopResponse = zod.object({
   "storeName": zod.string(),
   "storeAddress": zod.string(),
   "storeCity": zod.string(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
   "deliveryAmount": zod.number(),
   "status": zod.string()
 })),
@@ -1376,6 +1473,10 @@ export const RecordCourierStopArrivalResponse = zod.object({
   "storeName": zod.string(),
   "storeAddress": zod.string(),
   "storeCity": zod.string(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
   "deliveryAmount": zod.number(),
   "status": zod.string()
 })),
@@ -1437,5 +1538,15 @@ export const CreateCourierDeliveryCancellationResponse = zod.object({
   "priority": zod.boolean(),
   "affectedDeliveries": zod.number().int().min(1)
 })
+
+
+/**
+ * @summary Decline an individual delivery offer and return it to the central queue
+ */
+export const DeclineCourierDeliveryParams = zod.object({
+  "deliveryId": zod.coerce.string()
+})
+
+export const DeclineCourierDeliveryResponse = zod.void()
 
 

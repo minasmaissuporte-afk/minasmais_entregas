@@ -681,6 +681,33 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/CourierDeliveryRoute"
+  /courier/routes/{routeId}/preview:
+    get:
+      operationId: getCourierRoutePreview
+      tags: [routes]
+      summary: Preview an offered route without accepting or locking it
+      parameters:
+        - in: path
+          name: routeId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Route estimate and map geometry for this offer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourierRoutePreview"
+        "403":
+          description: Courier account is not linked or is offline
+        "404":
+          description: Route offer not available to this courier
+        "422":
+          description: Route addresses cannot be planned
+        "502":
+          description: External routing service failed
+        "503":
+          description: Mapbox is not configured
   /courier/location:
     post:
       operationId: updateCourierLocation
@@ -699,6 +726,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CourierLocation"
+  /courier/availability:
+    patch:
+      operationId: updateCourierAvailability
+      tags: [courier]
+      summary: Set the signed-in courier as online or offline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourierAvailabilityInput"
+      responses:
+        "200":
+          description: Availability updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourierAvailabilityResponse"
+        "403":
+          description: Courier account is not linked
+        "409":
+          description: Courier has active delivery work and cannot go offline
   /courier/deliveries/{deliveryId}/navigation:
     get:
       operationId: getCourierDeliveryNavigation
@@ -751,6 +800,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CourierDeliveryRoute"
+  /courier/routes/{routeId}/decline:
+    post:
+      operationId: declineCourierRoute
+      tags: [routes]
+      summary: Decline a grouped route offer for the signed-in courier
+      parameters:
+        - in: path
+          name: routeId
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Offer declined for this courier; other couriers can still accept it
+        "403":
+          description: Courier account is not linked
+        "409":
+          description: Route is no longer offered
   /courier/routes/{routeId}/stops/{stopId}/complete:
     post:
       operationId: completeCourierRouteStop
@@ -829,6 +895,23 @@ paths:
           description: Delivery is not assigned to the signed-in courier
         "409":
           description: Delivery or route changed, or a fresh GPS fix is needed
+  /courier/deliveries/{deliveryId}/decline:
+    post:
+      operationId: declineCourierDelivery
+      tags: [courier]
+      summary: Decline an individual delivery offer and return it to the central queue
+      parameters:
+        - in: path
+          name: deliveryId
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Delivery returned to AWAITING_COURIER
+        "403":
+          description: Delivery is not offered to the signed-in courier
+        "409":
+          description: Delivery is no longer offered
 components:
   schemas:
     HealthStatus:
@@ -840,7 +923,7 @@ components:
         - status
     Delivery:
       type: object
-      required: [id, code, customerName, destination, storeId, storeName, status, priority, deliveryAmount, createdAt, events, customerLatitude, customerLongitude, evidenceAvailable]
+      required: [id, code, customerName, destination, storeId, storeName, status, priority, deliveryAmount, createdAt, events, customerLatitude, customerLongitude, storeLatitude, storeLongitude, evidenceAvailable]
       properties:
         id: { type: string }
         code: { type: string }
@@ -853,6 +936,8 @@ components:
         storeName: { type: string }
         storeAddress: { type: string }
         storeCity: { type: string }
+        storeLatitude: { type: ["number", "null"] }
+        storeLongitude: { type: ["number", "null"] }
         courierId: { type: ["string", "null"] }
         courierName: { type: ["string", "null"] }
         courierInitials: { type: ["string", "null"] }
@@ -1219,6 +1304,8 @@ components:
         email: { type: string }
         name: { type: string }
         phone: { type: ["string", "null"] }
+        storeName: { type: ["string", "null"] }
+        courierStatus: { type: ["string", "null"] }
         role:
           type: string
           enum: [ADMIN, CENTRAL, STORE_MANAGER, STORE_STAFF, COURIER, PENDING]
@@ -1267,6 +1354,17 @@ components:
         accuracyMeters: { type: ["number", "null"], minimum: 0 }
         speedMetersPerSecond: { type: ["number", "null"], minimum: 0 }
         measuredAt: { type: string, format: date-time }
+    CourierAvailabilityInput:
+      type: object
+      required: [online]
+      properties:
+        online: { type: boolean }
+    CourierAvailabilityResponse:
+      type: object
+      required: [online, status]
+      properties:
+        online: { type: boolean }
+        status: { type: string, enum: [AVAILABLE, BUSY, OFFLINE] }
     CourierLocation:
       type: object
       required: [latitude, longitude, accuracyMeters, speedMetersPerSecond, measuredAt, lastLocationAt]
@@ -1302,7 +1400,7 @@ components:
         lastLocationAt: { type: string, format: date-time }
     RouteDeliverySummary:
       type: object
-      required: [id, code, customerName, customerPhone, destination, notes, storeName, storeAddress, storeCity, deliveryAmount, status]
+      required: [id, code, customerName, customerPhone, destination, notes, storeName, storeAddress, storeCity, storeLatitude, storeLongitude, customerLatitude, customerLongitude, deliveryAmount, status]
       properties:
         id: { type: string }
         code: { type: string }
@@ -1313,6 +1411,10 @@ components:
         storeName: { type: string }
         storeAddress: { type: string }
         storeCity: { type: string }
+        storeLatitude: { type: ["number", "null"] }
+        storeLongitude: { type: ["number", "null"] }
+        customerLatitude: { type: ["number", "null"] }
+        customerLongitude: { type: ["number", "null"] }
         deliveryAmount: { type: number }
         status: { type: string }
     DeliveryRouteStop:
@@ -1355,4 +1457,29 @@ components:
           type: ["array", "null"]
           items:
             $ref: "#/components/schemas/RouteCoordinate"
+    CourierRoutePreviewStop:
+      type: object
+      required: [deliveryId, kind, address, latitude, longitude]
+      properties:
+        deliveryId: { type: string }
+        kind: { type: string, enum: [pickup, delivery] }
+        address: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+    CourierRoutePreview:
+      type: object
+      required: [startPosition, stops, routeGeometry, distanceKm, estimatedMinutes]
+      properties:
+        startPosition:
+          $ref: "#/components/schemas/RouteCoordinate"
+        stops:
+          type: array
+          items:
+            $ref: "#/components/schemas/CourierRoutePreviewStop"
+        routeGeometry:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/RouteCoordinate"
+        distanceKm: { type: ["number", "null"] }
+        estimatedMinutes: { type: ["integer", "null"] }
 

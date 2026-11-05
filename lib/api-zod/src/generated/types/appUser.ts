@@ -15,6 +15,10 @@ export interface AppUser {
   name: string;
   /** @nullable */
   phone?: string | null;
+  /** @nullable */
+  storeName?: string | null;
+  /** @nullable */
+  courierStatus?: string | null;
   role: AppUserRole;
   /** @nullable */
   storeId: string | null;

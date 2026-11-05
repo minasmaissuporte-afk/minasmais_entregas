@@ -187,6 +187,29 @@ export const deliveryRouteStopsTable = pgTable(
   ],
 );
 
+export const courierRouteOfferDeclinesTable = pgTable(
+  "courier_route_offer_declines",
+  {
+    id: text("id").primaryKey(),
+    routeId: text("route_id")
+      .notNull()
+      .references(() => deliveryRoutesTable.id, { onDelete: "cascade" }),
+    courierId: text("courier_id")
+      .notNull()
+      .references(() => couriersTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("courier_route_offer_declines_route_courier_idx").on(
+      table.routeId,
+      table.courierId,
+    ),
+    index("courier_route_offer_declines_courier_idx").on(table.courierId),
+  ],
+);
+
 export const insertDeliverySchema = createInsertSchema(deliveriesTable).omit({
   createdAt: true,
   updatedAt: true,

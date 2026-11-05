@@ -13,9 +13,12 @@ import {
 } from "@capacitor-community/background-geolocation";
 import {
   getGetCourierEarningsQueryKey,
+  getGetCourierRoutePreviewQueryKey,
   getListCourierRoutesQueryKey,
   getListDeliveriesQueryKey,
   useAcceptCourierRoute,
+  useDeclineCourierRoute,
+  useGetCourierRoutePreview,
   useCompleteCourierRouteStop,
   useRecordCourierStopArrival,
   useUpdateCourierLocation,
@@ -24,7 +27,7 @@ import {
   type Delivery,
 } from "@workspace/api-client-react";
 import { Check, CheckCircle2, Clock3, LoaderCircle, Map, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
-import type { MapCoordinate } from "@/components/live-map";
+import LiveMap, { type MapCoordinate, type MapMarker } from "@/components/live-map";
 import EvidencePhotoAction from "@/components/evidence-photo-action";
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
 import { triggerCourierLightHaptic } from "@/lib/courier-haptics";
@@ -89,6 +92,7 @@ export default function CourierRoutesSection({
   courierId,
   routes,
   deliveries,
+  online,
   isLoading,
   isError,
   onRetry,
@@ -100,6 +104,7 @@ export default function CourierRoutesSection({
   courierId: string;
   routes: CourierDeliveryRoute[];
   deliveries: Delivery[];
+  online: boolean;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
@@ -110,6 +115,7 @@ export default function CourierRoutesSection({
 }) {
   const queryClient = useQueryClient();
   const acceptRoute = useAcceptCourierRoute();
+  const declineRoute = useDeclineCourierRoute();
   const completeStop = useCompleteCourierRouteStop();
   const recordArrival = useRecordCourierStopArrival();
   const updateLocation = useUpdateCourierLocation();
@@ -121,6 +127,7 @@ export default function CourierRoutesSection({
   const onCurrentPositionChangeRef = useRef(onCurrentPositionChange);
   onCurrentPositionChangeRef.current = onCurrentPositionChange;
   const [busyRouteId, setBusyRouteId] = useState<string | null>(null);
+  const [busyRouteAction, setBusyRouteAction] = useState<"accept" | "decline" | "stop" | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [locationMessage, setLocationMessage] = useState("");
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
@@ -133,6 +140,11 @@ export default function CourierRoutesSection({
   const offeredRoutes = routes.filter((route) => route.status === "OFFERED");
 
   useEffect(() => {
+    if (!online) {
+      setLocationMessage("GPS pausado enquanto você está offline.");
+      setLastGpsSentAt(null);
+      return;
+    }
     if (Capacitor.isNativePlatform()) {
       let watching = true;
       let watcherId: string | null = null;
@@ -425,7 +437,7 @@ export default function CourierRoutesSection({
       document.removeEventListener("visibilitychange", onVisibilityChange);
       if (wakeLock) void wakeLock.release();
     };
-  }, [courierId]);
+  }, [courierId, online]);
   const gpsAgeSeconds = lastGpsSentAt == null
     ? Math.max(0, Math.floor((gpsClock - gpsStartedAt.current) / 1000))
     : Math.max(0, Math.floor((gpsClock - lastGpsSentAt) / 1000));
@@ -461,6 +473,7 @@ export default function CourierRoutesSection({
   const handleAccept = async (route: CourierDeliveryRoute) => {
     setErrorMessage("");
     setBusyRouteId(route.id);
+    setBusyRouteAction("accept");
     try {
       const location = await requestCurrentLocation();
       try {
@@ -478,12 +491,29 @@ export default function CourierRoutesSection({
       setErrorMessage(error instanceof Error ? error.message : "Não foi possível aceitar a rota.");
     } finally {
       setBusyRouteId(null);
+      setBusyRouteAction(null);
+    }
+  };
+
+  const handleDeclineRoute = async (route: CourierDeliveryRoute) => {
+    setErrorMessage("");
+    setBusyRouteId(route.id);
+    setBusyRouteAction("decline");
+    try {
+      await declineRoute.mutateAsync({ routeId: route.id });
+      await refreshRouteData();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Não foi possível recusar esta rota.");
+    } finally {
+      setBusyRouteId(null);
+      setBusyRouteAction(null);
     }
   };
 
   const handleCompleteStop = async (routeId: string, stopId: string, evidencePath?: string) => {
     setErrorMessage("");
     setBusyRouteId(routeId);
+    setBusyRouteAction("stop");
     try {
       const stop = routes.find((route) => route.id === routeId)?.stops.find((item) => item.id === stopId);
       await completeStop.mutateAsync({ routeId, stopId, data: evidencePath ? { evidencePath } : {} });
@@ -493,12 +523,14 @@ export default function CourierRoutesSection({
       setErrorMessage(error instanceof Error ? error.message : "Não foi possível concluir esta parada.");
     } finally {
       setBusyRouteId(null);
+      setBusyRouteAction(null);
     }
   };
 
   const handleStoreArrival = async (routeId: string, stopId: string) => {
     setErrorMessage("");
     setBusyRouteId(routeId);
+    setBusyRouteAction("stop");
     try {
       await recordArrival.mutateAsync({ routeId, stopId });
       setArrivedStoreStopId(stopId);
@@ -507,6 +539,7 @@ export default function CourierRoutesSection({
       setErrorMessage(error instanceof Error ? error.message : "Não foi possível registrar a chegada à loja.");
     } finally {
       setBusyRouteId(null);
+      setBusyRouteAction(null);
     }
   };
 
@@ -548,22 +581,24 @@ export default function CourierRoutesSection({
       {errorMessage && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{errorMessage}</div>}
 
       {isLoading ? (
-        <div className="panel p-5 text-sm text-muted-foreground">Carregando suas entregas…</div>
+        <div className="space-y-3" role="status" aria-label="Carregando suas entregas">
+          <div className="courier-online-card"><div className="min-w-0 flex-1 space-y-2"><div className="skeleton h-3 w-28" /><div className="skeleton h-3 w-44" /></div><div className="skeleton h-8 w-12 rounded-full" /></div>
+          <div className="panel space-y-3 p-4"><div className="skeleton h-3 w-20" /><div className="skeleton h-5 w-36" /><div className="skeleton h-3 w-full" /><div className="skeleton h-12 w-full rounded-lg" /></div>
+        </div>
       ) : isError ? (
         <div className="panel p-5">
           <p className="text-sm text-red-700">Não foi possível carregar suas entregas.</p>
           <button className="button-secondary mt-3" type="button" onClick={onRetry}>Tentar novamente</button>
         </div>
       ) : workItems.length === 0 ? (
-        <div className="panel flex min-h-28 items-center gap-4 p-5" role="status">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-green-50 text-green-700">
-            <CheckCircle2 size={23} />
-          </span>
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-[.12em] text-green-700">Disponível</span>
-            <h2 className="mt-1 text-base font-bold">Você está disponível</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Aguardando novas entregas</p>
+        <div className="courier-awaiting-card" role="status" data-testid="status-courier-awaiting">
+          <span className="courier-awaiting-icon"><CheckCircle2 size={20} /></span>
+          <div className="min-w-0 flex-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#587c5a]">{online ? "Disponível" : "Offline"}</span>
+            <h2 className="mt-1 text-sm font-bold">{online ? "Aguardando pedidos" : "Você está offline"}</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{online ? "Assim que a Central enviar uma oferta, ela aparece aqui." : "Fique online para receber novas ofertas."}</p>
           </div>
+          {online && <span className="courier-live-label"><i /> AO VIVO</span>}
         </div>
       ) : (
         <>
@@ -591,50 +626,173 @@ export default function CourierRoutesSection({
                 onComplete={(stopId, evidencePath) => void handleCompleteStop(item.route.id, stopId, evidencePath)}
               />
             ) : (
-              <article key={item.route.id} className="panel p-4 sm:p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 text-sm font-bold"><RouteIcon size={17} className="text-primary" />{item.route.deliveryCount} {item.route.deliveryCount === 1 ? "entrega" : "entregas"}</div>
-                    <p className="mt-1 text-xs text-muted-foreground">A sequência otimizada será travada quando você aceitar.</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="eyebrow">TOTAL PREVISTO</div>
-                    <div className="mt-1 text-lg font-bold text-primary">{money(item.route.amountToReceive)}</div>
-                  </div>
-                </div>
-                <div className="mt-4 divide-y divide-border border-y border-border">
-                  {item.route.deliveries.map((delivery) => (
-                    <div key={delivery.id} className="flex items-start justify-between gap-3 py-3">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold">{delivery.code} · {delivery.storeName}</div>
-                        <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{delivery.destination}</div>
-                      </div>
-                      <div className="shrink-0 text-sm font-semibold">{money(delivery.deliveryAmount)}</div>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  className="button-primary mt-4 min-h-12 w-full justify-center"
-                  type="button"
-                  disabled={busyRouteId !== null}
-                  onClick={() => void handleAccept(item.route)}
-                  aria-busy={busyRouteId === item.route.id}
-                >
-                  {busyRouteId === item.route.id
-                    ? <><LoaderCircle size={16} className="animate-spin" /> Calculando melhor rota…</>
-                    : <><Navigation size={16} /> Aceitar e calcular rota</>}
-                </button>
-                <p className="mt-2 text-center text-[11px] text-muted-foreground" role={busyRouteId !== null ? "status" : undefined}>
-                  {busyRouteId !== null
-                    ? "Aguarde a ação atual terminar para evitar envio duplicado."
-                    : "O navegador pedirá sua localização para ordenar as paradas a partir de onde você está."}
-                </p>
-              </article>
+              <CourierRouteOfferCard
+                key={item.route.id}
+                route={item.route}
+                busy={busyRouteId !== null}
+                busyAction={busyRouteId === item.route.id ? busyRouteAction : null}
+                onAccept={() => void handleAccept(item.route)}
+                onDecline={() => void handleDeclineRoute(item.route)}
+              />
             ))}
           </div>
         </>
       )}
     </section>
+  );
+}
+
+function CourierRouteOfferCard({
+  route,
+  busy,
+  busyAction,
+  onAccept,
+  onDecline,
+}: {
+  route: CourierDeliveryRoute;
+  busy: boolean;
+  busyAction: "accept" | "decline" | "stop" | null;
+  onAccept: () => void;
+  onDecline: () => void;
+}) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const preview = useGetCourierRoutePreview(route.id, {
+    query: {
+      queryKey: getGetCourierRoutePreviewQueryKey(route.id),
+      enabled: previewOpen,
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+    },
+  });
+  const markers: MapMarker[] = preview.data
+    ? [
+        {
+          id: `preview-start-${route.id}`,
+          ...preview.data.startPosition,
+          title: "Ponto inicial",
+          detail: "Posição inicial usada para calcular a prévia",
+          kind: "current",
+          label: "INÍCIO",
+        },
+        ...preview.data.stops.map((stop, index) => ({
+          id: `preview-stop-${route.id}-${index}`,
+          latitude: stop.latitude,
+          longitude: stop.longitude,
+          title: `${index + 1}. ${stop.kind === "pickup" ? "Retirada" : "Entrega"}`,
+          detail: stop.address,
+          kind: "stop" as const,
+          sequence: index + 1,
+        })),
+      ]
+    : [];
+
+  return (
+    <article className="panel p-4 sm:p-5" data-testid={`card-route-offer-${route.id}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-bold"><RouteIcon size={17} className="text-primary" />{route.deliveryCount} {route.deliveryCount === 1 ? "entrega" : "entregas"}</div>
+          <p className="mt-1 text-xs text-muted-foreground">Confira a sequência antes de aceitar. Ela será travada ao confirmar.</p>
+        </div>
+        <div className="text-right">
+          <div className="eyebrow">TOTAL PREVISTO</div>
+          <div className="mt-1 text-lg font-bold text-primary">{money(route.amountToReceive)}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 divide-y divide-border border-y border-border">
+        {route.deliveries.map((delivery) => (
+          <div key={delivery.id} className="flex items-start justify-between gap-3 py-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold">{delivery.code} · {delivery.storeName}</div>
+              <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{delivery.destination}</div>
+            </div>
+            <div className="shrink-0 text-sm font-semibold">{money(delivery.deliveryAmount)}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          className="button-secondary min-h-12 flex-1 justify-center"
+          aria-expanded={previewOpen}
+          aria-controls={`route-preview-${route.id}`}
+          onClick={() => setPreviewOpen((open) => !open)}
+          disabled={busy}
+          data-testid={`button-route-preview-${route.id}`}
+        >
+          <Map size={16} /> {previewOpen ? "Ocultar prévia" : "Prévia da rota"}
+        </button>
+        <button
+          type="button"
+          className="courier-decline-button min-h-12 px-3"
+          onClick={onDecline}
+          disabled={busy}
+          aria-busy={busyAction === "decline"}
+          data-testid={`button-decline-route-${route.id}`}
+        >
+          {busyAction === "decline" ? <><LoaderCircle size={15} className="animate-spin" /> Recusando…</> : "Recusar"}
+        </button>
+      </div>
+
+      {previewOpen && (
+        <section id={`route-preview-${route.id}`} className="courier-route-preview mt-3" aria-label="Prévia da rota agrupada">
+          {preview.isLoading ? (
+            <div className="space-y-2 rounded-xl bg-[#f5f2ee] p-3" role="status" aria-label="Carregando prévia da rota">
+              <div className="skeleton h-3 w-32" /><div className="skeleton h-28 w-full rounded-lg" /><div className="skeleton h-3 w-44" />
+            </div>
+          ) : preview.isError ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3" role="alert">
+              <p className="text-xs font-semibold text-red-800">Não foi possível carregar a prévia da rota.</p>
+              <button type="button" className="button-secondary mt-2 min-h-12" onClick={() => void preview.refetch()} data-testid={`button-retry-route-preview-${route.id}`}>Tentar novamente</button>
+            </div>
+          ) : preview.data ? (
+            <>
+              <div className="courier-map-preview overflow-hidden rounded-xl border border-[#e9e3da]" data-testid={`map-preview-route-${route.id}`}>
+                <LiveMap
+                  markers={markers}
+                  routeGeometry={preview.data.routeGeometry}
+                  ariaLabel={`Prévia do trajeto da rota com ${route.deliveryCount} entregas`}
+                  size="compact"
+                  showCenterOnMe={false}
+                  autoFitOnGeometryChange
+                />
+              </div>
+              {(preview.data.distanceKm != null || preview.data.estimatedMinutes != null) && (
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-[#6d625a]" aria-label="Estimativa da rota">
+                  {preview.data.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-[#f4f0eb] px-2.5 py-1.5"><RouteIcon size={13} />{preview.data.distanceKm} km</span>}
+                  {preview.data.estimatedMinutes != null && <span className="inline-flex items-center gap-1 rounded-full bg-[#f4f0eb] px-2.5 py-1.5"><Clock3 size={13} />{preview.data.estimatedMinutes} min</span>}
+                </div>
+              )}
+              <ol className="mt-2 space-y-1.5" aria-label="Paradas da prévia">
+                {preview.data.stops.map((stop, index) => (
+                  <li key={`${stop.deliveryId}-${stop.kind}-${index}`} className="flex items-start gap-2 rounded-lg bg-[#f8f6f3] px-3 py-2 text-xs">
+                    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white text-[10px] font-bold text-[#a91d2a]">{index + 1}</span>
+                    <span className="min-w-0"><b>{stop.kind === "pickup" ? "Retirada" : "Entrega"} · </b>{stop.address}</span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          ) : null}
+        </section>
+      )}
+
+      <button
+        className="button-primary mt-3 min-h-12 w-full justify-center"
+        type="button"
+        disabled={busy}
+        onClick={onAccept}
+        aria-busy={busyAction === "accept"}
+        data-testid={`button-accept-route-${route.id}`}
+      >
+        {busyAction === "accept"
+          ? <><LoaderCircle size={16} className="animate-spin" /> Calculando melhor rota…</>
+          : <><Navigation size={16} /> Aceitar e calcular rota</>}
+      </button>
+      <p className="mt-2 text-center text-[11px] text-muted-foreground" role={busy ? "status" : undefined}>
+        {busy ? "Aguarde a ação atual terminar para evitar envio duplicado." : "O navegador pedirá sua localização para confirmar a rota."}
+      </p>
+    </article>
   );
 }
 

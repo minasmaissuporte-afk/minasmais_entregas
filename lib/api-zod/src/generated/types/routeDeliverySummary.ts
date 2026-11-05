@@ -18,6 +18,14 @@ export interface RouteDeliverySummary {
   storeName: string;
   storeAddress: string;
   storeCity: string;
+  /** @nullable */
+  storeLatitude: number | null;
+  /** @nullable */
+  storeLongitude: number | null;
+  /** @nullable */
+  customerLatitude: number | null;
+  /** @nullable */
+  customerLongitude: number | null;
   deliveryAmount: number;
   status: string;
 }

@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import appMetadata from "../../package.json";
 import {
   getGetCourierDeliveryNavigationQueryKey,
   getGetCourierEarningsQueryKey,
@@ -15,6 +16,8 @@ import {
   useListDeliveries,
   useUpdateDeliveryStatus,
   useUpdateCourierLocation,
+  useUpdateCourierAvailability,
+  useDeclineCourierDelivery,
   type AppUser,
   type CourierDeliveryRoute,
   type Delivery,
@@ -24,15 +27,16 @@ import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
-import { ArrowLeft, Bell, BellOff, Bike, CheckCircle2, ChevronDown, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, Menu, MessageCircle, PackageCheck, Phone } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, Bike, Check, CheckCircle2, Clock3, Hand, History, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, PackageCheck, Phone, Route as RouteIcon, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
 import CourierRouteMapTab from "@/components/courier-route-map-tab";
 import CourierRoutesSection, { type CourierGpsStatus } from "@/pages/courier-routes-section";
+import LiveMap from "@/components/live-map";
 import EvidencePhotoAction from "@/components/evidence-photo-action";
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import type { MapCoordinate } from "@/components/live-map";
 import { triggerCourierLightHaptic } from "@/lib/courier-haptics";
@@ -79,6 +83,34 @@ const initialGpsStatus: CourierGpsStatus = {
   hasSent: false,
 };
 
+function playNativeOfferTone() {
+  try {
+    const AudioContextConstructor = window.AudioContext;
+    if (!AudioContextConstructor) return;
+    const context = new AudioContextConstructor();
+    const startTone = () => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = 880;
+      gain.gain.setValueAtTime(0.055, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.16);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.onended = () => { void context.close().catch(() => undefined); };
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.16);
+    };
+    if (context.state === "suspended") {
+      void context.resume().then(startTone).catch(() => { void context.close().catch(() => undefined); });
+    } else {
+      startTone();
+    }
+  } catch {
+    // An unavailable audio context must never interrupt delivery polling or actions.
+  }
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const base64 = base64String.replace(/-/g, "+").replace(/_/g, "/");
   const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
@@ -107,8 +139,8 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   const { signOut } = useClerk();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"deliveries" | "map">("deliveries");
-  const activeTabRef = useRef<"deliveries" | "map">("deliveries");
+  const [activeTab, setActiveTab] = useState<"deliveries" | "map" | "history" | "earnings">("deliveries");
+  const activeTabRef = useRef<"deliveries" | "map" | "history" | "earnings">("deliveries");
   const tabTransitionTimerRef = useRef<number | null>(null);
   const mapResizeTimerRef = useRef<number | null>(null);
   const tabTransitioningRef = useRef(false);
@@ -117,8 +149,12 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   const [mapResizeVersion, setMapResizeVersion] = useState(0);
   const [currentPosition, setCurrentPosition] = useState<MapCoordinate | null>(null);
   const [period, setPeriod] = useState<Period>("day");
-  const [earningsOpen, setEarningsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(profile.courierStatus !== "OFFLINE");
+  const [availabilityError, setAvailabilityError] = useState("");
+  const [declineError, setDeclineError] = useState("");
+  const offerCountInitialized = useRef(false);
+  const previousOfferCount = useRef(0);
   const [gpsDetailsOpen, setGpsDetailsOpen] = useState(false);
   const [pushDetailsOpen, setPushDetailsOpen] = useState(false);
   const [gpsStatus, setGpsStatus] = useState<CourierGpsStatus>(initialGpsStatus);
@@ -127,8 +163,8 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   const [actionError, setActionError] = useState("");
   const [pushMessage, setPushMessage] = useState("");
   const changeActiveTab = useCallback((value: string) => {
-    if (value !== "deliveries" && value !== "map") return;
-    const nextTab = value as "deliveries" | "map";
+    if (!["deliveries", "map", "history", "earnings"].includes(value)) return;
+    const nextTab = value as "deliveries" | "map" | "history" | "earnings";
     if (activeTabRef.current === nextTab) return;
 
     const interruptedTransition = tabTransitioningRef.current;
@@ -190,6 +226,14 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     { period: "day" },
     { query: { queryKey: getGetCourierEarningsQueryKey({ period: "day" }), refetchInterval: 15000 } },
   );
+  const weeklyEarnings = useGetCourierEarnings(
+    { period: "week" },
+    { query: { queryKey: getGetCourierEarningsQueryKey({ period: "week" }), refetchInterval: 15000 } },
+  );
+  const monthlyEarnings = useGetCourierEarnings(
+    { period: "month" },
+    { query: { queryKey: getGetCourierEarningsQueryKey({ period: "month" }), refetchInterval: 15000 } },
+  );
   const deliveries = useListDeliveries(
     {},
     { query: { queryKey: getListDeliveriesQueryKey(), refetchInterval: 15000 } },
@@ -202,6 +246,8 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     },
   });
   const updateStatus = useUpdateDeliveryStatus();
+  const updateAvailability = useUpdateCourierAvailability();
+  const declineDelivery = useDeclineCourierDelivery();
   const updateLocation = useUpdateCourierLocation();
   const pushKey = useGetVapidPublicKey({
     query: {
@@ -237,7 +283,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     ? nativePushStatusReady
     : serviceWorkerStatus !== "checking" && !pushKey.isLoading;
   const notificationsNeedAttention = notificationStatusReady && !pushIsActive;
-  const gpsNeedsAttention = gpsStatus.ageSeconds > 60;
+  const gpsNeedsAttention = isOnline && gpsStatus.ageSeconds > 60;
   const profileName = profile.name.trim();
   const genericName = /^(motoboy|motobói|entregador|courier|driver)(\s+\d+)?$/i;
   const nameIsUsable =
@@ -556,6 +602,67 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       null
     );
   }, [activeRoute]);
+  const hasActiveWork = Boolean(activeRoute || activeIndividualDelivery);
+  const pendingOffers = useMemo(
+    () =>
+      (routes.data ?? []).filter((route) => route.status === "OFFERED").length +
+      individualDeliveries.filter((delivery) => delivery.status === "OFFERED").length,
+    [routes.data, individualDeliveries],
+  );
+  useEffect(() => {
+    if (routes.isLoading || deliveries.isLoading || routes.isError || deliveries.isError) return;
+    if (!offerCountInitialized.current) {
+      offerCountInitialized.current = true;
+      previousOfferCount.current = pendingOffers;
+      return;
+    }
+    if (pendingOffers > previousOfferCount.current) {
+      void triggerCourierLightHaptic().catch(() => undefined);
+      if (isNativeApp) playNativeOfferTone();
+    }
+    previousOfferCount.current = pendingOffers;
+  }, [pendingOffers, routes.isLoading, deliveries.isLoading, routes.isError, deliveries.isError]);
+  const historyDeliveries = useMemo(
+    () =>
+      (deliveries.data ?? [])
+        .filter((delivery) => delivery.status === "COMPLETED" || delivery.status === "NOT_DELIVERED")
+        .slice()
+        .sort((a, b) => new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime()),
+    [deliveries.data],
+  );
+  const toggleAvailability = async () => {
+    if (updateAvailability.isPending) return;
+    if (isOnline && hasActiveWork) {
+      setAvailabilityError("Conclua ou finalize sua entrega ativa antes de ficar offline.");
+      return;
+    }
+    setAvailabilityError("");
+    const nextOnline = !isOnline;
+    try {
+      const result = await updateAvailability.mutateAsync({ data: { online: nextOnline } });
+      setIsOnline(result.online);
+      if (!result.online) {
+        setGpsStatus({ ...initialGpsStatus, locationMessage: "GPS pausado enquanto você está offline." });
+      } else {
+        setGpsStatus(initialGpsStatus);
+      }
+      void triggerCourierLightHaptic();
+    } catch {
+      setAvailabilityError("Não foi possível atualizar sua disponibilidade. Tente novamente.");
+    }
+  };
+  const declineIndividualDelivery = async (deliveryId: string) => {
+    setDeclineError("");
+    try {
+      await declineDelivery.mutateAsync({ deliveryId });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getListCourierRoutesQueryKey() }),
+      ]);
+    } catch {
+      setDeclineError("Não foi possível recusar esta oferta. Tente novamente.");
+    }
+  };
   const returningDeliveries = useMemo(
     () =>
       individualDeliveries.filter((delivery) => delivery.status === "RETURNING_TO_STORE"),
@@ -607,342 +714,222 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     <CourierIndividualDeliveryCard
       delivery={delivery}
       active={delivery.id === activeIndividualDelivery?.id}
-      busy={updateStatus.isPending}
+      busy={updateStatus.isPending || declineDelivery.isPending}
       nextStatus={nextCourierStatus[delivery.status]}
       nextStatusLabel={nextStatusLabel[delivery.status]}
+      declining={declineDelivery.isPending}
       onUpdate={updateDelivery}
+      onDecline={declineIndividualDelivery}
       onShowMap={() => changeActiveTab("map")}
     />
   );
 
   return (
-    <main className={activeTab === "map" ? "courier-pwa fixed inset-0 z-40 bg-[#f4f3f1] text-[#24272d]" : "courier-pwa min-h-[100dvh] bg-[#f4f3f1] px-3 pb-[max(16px,env(safe-area-inset-bottom))] pt-[max(8px,env(safe-area-inset-top))] text-[#24272d] sm:px-6"}>
-      <div className={activeTab === "map" ? "mx-auto h-full w-full" : "mx-auto max-w-2xl"}>
-        {activeTab !== "map" && (
-          <header className="relative flex min-h-12 items-center gap-2">
-            <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-              <SheetTrigger asChild>
+    <main className={`courier-pwa min-h-[100dvh] bg-[#f5f2ee] text-[#272729] ${activeTab === "map" ? "fixed inset-0 z-40 overflow-hidden" : "pb-[calc(88px+env(safe-area-inset-bottom))]"}`}>
+      {activeTab !== "map" && (
+        <header className="courier-header px-4 pb-4 pt-[max(10px,env(safe-area-inset-top))] text-white">
+          <div className="mx-auto max-w-2xl">
+            <div className="flex min-h-10 items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2.5" aria-label="Minas Mais Entregas">
+                <span className="courier-brand-mark"><Bike size={18} strokeWidth={2.4} /></span>
+                <span className="truncate text-[11px] font-extrabold uppercase leading-[1.15] tracking-[.12em]">MINAS MAIS<br />ENTREGAS</span>
+              </div>
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-[#e7e6e3] bg-white text-[#34363a]"
-                  aria-label="Abrir menu"
-                  data-testid="button-courier-menu"
+                  className="courier-header-status"
+                  aria-label={gpsStatus.tone === "red" ? "GPS com problema. Ver detalhes" : "Ver status do GPS"}
+                  aria-expanded={gpsDetailsOpen}
+                  onClick={() => { setGpsDetailsOpen((open) => !open); setPushDetailsOpen(false); }}
+                  data-testid="button-courier-gps-status"
                 >
-                  <Menu size={20} />
+                  <LocateFixed size={17} /><i className={`status-dot status-${gpsStatus.tone}`} />
                 </button>
-              </SheetTrigger>
-              <SheetContent side="left" className="courier-menu-sheet flex w-[min(20rem,calc(100vw-2rem))] flex-col border-r-[#e7e6e3] bg-[#f8f7f4] p-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-[max(20px,env(safe-area-inset-top))] [&>button]:grid [&>button]:h-12 [&>button]:min-h-12 [&>button]:min-w-12 [&>button]:w-12 [&>button]:place-items-center">
-                <SheetHeader className="text-left">
-                  <SheetTitle className="flex items-center gap-3 text-base">
-                    <span className="brand-mark"><Bike size={18} /></span>
-                    <span>Minas Mais Entregas</span>
-                  </SheetTitle>
-                  <SheetDescription>Olá, {firstName}. Gerencie sua conta e este aparelho.</SheetDescription>
-                </SheetHeader>
-                <div className="mt-6 space-y-2">
-                  <Link
-                    href="/account"
-                    onClick={() => setMenuOpen(false)}
-                    className="button-secondary min-h-12 w-full justify-start"
-                    data-testid="link-courier-password"
-                  >
-                    <KeyRound size={17} /> Alterar senha
-                  </Link>
-                  <button
-                    type="button"
-                    className="button-secondary min-h-12 w-full justify-start"
-                    onClick={() => void togglePush()}
-                    disabled={pushToggleDisabled}
-                    data-testid="button-courier-notifications"
-                  >
-                    {pushIsActive ? <BellOff size={17} /> : <Bell size={17} />}
-                    {pushIsActive ? "Desativar notificações" : "Ativar notificações"}
-                  </button>
-                  {pushMessage && <p role="status" className="px-1 text-xs text-[#8b3d45]">{pushMessage}</p>}
-                </div>
                 <button
                   type="button"
-                  className="button-quiet mt-auto min-h-12 w-full justify-start border-t border-[#e7e6e3] pt-3"
-                  onClick={() => void handleSignOut()}
-                  data-testid="button-courier-sign-out"
+                  className="courier-header-status"
+                  aria-label={pushIsActive ? "Notificações ativadas. Ver detalhes" : "Notificações desativadas. Ver detalhes"}
+                  aria-expanded={pushDetailsOpen}
+                  onClick={() => { setPushDetailsOpen((open) => !open); setGpsDetailsOpen(false); }}
+                  data-testid="button-courier-push-status"
                 >
-                  <LogOut size={17} /> Sair da conta
+                  {pushIsActive ? <Bell size={17} /> : <BellOff size={17} />}
+                  <i className={`status-dot ${pushIsActive ? "status-green" : "status-yellow"}`} />
                 </button>
-              </SheetContent>
-            </Sheet>
-
-            <div className="min-w-0 flex-1 truncate text-[clamp(0.95rem,4vw,1.1rem)] font-bold tracking-tight">
-              Olá, {firstName}
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                type="button"
-                className="relative grid h-12 w-11 place-items-center rounded-xl text-[#484a4e] hover:bg-white"
-                aria-label={gpsStatus.tone === "red" ? "GPS sem sinal recente. Ver detalhes" : "Ver status do GPS"}
-                aria-expanded={gpsDetailsOpen}
-                onClick={() => {
-                  setGpsDetailsOpen((open) => !open);
-                  setPushDetailsOpen(false);
-                }}
-                data-testid="button-courier-gps-status"
-              >
-                <LocateFixed size={19} />
-                <span className={`absolute right-2 top-2 h-2 w-2 rounded-full ${
-                  gpsStatus.tone === "green" ? "bg-green-600" : gpsStatus.tone === "yellow" ? "bg-amber-500" : "bg-red-600"
-                }`} />
-              </button>
-              <button
-                type="button"
-                className="relative grid h-12 w-11 place-items-center rounded-xl text-[#484a4e] hover:bg-white"
-                aria-label={pushIsActive ? "Notificações ativadas. Ver detalhes" : "Notificações desativadas. Ver detalhes"}
-                aria-expanded={pushDetailsOpen}
-                onClick={() => {
-                  setPushDetailsOpen((open) => !open);
-                  setGpsDetailsOpen(false);
-                }}
-                data-testid="button-courier-push-status"
-              >
-                {pushIsActive ? <Bell size={19} /> : <BellOff size={19} />}
-                <span className={`absolute right-2 top-2 h-2 w-2 rounded-full ${pushIsActive ? "bg-green-600" : "bg-amber-500"}`} />
-              </button>
-            </div>
-
-            {gpsDetailsOpen && (
-              <aside className="absolute right-0 top-14 z-30 w-[min(19rem,calc(100vw-2rem))] rounded-xl border border-[#e7e6e3] bg-white p-4 text-left shadow-xl" role="status">
-                <div className="flex items-center gap-2 text-sm font-bold"><LocateFixed size={16} /> Status do GPS</div>
-                <p className="mt-2 text-xs">
-                  {gpsStatus.hasSent
-                    ? gpsNeedsAttention
-                      ? `Último envio há ${Math.floor(gpsStatus.ageSeconds / 60)} min.`
-                      : `Último envio há ${gpsStatus.ageSeconds} s.`
-                    : "Aguardando a primeira posição do aparelho."}
-                </p>
-                {gpsStatus.accuracyMeters != null && <p className="mt-1 text-xs text-muted-foreground">Precisão aproximada: {Math.round(gpsStatus.accuracyMeters)} m.</p>}
-                {gpsStatus.locationMessage && <p className="mt-2 text-xs text-muted-foreground">{gpsStatus.locationMessage}</p>}
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {isNativeApp ? "O rastreamento em segundo plano depende das permissões do aparelho." : "O PWA envia a localização enquanto permanece aberto."}
-                </p>
-                <button type="button" className="button-secondary mt-3 min-h-12 w-full justify-center" onClick={() => refreshGps()}>
-                  <LocateFixed size={15} /> Tentar atualizar GPS
-                </button>
-              </aside>
-            )}
-            {pushDetailsOpen && (
-              <aside className="absolute right-0 top-14 z-30 w-[min(19rem,calc(100vw-2rem))] rounded-xl border border-[#e7e6e3] bg-white p-4 text-left shadow-xl" role="status">
-                <div className="flex items-center gap-2 text-sm font-bold">
-                  {pushIsActive ? <Bell size={16} /> : <BellOff size={16} />} Notificações
-                </div>
-                <p className="mt-2 text-xs">
-                  {!notificationStatusReady
-                    ? "Verificando este aparelho…"
-                    : pushIsActive
-                      ? isNativeApp ? "Ativadas neste aparelho." : "Ativadas para este PWA."
-                      : serviceWorkerStatus === "missing"
-                        ? "O Service Worker não está ativo. Feche e reabra o PWA."
-                        : pushKey.isError || (!isNativeApp && !currentVapidBytes)
-                          ? "Não foi possível carregar a configuração das notificações."
-                          : "Desativadas neste aparelho."}
-                </p>
-                {pushMessage && <p className="mt-2 text-xs text-[#8b3d45]">{pushMessage}</p>}
-                <button type="button" className="button-secondary mt-3 min-h-12 w-full justify-center" onClick={() => { setPushDetailsOpen(false); setMenuOpen(true); }}>
-                  <Menu size={15} /> Abrir configurações
-                </button>
-              </aside>
-            )}
-          </header>
-        )}
-
-        <Tabs
-          value={activeTab}
-          onValueChange={changeActiveTab}
-        >
-          <TabsList
-            aria-label="Seções do app do motoboy"
-            data-active-tab={activeTab}
-            data-transitioning={tabTransitioning ? "true" : "false"}
-            data-skip-transition={skipTabTransition ? "true" : "false"}
-            className={`courier-pwa-tabs mt-2 grid h-14 w-full grid-cols-2 rounded-xl border border-[#e7e6e3] bg-white p-1 ${activeTab === "map" ? "courier-pwa-tabs--map" : ""} ${skipTabTransition ? "courier-pwa-tabs--no-transition" : ""}`}
-          >
-            <TabsTrigger value="deliveries" className="gap-2 rounded-lg text-sm" data-testid="tab-courier-deliveries">
-              <PackageCheck size={16} /> Entregas
-            </TabsTrigger>
-            <TabsTrigger value="map" className="gap-2 rounded-lg text-sm" data-testid="tab-courier-map">
-              <MapIcon size={16} /> Mapa e rota
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent
-            value="deliveries"
-            forceMount
-            aria-hidden={activeTab !== "deliveries"}
-            data-transitioning={tabTransitioning ? "true" : "false"}
-            className={`courier-tab-panel courier-tab-panel--deliveries mt-4 ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}
-          >
-        {returningDeliveries.length > 0 && (
-          <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-950" role="status">
-            {returningDeliveries.length} {returningDeliveries.length === 1 ? "produto para devolver" : "produtos para devolver"} na filial. A Central confirmará quando receber.
-          </p>
-        )}
-        {(notificationsNeedAttention || gpsNeedsAttention) && (
-          <section className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950" role="status">
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 shrink-0 text-amber-700">
-                {notificationsNeedAttention ? <BellOff size={16} /> : <LocateFixed size={16} />}
-              </span>
-              <div className="min-w-0 flex-1 text-xs leading-relaxed">
-                {notificationsNeedAttention && <p>Notificações desativadas neste aparelho.</p>}
-                {gpsNeedsAttention && <p>Sem envio de GPS há mais de 1 minuto.</p>}
+                <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+                  <SheetTrigger asChild>
+                    <button type="button" className="courier-avatar-button" aria-label="Abrir perfil" data-testid="button-courier-profile">
+                      {firstName.charAt(0).toLocaleUpperCase("pt-BR")}
+                    </button>
+                  </SheetTrigger>
+                  <SheetContent side="right" className="courier-profile-sheet flex w-[min(23rem,calc(100vw-1rem))] flex-col border-0 bg-[#faf8f4] p-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))] [&>button]:grid [&>button]:h-12 [&>button]:min-h-12 [&>button]:min-w-12 [&>button]:w-12 [&>button]:place-items-center">
+                    <SheetHeader className="text-left">
+                      <SheetTitle className="text-xl font-bold">Seu perfil</SheetTitle>
+                      <SheetDescription>Seus dados locais e preferências deste aparelho.</SheetDescription>
+                    </SheetHeader>
+                    <div className="mt-6 flex items-center gap-3 rounded-2xl bg-white p-4">
+                      <span className="courier-profile-avatar">{firstName.charAt(0).toLocaleUpperCase("pt-BR")}</span>
+                      <div className="min-w-0"><p className="truncate text-sm font-bold">{profile.name || firstName}</p><p className="truncate text-xs text-muted-foreground">{profile.email}</p></div>
+                    </div>
+                    <dl className="mt-4 divide-y divide-[#e9e4dc] rounded-2xl bg-white px-4">
+                      <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Telefone</dt><dd className="mt-1 text-sm">{profile.phone || "Não informado"}</dd></div>
+                      <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Filial</dt><dd className="mt-1 text-sm">{profile.storeName || profile.storeId || "Não vinculada"}</dd></div>
+                      <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Conta</dt><dd className="mt-1 text-sm">{profile.email}</dd></div>
+                    </dl>
+                    <div className="mt-4 space-y-2">
+                      <button type="button" className="button-secondary min-h-12 w-full justify-start" onClick={() => void togglePush()} disabled={pushToggleDisabled} data-testid="button-courier-notifications">
+                        {pushIsActive ? <BellOff size={17} /> : <Bell size={17} />}
+                        {pushIsActive ? "Desativar notificações" : "Ativar notificações"}
+                      </button>
+                      {pushMessage && <p role="status" className="px-1 text-xs text-[#8b3d45]">{pushMessage}</p>}
+                      <Link href="/account" onClick={() => setMenuOpen(false)} className="button-secondary min-h-12 w-full justify-start" data-testid="link-courier-password">
+                        <KeyRound size={17} /> Alterar senha
+                      </Link>
+                    </div>
+                    <p className="mt-auto border-t border-[#e9e4dc] pt-4 text-xs text-muted-foreground">Minas Mais Entregas · Versão {appMetadata.version}</p>
+                    <button type="button" className="button-quiet min-h-12 w-full justify-start" onClick={() => void handleSignOut()} data-testid="button-courier-sign-out">
+                      <LogOut size={17} /> Sair da conta
+                    </button>
+                  </SheetContent>
+                </Sheet>
               </div>
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {notificationsNeedAttention && (
-                <button
-                  type="button"
-                  className="button-secondary min-h-12"
-                  onClick={() => void togglePush()}
-                  disabled={pushToggleDisabled}
-                  data-testid="button-alert-enable-push"
-                >
-                  <Bell size={15} /> Ativar notificações
-                </button>
-              )}
-              {gpsNeedsAttention && (
-                <button
-                  type="button"
-                  className="button-secondary min-h-12"
-                  onClick={() => {
-                    setGpsDetailsOpen(true);
-                    setPushDetailsOpen(false);
-                    refreshGps();
-                  }}
-                  data-testid="button-alert-refresh-gps"
-                >
-                  <LocateFixed size={15} /> Resolver GPS
-                </button>
-              )}
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-[13px] text-white/80"><Hand size={15} /> Olá, {firstName}</p>
+                <h1 className="mt-0.5 text-xl font-extrabold tracking-[-.03em]">Sua jornada, no seu ritmo.</h1>
+              </div>
+              <span className="shrink-0 rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.12em]">Motoboy</span>
             </div>
-          </section>
-        )}
-
-        {actionError && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            {actionError}
+            {(gpsDetailsOpen || pushDetailsOpen) && (
+              <aside className="relative z-30 mt-3 rounded-xl bg-white p-4 text-[#29292b] shadow-lg" role="status">
+                {gpsDetailsOpen ? <>
+                  <div className="flex items-center gap-2 text-sm font-bold"><LocateFixed size={16} /> Status do GPS</div>
+                  <p className="mt-2 text-xs">{gpsStatus.hasSent ? gpsNeedsAttention ? `Último envio há ${Math.floor(gpsStatus.ageSeconds / 60)} min.` : `Último envio há ${gpsStatus.ageSeconds} s.` : "Aguardando a primeira posição do aparelho."}</p>
+                  {gpsStatus.accuracyMeters != null && <p className="mt-1 text-xs text-muted-foreground">Precisão aproximada: {Math.round(gpsStatus.accuracyMeters)} m.</p>}
+                  {gpsStatus.locationMessage && <p className="mt-2 text-xs text-muted-foreground">{gpsStatus.locationMessage}</p>}
+                  <button type="button" className="button-secondary mt-3 min-h-12 w-full justify-center" onClick={() => refreshGps()}><LocateFixed size={15} /> Tentar atualizar GPS</button>
+                </> : <>
+                  <div className="flex items-center gap-2 text-sm font-bold">{pushIsActive ? <Bell size={16} /> : <BellOff size={16} />} Notificações</div>
+                  <p className="mt-2 text-xs">{!notificationStatusReady ? "Verificando este aparelho…" : pushIsActive ? isNativeApp ? "Ativadas neste aparelho." : "Ativadas para este PWA." : serviceWorkerStatus === "missing" ? "O Service Worker não está ativo. Feche e reabra o PWA." : pushKey.isError || (!isNativeApp && !currentVapidBytes) ? "Não foi possível carregar a configuração das notificações." : "Desativadas neste aparelho."}</p>
+                  {pushMessage && <p className="mt-2 text-xs text-[#8b3d45]">{pushMessage}</p>}
+                  <button type="button" className="button-secondary mt-3 min-h-12 w-full justify-center" onClick={() => void togglePush()} disabled={pushToggleDisabled}><Bell size={15} /> Configurar notificações</button>
+                </>}
+              </aside>
+            )}
           </div>
-        )}
+        </header>
+      )}
 
-        <CourierRoutesSection
-          courierId={profile.id}
-          routes={routes.data ?? []}
-          deliveries={individualDeliveries}
-          isLoading={routes.isLoading || deliveries.isLoading}
-          isError={routes.isError || deliveries.isError}
-          onRetry={() => {
-            void routes.refetch();
-            void deliveries.refetch();
-          }}
-          onShowMap={() => changeActiveTab("map")}
-          onCurrentPositionChange={setCurrentPosition}
-          onGpsStatusChange={handleGpsStatusChange}
-          renderIndividualDelivery={renderIndividualDelivery}
-        />
-
-        <section className="panel mt-4 overflow-hidden" aria-label="Resumo de ganhos">
-          <button
-            type="button"
-            className="flex min-h-14 w-full items-center gap-2 px-4 py-3 text-left"
-            aria-expanded={earningsOpen}
-            onClick={() => setEarningsOpen((open) => !open)}
-            data-testid="button-courier-earnings"
-          >
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-              Hoje: {dailyEarnings.isLoading ? "—" : dailyEarnings.data?.completedDeliveries ?? "—"} entregas · {dailyEarnings.isLoading ? "—" : money(dailyEarnings.data?.amountToReceive ?? 0)}
-            </span>
-            <ChevronDown className={`shrink-0 transition-transform ${earningsOpen ? "rotate-180" : ""}`} size={18} />
-          </button>
-          {earningsOpen && (
-            <div className="border-t border-border p-4">
-              <div className="grid grid-cols-3 gap-1 rounded-xl bg-[#f3f2ef] p-1" role="tablist" aria-label="Período dos ganhos">
-                {(["day", "week", "month"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    role="tab"
-                    aria-selected={period === option}
-                    className={`min-h-12 rounded-lg px-1 text-xs font-semibold ${period === option ? "bg-white text-primary shadow-sm" : "text-muted-foreground"}`}
-                    onClick={() => setPeriod(option)}
-                    data-testid={`tab-earnings-${option}`}
-                  >
-                    {periodNames[option]}
-                  </button>
-                ))}
+      <div className={activeTab === "map" ? "h-full w-full" : "mx-auto max-w-2xl px-3 pt-3 sm:px-5"}>
+        <Tabs value={activeTab} onValueChange={changeActiveTab}>
+          <TabsContent value="deliveries" forceMount aria-hidden={activeTab !== "deliveries"} className={`courier-tab-panel courier-tab-panel--deliveries ${activeTab === "deliveries" ? "mt-0" : ""} ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`} data-transitioning={tabTransitioning ? "true" : "false"}>
+            <section className={`courier-online-card ${isOnline ? "is-online" : "is-offline"}`} aria-label="Disponibilidade do motoboy">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`courier-online-pulse ${isOnline ? "is-online" : ""}`} />
+                  <span className="text-[10px] font-extrabold uppercase tracking-[.14em]">{isOnline ? "Você está online" : "Você está offline"}</span>
+                </div>
+                <p className="mt-1 text-[12px] leading-snug text-current/75">{isOnline ? "Pronto para receber novas entregas." : "Ative para começar a receber pedidos."}</p>
               </div>
-              {earnings.isError ? (
-                <p className="mt-4 text-sm text-red-700">Não foi possível consultar seus ganhos.</p>
-              ) : (
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div>
-                    <span className="text-xs text-muted-foreground">Entregas concluídas</span>
-                    <strong className="mt-1 block text-lg">{earnings.isLoading ? "—" : earnings.data?.completedDeliveries ?? "—"}</strong>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">A receber</span>
-                    <strong className="mt-1 block text-lg">{earnings.isLoading ? "—" : money(earnings.data?.amountToReceive ?? 0)}</strong>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </section>
-          </TabsContent>
-          <TabsContent
-            value="map"
-            forceMount
-            aria-hidden={activeTab !== "map"}
-            data-transitioning={tabTransitioning ? "true" : "false"}
-            className={`courier-tab-panel courier-tab-panel--map fixed inset-0 z-50 m-0 h-[100dvh] overflow-hidden ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}
-          >
-            {activeRoute ? (
-              <CourierRouteMapTab
-                route={activeRoute}
-                currentPosition={currentPosition}
-                onBack={() => changeActiveTab("deliveries")}
-                onRefresh={() => void routes.refetch()}
-                activeDelivery={activeRouteDelivery}
-                resizeVersion={mapResizeVersion}
-              />
-            ) : activeIndividualDelivery ? (
-              <CourierDeliveryNavigation
-                deliveryId={activeIndividualDelivery.id}
-                onBack={() => changeActiveTab("deliveries")}
-                delivery={activeIndividualDelivery}
-                resizeVersion={mapResizeVersion}
-              />
-            ) : (
-              <section className="grid h-full place-items-center p-6 text-center">
-                <div>
-                <MapIcon className="mx-auto text-muted-foreground" size={24} />
-                <h2 className="mt-3 text-base font-bold">Nenhuma rota ativa no momento</h2>
-                <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                  Quando você aceitar uma rota ou entrega, o mapa com o destino aparecerá aqui.
-                </p>
-                {(routes.data ?? []).some((route) => route.status === "OFFERED") && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Há uma rota aguardando aceite. Acesse Entregas para aceitar e calcular o trajeto.
-                  </p>
-                )}
-                <button
-                  type="button"
-                  className="button-primary mt-4 min-h-12"
-                  onClick={() => changeActiveTab("deliveries")}
-                >
-                  <PackageCheck size={15} /> Ver entregas
-                </button>
-                </div>
+              <button type="button" role="switch" aria-checked={isOnline} aria-label={isOnline ? "Ficar offline" : "Ficar online"} className={`courier-online-toggle ${isOnline ? "active" : ""}`} onClick={() => void toggleAvailability()} disabled={updateAvailability.isPending} aria-busy={updateAvailability.isPending} data-testid="toggle-courier-availability">
+                <span className="courier-online-knob">{updateAvailability.isPending ? <LoaderCircle size={14} className="animate-spin" /> : isOnline ? <Check size={14} /> : null}</span>
+              </button>
+            </section>
+            {availabilityError && <div className="mt-2 rounded-xl border border-[#edc9c4] bg-[#fff1ed] px-3 py-2.5 text-xs leading-relaxed text-[#94382e]" role="alert" data-testid="alert-courier-availability">{availabilityError}</div>}
+            {(notificationsNeedAttention || gpsNeedsAttention) && (
+              <section className="mt-3 flex items-start gap-2 rounded-xl border border-[#ead9b4] bg-[#fff8e9] p-3 text-[#6d5121]" role="status" data-testid="alert-courier-device">
+                {notificationsNeedAttention ? <BellOff size={16} className="mt-0.5 shrink-0" /> : <LocateFixed size={16} className="mt-0.5 shrink-0" />}
+                <div className="min-w-0 flex-1 text-xs leading-relaxed">{notificationsNeedAttention && <p>Notificações desativadas neste aparelho.</p>}{gpsNeedsAttention && <p>Sem envio de GPS há mais de 1 minuto.</p>}</div>
+                <button type="button" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white text-[#755b2c]" aria-label="Ver detalhes do GPS" onClick={() => { setGpsDetailsOpen(true); setPushDetailsOpen(false); }} data-testid="button-courier-device-alert"><ArrowLeft size={15} className="rotate-180" /></button>
               </section>
             )}
+            {returningDeliveries.length > 0 && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-950" role="status">{returningDeliveries.length} {returningDeliveries.length === 1 ? "produto para devolver" : "produtos para devolver"} na filial. A Central confirmará quando receber.</p>}
+            {actionError && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{actionError}</div>}
+            {declineError && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert" data-testid="alert-delivery-decline">{declineError}</div>}
+            <CourierRoutesSection
+              courierId={profile.id}
+              routes={routes.data ?? []}
+              deliveries={individualDeliveries}
+              isLoading={routes.isLoading || deliveries.isLoading}
+              isError={routes.isError || deliveries.isError}
+              online={isOnline}
+              onRetry={() => { void routes.refetch(); void deliveries.refetch(); }}
+              onShowMap={() => changeActiveTab("map")}
+              onCurrentPositionChange={setCurrentPosition}
+              onGpsStatusChange={handleGpsStatusChange}
+              renderIndividualDelivery={renderIndividualDelivery}
+            />
+            <button type="button" className="courier-daily-summary mt-3 w-full text-left" onClick={() => changeActiveTab("earnings")} data-testid="button-courier-daily-summary">
+              <span className="courier-summary-icon"><TrendingUp size={17} /></span>
+              <span className="min-w-0 flex-1"><span className="block text-[10px] font-bold uppercase tracking-[.12em] text-[#827a71]">Resumo de hoje</span><span className="mt-1 block text-sm font-bold">{dailyEarnings.isLoading ? "Atualizando seus totais…" : `${dailyEarnings.data?.completedDeliveries ?? "—"} entregas concluídas`}</span></span>
+              <strong className="shrink-0 text-sm">{dailyEarnings.isLoading ? "—" : money(dailyEarnings.data?.amountToReceive ?? 0)}</strong>
+            </button>
+          </TabsContent>
+
+          <TabsContent value="history" forceMount aria-hidden={activeTab !== "history"} className={`courier-tab-panel courier-tab-panel--deliveries ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
+            <div className="courier-page-heading"><div className="eyebrow">SUAS ATIVIDADES</div><h1>Histórico</h1><p>Entregas concluídas e não realizadas.</p></div>
+            <div className="courier-activity-switch" role="tablist" aria-label="Histórico e ganhos">
+              <button type="button" role="tab" aria-selected="true" onClick={() => changeActiveTab("history")} data-testid="tab-courier-history">Histórico</button>
+              <button type="button" role="tab" aria-selected="false" onClick={() => changeActiveTab("earnings")} data-testid="tab-courier-earnings-page">Ganhos</button>
+            </div>
+            <section className="courier-total-strip" aria-label="Totais do período">
+              {(["day", "week", "month"] as const).map((key) => {
+                const value = key === "day" ? dailyEarnings : key === "week" ? weeklyEarnings : monthlyEarnings;
+                return <div className="courier-total-cell" key={key}><span>{periodNames[key]}</span><strong>{value.isLoading ? "—" : value.data?.completedDeliveries ?? "—"} entregas</strong><b>{value.isLoading ? "—" : money(value.data?.amountToReceive ?? 0)}</b></div>;
+              })}
+            </section>
+            <div className="mt-5 flex items-center justify-between gap-2">
+              <h2 className="text-base font-extrabold">Entregas recentes</h2>
+              <button type="button" className="button-quiet min-h-12" onClick={() => { void deliveries.refetch(); }} data-testid="button-history-refresh">Atualizar</button>
+            </div>
+            {deliveries.isLoading ? <div className="mt-3 space-y-3" role="status" aria-label="Carregando histórico"><div className="skeleton h-24 w-full rounded-2xl" /><div className="skeleton h-24 w-full rounded-2xl" /></div>
+              : deliveries.isError ? <div className="courier-state-card mt-3" role="alert"><p className="font-bold">Não foi possível carregar o histórico.</p><button type="button" className="button-secondary mt-3" onClick={() => void deliveries.refetch()}>Tentar novamente</button></div>
+                : historyDeliveries.length === 0 ? <div className="courier-state-card mt-3"><span className="courier-awaiting-icon"><History size={19} /></span><h2 className="mt-3 font-bold">Ainda sem entregas no histórico</h2><p className="mt-1 text-sm text-muted-foreground">Entregas concluídas ou não realizadas aparecerão aqui.</p></div>
+                  : <div className="mt-3 space-y-2.5">{historyDeliveries.map((delivery) => <article className="courier-history-row" key={delivery.id} data-testid={`history-delivery-${delivery.id}`}>
+                    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-mono text-xs font-bold text-[#a51b26]">{delivery.code}</p><h3 className="mt-1 truncate text-sm font-bold">{delivery.customerName}</h3></div><span className={`courier-history-status ${delivery.status === "COMPLETED" ? "completed" : "not-delivered"}`}>{delivery.status === "COMPLETED" ? "Concluída" : "Não realizada"}</span></div>
+                    <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{delivery.destination}</p>
+                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#eee9e3] pt-2.5 text-xs"><span className="truncate text-muted-foreground">{delivery.storeName}{delivery.createdAt ? ` · Criada ${new Date(delivery.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}` : ""}</span></div>
+                  </article>)}</div>}
+          </TabsContent>
+
+          <TabsContent value="earnings" forceMount aria-hidden={activeTab !== "earnings"} className={`courier-tab-panel courier-tab-panel--deliveries ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
+            <div className="courier-page-heading"><div className="eyebrow">SEU DESEMPENHO</div><h1>Ganhos</h1><p>Totais informados pela Central.</p></div>
+            <div className="courier-activity-switch" role="tablist" aria-label="Histórico e ganhos">
+              <button type="button" role="tab" aria-selected="false" onClick={() => changeActiveTab("history")} data-testid="tab-courier-history">Histórico</button>
+              <button type="button" role="tab" aria-selected="true" onClick={() => changeActiveTab("earnings")} data-testid="tab-courier-earnings-page">Ganhos</button>
+            </div>
+            <div className="courier-period-switch" role="tablist" aria-label="Período dos ganhos">
+              {(["day", "week", "month"] as const).map((option) => <button key={option} type="button" role="tab" aria-selected={period === option} onClick={() => setPeriod(option)} data-testid={`tab-earnings-${option}`}>{periodNames[option]}</button>)}
+            </div>
+            {earnings.isError ? <div className="courier-state-card mt-3" role="alert"><p className="font-bold">Não foi possível consultar seus ganhos.</p><button type="button" className="button-secondary mt-3" onClick={() => void earnings.refetch()}>Tentar novamente</button></div>
+              : <section className="courier-earnings-hero mt-3" aria-live="polite" data-testid="summary-courier-earnings">
+                <span className="courier-summary-icon"><TrendingUp size={18} /></span><p className="mt-4 text-xs font-semibold text-white/75">A receber · {periodNames[period].toLocaleLowerCase("pt-BR")}</p>
+                <strong className="mt-1 block text-3xl font-extrabold tracking-tight">{earnings.isLoading ? "—" : money(earnings.data?.amountToReceive ?? 0)}</strong>
+                <div className="mt-4 flex items-center justify-between border-t border-white/20 pt-3 text-xs"><span className="text-white/75">Entregas concluídas</span><b>{earnings.isLoading ? "—" : earnings.data?.completedDeliveries ?? "—"}</b></div>
+              </section>}
+            <h2 className="mb-3 mt-6 text-base font-extrabold">Visão por período</h2>
+            <section className="courier-total-strip" aria-label="Totais de ganhos por período">
+              {([{ label: "Hoje", value: dailyEarnings }, { label: "Esta semana", value: weeklyEarnings }, { label: "Este mês", value: monthlyEarnings }]).map(({ label, value }) => <div className="courier-total-cell" key={label}><span>{label}</span><strong>{value.isLoading ? "—" : value.data?.completedDeliveries ?? "—"} entregas</strong><b>{value.isLoading ? "—" : money(value.data?.amountToReceive ?? 0)}</b></div>)}
+            </section>
+            <button type="button" className="button-secondary mt-4 min-h-12 w-full justify-center" onClick={() => changeActiveTab("history")}><History size={16} /> Ver histórico de entregas</button>
+          </TabsContent>
+
+          <TabsContent value="map" forceMount aria-hidden={activeTab !== "map"} data-transitioning={tabTransitioning ? "true" : "false"} className={`courier-tab-panel courier-tab-panel--map fixed inset-0 z-50 m-0 h-[100dvh] overflow-hidden ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
+            {activeRoute ? <CourierRouteMapTab route={activeRoute} currentPosition={currentPosition} onBack={() => changeActiveTab("deliveries")} onRefresh={() => void routes.refetch()} activeDelivery={activeRouteDelivery} resizeVersion={mapResizeVersion} />
+              : activeIndividualDelivery ? <CourierDeliveryNavigation deliveryId={activeIndividualDelivery.id} onBack={() => changeActiveTab("deliveries")} delivery={activeIndividualDelivery} resizeVersion={mapResizeVersion} />
+                : <section className="grid h-full place-items-center p-6 text-center"><div><MapIcon className="mx-auto text-muted-foreground" size={24} /><h2 className="mt-3 text-base font-bold">Nenhuma rota ativa no momento</h2><p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">Quando você aceitar uma rota ou entrega, o mapa com o destino aparecerá aqui.</p>{(routes.data ?? []).some((route) => route.status === "OFFERED") && <p className="mt-2 text-xs text-muted-foreground">Há uma rota aguardando aceite. Acesse Início para aceitar e calcular o trajeto.</p>}<button type="button" className="button-primary mt-4 min-h-12" onClick={() => changeActiveTab("deliveries")}><PackageCheck size={15} /> Ver início</button></div></section>}
           </TabsContent>
         </Tabs>
       </div>
+
+      {activeTab !== "map" && <nav className="courier-bottom-nav" aria-label="Navegação principal">
+        <button type="button" className={activeTab === "deliveries" ? "active" : ""} onClick={() => changeActiveTab("deliveries")} aria-current={activeTab === "deliveries" ? "page" : undefined} data-testid="nav-courier-home">
+          <span className="courier-nav-icon"><Bike size={19} /></span><span>Início</span>{pendingOffers > 0 && <i className="courier-offer-badge">{pendingOffers}</i>}
+        </button>
+        <button type="button" className="courier-nav-map" onClick={() => changeActiveTab("map")} aria-label="Abrir mapa" data-testid="nav-courier-map"><span><MapIcon size={22} /></span><small>Mapa</small></button>
+        <button type="button" className={activeTab === "history" || activeTab === "earnings" ? "active" : ""} onClick={() => changeActiveTab("history")} aria-current={activeTab === "history" || activeTab === "earnings" ? "page" : undefined} data-testid="nav-courier-history"><span className="courier-nav-icon"><History size={19} /></span><span>Histórico e ganhos</span></button>
+      </nav>}
     </main>
   );
 }
@@ -951,17 +938,21 @@ function CourierIndividualDeliveryCard({
   delivery,
   active,
   busy,
+  declining,
   nextStatus,
   nextStatusLabel: actionLabel,
   onUpdate,
+  onDecline,
   onShowMap,
 }: {
   delivery: Delivery;
   active: boolean;
   busy: boolean;
+  declining: boolean;
   nextStatus?: string;
   nextStatusLabel?: string;
   onUpdate: (deliveryId: string, status: string, evidencePath?: string) => Promise<void>;
+  onDecline: (deliveryId: string) => Promise<void>;
   onShowMap: () => void;
 }) {
   const isReturning = delivery.status === "RETURNING_TO_STORE";
@@ -990,7 +981,44 @@ function CourierIndividualDeliveryCard({
         </span>
       </div>
       <p className="mt-3 text-sm leading-relaxed">{delivery.destination}</p>
+      {delivery.storeLatitude != null && delivery.storeLongitude != null &&
+        delivery.customerLatitude != null && delivery.customerLongitude != null && (
+        <div className="courier-map-preview mt-3 overflow-hidden rounded-xl border border-[#e9e3da]" data-testid={`map-preview-${delivery.id}`}>
+          <LiveMap
+            markers={[
+              {
+                id: `store-${delivery.id}`,
+                latitude: delivery.storeLatitude,
+                longitude: delivery.storeLongitude,
+                title: `Filial · ${delivery.storeName}`,
+                detail: delivery.storeAddress ?? delivery.storeName,
+                kind: "store",
+                label: "F",
+              },
+              {
+                id: `destination-${delivery.id}`,
+                latitude: delivery.customerLatitude,
+                longitude: delivery.customerLongitude,
+                title: `Destino · ${delivery.customerName}`,
+                detail: delivery.destination,
+                kind: "stop",
+                sequence: 1,
+              },
+            ]}
+            ariaLabel={`Prévia da filial e destino da entrega ${delivery.code}`}
+            size="compact"
+            showCenterOnMe={false}
+            autoFitOnGeometryChange
+          />
+        </div>
+      )}
       {delivery.notes && <p className="mt-2 rounded-lg bg-[#f6f4f1] p-3 text-xs">Observações: {delivery.notes}</p>}
+      {(delivery.estimatedMinutes != null || delivery.distanceKm != null) && (
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-[#6d625a]" aria-label="Estimativa da entrega">
+          {delivery.estimatedMinutes != null && <span className="inline-flex items-center gap-1 rounded-full bg-[#f4f0eb] px-2.5 py-1.5"><Clock3 size={13} />{delivery.estimatedMinutes} min</span>}
+          {delivery.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-[#f4f0eb] px-2.5 py-1.5"><RouteIcon size={13} />{delivery.distanceKm} km</span>}
+        </div>
+      )}
       {isReturning && (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950">
           Leve o produto de volta à filial ao encerrar a rota.
@@ -1045,6 +1073,18 @@ function CourierIndividualDeliveryCard({
           </div>
         ) : null}
       </div>
+      {delivery.status === "OFFERED" && (
+        <button
+          type="button"
+          className="courier-decline-button mt-2 w-full"
+          disabled={busy || declining}
+          onClick={() => void onDecline(delivery.id)}
+          aria-busy={declining}
+          data-testid={`button-decline-delivery-${delivery.id}`}
+        >
+          {declining ? <><LoaderCircle size={15} className="animate-spin" /> Recusando oferta…</> : "Recusar oferta"}
+        </button>
+      )}
     </article>
   );
 }

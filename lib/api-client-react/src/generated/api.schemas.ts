@@ -33,6 +33,10 @@ export interface Delivery {
   storeAddress?: string;
   storeCity?: string;
   /** @nullable */
+  storeLatitude: number | null;
+  /** @nullable */
+  storeLongitude: number | null;
+  /** @nullable */
   courierId?: string | null;
   /** @nullable */
   courierName?: string | null;
@@ -564,6 +568,10 @@ export interface AppUser {
   name: string;
   /** @nullable */
   phone?: string | null;
+  /** @nullable */
+  storeName?: string | null;
+  /** @nullable */
+  courierStatus?: string | null;
   role: AppUserRole;
   /** @nullable */
   storeId: string | null;
@@ -661,6 +669,24 @@ export interface CourierLocationInput {
   measuredAt: string;
 }
 
+export interface CourierAvailabilityInput {
+  online: boolean;
+}
+
+export type CourierAvailabilityResponseStatus = typeof CourierAvailabilityResponseStatus[keyof typeof CourierAvailabilityResponseStatus];
+
+
+export const CourierAvailabilityResponseStatus = {
+  AVAILABLE: 'AVAILABLE',
+  BUSY: 'BUSY',
+  OFFLINE: 'OFFLINE',
+} as const;
+
+export interface CourierAvailabilityResponse {
+  online: boolean;
+  status: CourierAvailabilityResponseStatus;
+}
+
 export interface CourierLocation {
   /**
      * @minimum -90
@@ -711,6 +737,14 @@ export interface RouteDeliverySummary {
   storeName: string;
   storeAddress: string;
   storeCity: string;
+  /** @nullable */
+  storeLatitude: number | null;
+  /** @nullable */
+  storeLongitude: number | null;
+  /** @nullable */
+  customerLatitude: number | null;
+  /** @nullable */
+  customerLongitude: number | null;
   deliveryAmount: number;
   status: string;
 }
@@ -774,6 +808,33 @@ export interface CourierDeliveryRoute {
   stops: DeliveryRouteStop[];
   /** @nullable */
   routeGeometry: RouteCoordinate[] | null;
+}
+
+export type CourierRoutePreviewStopKind = typeof CourierRoutePreviewStopKind[keyof typeof CourierRoutePreviewStopKind];
+
+
+export const CourierRoutePreviewStopKind = {
+  pickup: 'pickup',
+  delivery: 'delivery',
+} as const;
+
+export interface CourierRoutePreviewStop {
+  deliveryId: string;
+  kind: CourierRoutePreviewStopKind;
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface CourierRoutePreview {
+  startPosition: RouteCoordinate;
+  stops: CourierRoutePreviewStop[];
+  /** @nullable */
+  routeGeometry: RouteCoordinate[] | null;
+  /** @nullable */
+  distanceKm: number | null;
+  /** @nullable */
+  estimatedMinutes: number | null;
 }
 
 export type GetDeliveryAnalyticsParams = {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   AcceptCourierRouteBody,
@@ -13,6 +13,10 @@ import {
   CreateCourierDeliveryCancellationResponse,
   CreateDeliveryRouteBody,
   CreateDeliveryRouteResponse,
+  DeclineCourierDeliveryParams,
+  DeclineCourierRouteParams,
+  GetCourierRoutePreviewParams,
+  GetCourierRoutePreviewResponse,
   GetCourierDeliveryNavigationParams,
   GetCourierDeliveryNavigationResponse,
   ListActiveRoutesResponse,
@@ -21,6 +25,8 @@ import {
   RecordCourierStopArrivalResponse,
   UpdateCourierLocationBody,
   UpdateCourierLocationResponse,
+  UpdateCourierAvailabilityBody,
+  UpdateCourierAvailabilityResponse,
   type CourierDeliveryRoute,
 } from "@workspace/api-zod";
 import {
@@ -34,6 +40,7 @@ import {
   deliveryEventsTable,
   deliveryRouteStopsTable,
   deliveryRoutesTable,
+  courierRouteOfferDeclinesTable,
   storesTable,
 } from "@workspace/db";
 import {
@@ -174,6 +181,10 @@ async function routeView(
       storeName: row.storeName,
       storeAddress: row.storeAddress,
       storeCity: row.storeCity,
+      storeLatitude: row.storeLatitude,
+      storeLongitude: row.storeLongitude,
+      customerLatitude: delivery.customerLatitude,
+      customerLongitude: delivery.customerLongitude,
       deliveryAmount: deliveryAmountCents / 100,
       status: delivery.status,
     }];
@@ -586,21 +597,320 @@ router.get(
       return;
     }
 
+    const [courier] = await db
+      .select({ status: couriersTable.status })
+      .from(couriersTable)
+      .where(eq(couriersTable.id, profile.courierId))
+      .limit(1);
+    if (!courier) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+
+    const declinedRows = await db
+      .select({ routeId: courierRouteOfferDeclinesTable.routeId })
+      .from(courierRouteOfferDeclinesTable)
+      .where(eq(courierRouteOfferDeclinesTable.courierId, profile.courierId));
+    const declinedRouteIds = declinedRows.map((row) => row.routeId);
+    const availableOffers = declinedRouteIds.length
+      ? and(
+          eq(deliveryRoutesTable.status, "OFFERED"),
+          notInArray(deliveryRoutesTable.id, declinedRouteIds),
+        )
+      : eq(deliveryRoutesTable.status, "OFFERED");
+
     const routes = await db
       .select()
       .from(deliveryRoutesTable)
       .where(
-        or(
-          eq(deliveryRoutesTable.status, "OFFERED"),
-          and(
+        courier.status === "AVAILABLE"
+          ? or(
+              availableOffers,
+              and(
+                eq(deliveryRoutesTable.courierId, profile.courierId),
+                eq(deliveryRoutesTable.status, "ACCEPTED"),
+              ),
+            )
+          : and(
             eq(deliveryRoutesTable.courierId, profile.courierId),
             eq(deliveryRoutesTable.status, "ACCEPTED"),
           ),
-        ),
       )
       .orderBy(asc(deliveryRoutesTable.createdAt));
     const result = await Promise.all(routes.map(routeView));
     res.json(ListCourierRoutesResponse.parse(result));
+  },
+);
+
+router.get(
+  "/courier/routes/:routeId/preview",
+  requireRole("COURIER"),
+  async (req, res): Promise<void> => {
+    const params = GetCourierRoutePreviewParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "Rota inválida." });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+    const [courier] = await db
+      .select({
+        status: couriersTable.status,
+        currentLatitude: couriersTable.currentLatitude,
+        currentLongitude: couriersTable.currentLongitude,
+        lastLocationAt: couriersTable.lastLocationAt,
+      })
+      .from(couriersTable)
+      .where(eq(couriersTable.id, profile.courierId))
+      .limit(1);
+    if (!courier || courier.status !== "AVAILABLE") {
+      res.status(403).json({ error: "Fique online para visualizar a oferta." });
+      return;
+    }
+    const [route] = await db
+      .select()
+      .from(deliveryRoutesTable)
+      .where(
+        and(
+          eq(deliveryRoutesTable.id, params.data.routeId),
+          eq(deliveryRoutesTable.status, "OFFERED"),
+        ),
+      )
+      .limit(1);
+    if (!route) {
+      res.status(404).json({ error: "Esta oferta não está mais disponível." });
+      return;
+    }
+    const [declined] = await db
+      .select({ id: courierRouteOfferDeclinesTable.id })
+      .from(courierRouteOfferDeclinesTable)
+      .where(
+        and(
+          eq(courierRouteOfferDeclinesTable.routeId, route.id),
+          eq(courierRouteOfferDeclinesTable.courierId, profile.courierId),
+        ),
+      )
+      .limit(1);
+    if (declined) {
+      res.status(404).json({ error: "Esta oferta já foi recusada." });
+      return;
+    }
+    const rows = await routeDeliveries(route.deliveryIds);
+    if (rows.length !== route.deliveryIds.length || !rows.length) {
+      res.status(409).json({ error: "Uma entrega da oferta não está mais disponível." });
+      return;
+    }
+
+    const gpsIsFresh =
+      courier.lastLocationAt != null &&
+      Date.now() - courier.lastLocationAt.getTime() <= 120_000;
+    let start = gpsIsFresh
+      ? storedCoordinate(courier.currentLatitude, courier.currentLongitude)
+      : null;
+    try {
+      start ??=
+        storedCoordinate(rows[0].storeLatitude, rows[0].storeLongitude) ??
+        (await geocodeAddress(rows[0].storeAddress, rows[0].storeCity));
+      const plan = await optimizeRoute(rows, start);
+      res.json(
+        GetCourierRoutePreviewResponse.parse({
+          startPosition: start,
+          stops: plan.stops,
+          routeGeometry: plan.routeGeometry,
+          distanceKm:
+            plan.distanceMeters == null
+              ? null
+              : Number((plan.distanceMeters / 1000).toFixed(1)),
+          estimatedMinutes:
+            plan.durationSeconds == null
+              ? null
+              : Math.ceil(plan.durationSeconds / 60),
+        }),
+      );
+    } catch (error) {
+      if (error instanceof RoutePlanningError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      throw error;
+    }
+  },
+);
+
+router.patch(
+  "/courier/availability",
+  requireRole("COURIER"),
+  async (req, res): Promise<void> => {
+    const body = UpdateCourierAvailabilityBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "Informe se deseja ficar online ou offline." });
+      return;
+    }
+
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [courier] = await tx
+        .select()
+        .from(couriersTable)
+        .where(eq(couriersTable.id, profile.courierId!))
+        .for("update");
+      if (!courier) return { error: "not_found" as const };
+
+      if (!body.data.online) {
+        const [activeDelivery] = await tx
+          .select({ id: deliveriesTable.id })
+          .from(deliveriesTable)
+          .where(
+            and(
+              eq(deliveriesTable.courierId, profile.courierId!),
+              inArray(deliveriesTable.status, [
+                "ACCEPTED",
+                "TO_STORE",
+                "AT_STORE",
+                "IN_TRANSIT",
+                "RETURNING_TO_STORE",
+              ]),
+            ),
+          )
+          .limit(1);
+        const [activeRoute] = await tx
+          .select({ id: deliveryRoutesTable.id })
+          .from(deliveryRoutesTable)
+          .where(
+            and(
+              eq(deliveryRoutesTable.courierId, profile.courierId!),
+              eq(deliveryRoutesTable.status, "ACCEPTED"),
+            ),
+          )
+          .limit(1);
+        if (activeDelivery || activeRoute) return { error: "active_work" as const };
+      }
+
+      const status =
+        body.data.online
+          ? courier.status === "OFFLINE" ? "AVAILABLE" : courier.status
+          : "OFFLINE";
+      await tx
+        .update(couriersTable)
+        .set({ status })
+        .where(eq(couriersTable.id, courier.id));
+      return { status };
+    });
+
+    if ("error" in result) {
+      if (result.error === "not_found") {
+        res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+        return;
+      }
+      res.status(409).json({
+        error: "Conclua ou cancele sua entrega ativa antes de ficar offline.",
+      });
+      return;
+    }
+    res.json(
+      UpdateCourierAvailabilityResponse.parse({
+        online: result.status !== "OFFLINE",
+        status: result.status,
+      }),
+    );
+  },
+);
+
+router.post(
+  "/courier/deliveries/:deliveryId/decline",
+  requireRole("COURIER"),
+  async (req, res): Promise<void> => {
+    const params = DeclineCourierDeliveryParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "Entrega inválida." });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [delivery] = await tx
+        .select()
+        .from(deliveriesTable)
+        .where(eq(deliveriesTable.id, params.data.deliveryId))
+        .for("update");
+      if (!delivery || delivery.status !== "OFFERED" || delivery.courierId !== profile.courierId) {
+        return { error: "not_offered" as const };
+      }
+      await tx
+        .update(deliveriesTable)
+        .set({
+          status: "AWAITING_COURIER",
+          courierId: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(deliveriesTable.id, delivery.id));
+      await tx.insert(deliveryEventsTable).values({
+        id: randomUUID(),
+        deliveryId: delivery.id,
+        kind: "offer_declined",
+        label: "Motoboy recusou a oferta; entrega retornou à fila da Central",
+        actor: getCourierDisplayName(profile.name, profile.email),
+      });
+      return { ok: true as const };
+    });
+
+    if ("error" in result) {
+      res.status(409).json({ error: "Esta entrega não está mais disponível para recusa." });
+      return;
+    }
+    res.sendStatus(204);
+  },
+);
+
+router.post(
+  "/courier/routes/:routeId/decline",
+  requireRole("COURIER"),
+  async (req, res): Promise<void> => {
+    const params = DeclineCourierRouteParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "Rota inválida." });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+    const [courier] = await db
+      .select({ status: couriersTable.status })
+      .from(couriersTable)
+      .where(eq(couriersTable.id, profile.courierId))
+      .limit(1);
+    const [route] = await db
+      .select({ id: deliveryRoutesTable.id, status: deliveryRoutesTable.status })
+      .from(deliveryRoutesTable)
+      .where(eq(deliveryRoutesTable.id, params.data.routeId))
+      .limit(1);
+    if (courier?.status !== "AVAILABLE" || route?.status !== "OFFERED") {
+      res.status(409).json({ error: "Esta rota não está mais disponível para recusa." });
+      return;
+    }
+    await db
+      .insert(courierRouteOfferDeclinesTable)
+      .values({
+        id: randomUUID(),
+        routeId: route.id,
+        courierId: profile.courierId,
+      })
+      .onConflictDoNothing();
+    res.sendStatus(204);
   },
 );
 
@@ -1273,6 +1583,20 @@ router.post(
       res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
       return;
     }
+    const [declined] = await db
+      .select({ id: courierRouteOfferDeclinesTable.id })
+      .from(courierRouteOfferDeclinesTable)
+      .where(
+        and(
+          eq(courierRouteOfferDeclinesTable.routeId, params.data.routeId),
+          eq(courierRouteOfferDeclinesTable.courierId, profile.courierId),
+        ),
+      )
+      .limit(1);
+    if (declined) {
+      res.status(409).json({ error: "Você já recusou esta oferta." });
+      return;
+    }
     const [route] = await db
       .select()
       .from(deliveryRoutesTable)
@@ -1314,7 +1638,7 @@ router.post(
         .from(couriersTable)
         .where(eq(couriersTable.id, profile.courierId!))
         .for("update");
-      if (!courier || !["AVAILABLE", "OFFLINE"].includes(courier.status)) {
+      if (!courier || courier.status !== "AVAILABLE") {
         return { error: "courier_busy" as const };
       }
 

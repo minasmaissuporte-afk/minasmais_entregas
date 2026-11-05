@@ -22,6 +22,10 @@ export interface Delivery {
   storeAddress?: string;
   storeCity?: string;
   /** @nullable */
+  storeLatitude: number | null;
+  /** @nullable */
+  storeLongitude: number | null;
+  /** @nullable */
   courierId?: string | null;
   /** @nullable */
   courierName?: string | null;

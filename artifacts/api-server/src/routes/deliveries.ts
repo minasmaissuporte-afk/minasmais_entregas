@@ -413,9 +413,20 @@ router.get("/me", async (req, res): Promise<void> => {
   if (profile.role === "COURIER") {
     const [courier] = profile.courierId
       ? await db
-          .select({ name: couriersTable.name, phone: couriersTable.phone })
+          .select({
+            name: couriersTable.name,
+            phone: couriersTable.phone,
+            status: couriersTable.status,
+          })
           .from(couriersTable)
           .where(eq(couriersTable.id, profile.courierId))
+          .limit(1)
+      : [];
+    const [store] = profile.storeId
+      ? await db
+          .select({ name: storesTable.name })
+          .from(storesTable)
+          .where(eq(storesTable.id, profile.storeId))
           .limit(1)
       : [];
     res.json(
@@ -423,11 +434,20 @@ router.get("/me", async (req, res): Promise<void> => {
         ...profile,
         name: getCourierDisplayName(courier?.name ?? profile.name, profile.email),
         phone: courier?.phone ?? null,
+        storeName: store?.name ?? null,
+        courierStatus: courier?.status ?? null,
       }),
     );
     return;
   }
-  res.json(GetMyProfileResponse.parse(profile));
+  const [store] = profile.storeId
+    ? await db
+        .select({ name: storesTable.name })
+        .from(storesTable)
+        .where(eq(storesTable.id, profile.storeId))
+        .limit(1)
+    : [];
+  res.json(GetMyProfileResponse.parse({ ...profile, storeName: store?.name ?? null }));
 });
 
 router.get("/access/users", requireRole("ADMIN"), async (_req, res): Promise<void> => {
@@ -822,6 +842,8 @@ async function deliveryView(deliveryId: string) {
       storeName: storesTable.name,
       storeAddress: storesTable.address,
       storeCity: storesTable.city,
+      storeLatitude: storesTable.latitude,
+      storeLongitude: storesTable.longitude,
       courierName: couriersTable.name,
       courierEmail: linkedCourierEmail,
       courierInitials: couriersTable.initials,
@@ -848,6 +870,8 @@ async function deliveryView(deliveryId: string) {
     storeName: row.storeName,
     storeAddress: row.storeAddress,
     storeCity: row.storeCity,
+    storeLatitude: row.storeLatitude,
+    storeLongitude: row.storeLongitude,
     courierName: getOptionalCourierDisplayName(row.courierName, row.courierEmail),
     courierInitials: row.courierInitials,
     events,
@@ -1274,6 +1298,14 @@ router.get(
       return;
     }
     filters.push(eq(deliveriesTable.courierId, profile.courierId));
+    const [courier] = await db
+      .select({ status: couriersTable.status })
+      .from(couriersTable)
+      .where(eq(couriersTable.id, profile.courierId))
+      .limit(1);
+    if (courier?.status === "OFFLINE") {
+      filters.push(sql`${deliveriesTable.status} <> 'OFFERED'`);
+    }
   }
   if (query.data.status) filters.push(eq(deliveriesTable.status, query.data.status));
   if (query.data.storeId)
@@ -1734,7 +1766,7 @@ router.post(
                 and(
                   eq(couriersTable.id, body.data.courierId),
                   inArray(couriersTable.id, linkedCourierIds),
-                  inArray(couriersTable.status, ["AVAILABLE", "OFFLINE"]),
+                  eq(couriersTable.status, "AVAILABLE"),
                 ),
               )
               .limit(1)
@@ -1933,7 +1965,7 @@ router.patch(
           .where(
             and(
               eq(couriersTable.id, courierId),
-                inArray(couriersTable.status, ["AVAILABLE", "OFFLINE"]),
+                eq(couriersTable.status, "AVAILABLE"),
             ),
           )
           .returning();
