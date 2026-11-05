@@ -3,6 +3,7 @@ package br.com.drogariasminasmais.entregas;
 import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
@@ -35,7 +36,7 @@ public class CourierDeviceSetupPlugin extends Plugin {
     public void requestBackgroundLocation(PluginCall call) {
         if (
             Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-            hasPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            isAndroidPermissionGranted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
         ) {
             call.resolve(getStatus());
             return;
@@ -91,17 +92,17 @@ public class CourierDeviceSetupPlugin extends Plugin {
         JSObject status = new JSObject();
         status.put(
             "locationForeground",
-            hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+            isAndroidPermissionGranted(Manifest.permission.ACCESS_FINE_LOCATION)
         );
         status.put(
             "locationBackground",
             Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-                hasPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                isAndroidPermissionGranted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
         );
         status.put(
             "notifications",
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                hasPermission(Manifest.permission.POST_NOTIFICATIONS)
+                isAndroidPermissionGranted(Manifest.permission.POST_NOTIFICATIONS)
         );
 
         boolean batteryExemption = true;
@@ -116,8 +117,8 @@ public class CourierDeviceSetupPlugin extends Plugin {
         return status;
     }
 
-    private boolean hasPermission(String permission) {
+    private boolean isAndroidPermissionGranted(String permission) {
         return ContextCompat.checkSelfPermission(getContext(), permission) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED;
+            PackageManager.PERMISSION_GRANTED;
     }
 }
