@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@clerk/react";
+import { App as CapacitorApp } from "@capacitor/app";
+import { Capacitor, CapacitorHttp, Network, Preferences, registerPlugin } from "@capacitor/core";
+import type { PluginListenerHandle } from "@capacitor/core";
+import {
+  type BackgroundGeolocationPlugin,
+  type CallbackError,
+  type Location as NativeLocation,
+} from "@capacitor-community/background-geolocation";
 import {
   getGetCourierEarningsQueryKey,
   getListCourierRoutesQueryKey,
@@ -18,6 +27,26 @@ import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver
 
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const nativeApiBaseUrl = (
+  import.meta.env.VITE_NATIVE_API_BASE_URL || "https://minas-mais-entregas.replit.app"
+).replace(/\/+$/, "");
+const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>("BackgroundGeolocation");
+
+function distanceInMeters(
+  first: Pick<CourierLocationInput, "latitude" | "longitude"> | null,
+  second: Pick<CourierLocationInput, "latitude" | "longitude">,
+) {
+  if (!first) return Number.POSITIVE_INFINITY;
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+  const latitudeDelta = radians(second.latitude - first.latitude);
+  const longitudeDelta = radians(second.longitude - first.longitude);
+  const a =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(radians(first.latitude)) *
+      Math.cos(radians(second.latitude)) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  return 6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 function requestCurrentLocation() {
   return new Promise<CourierLocationInput>((resolve, reject) => {
@@ -45,6 +74,7 @@ function navigateToStop(latitude: number, longitude: number) {
 }
 
 export default function CourierRoutesSection({
+  courierId,
   routes,
   isLoading,
   isError,
@@ -52,6 +82,7 @@ export default function CourierRoutesSection({
   onShowMap,
   onCurrentPositionChange,
 }: {
+  courierId: string;
   routes: CourierDeliveryRoute[];
   isLoading: boolean;
   isError: boolean;
@@ -64,6 +95,9 @@ export default function CourierRoutesSection({
   const completeStop = useCompleteCourierRouteStop();
   const recordArrival = useRecordCourierStopArrival();
   const updateLocation = useUpdateCourierLocation();
+  const { getToken } = useAuth();
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const updateLocationRef = useRef(updateLocation.mutateAsync);
   updateLocationRef.current = updateLocation.mutateAsync;
   const onCurrentPositionChangeRef = useRef(onCurrentPositionChange);
@@ -79,6 +113,177 @@ export default function CourierRoutesSection({
   const offeredRoutes = routes.filter((route) => route.status === "OFFERED");
 
   useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      let watching = true;
+      let watcherId: string | null = null;
+      let networkListener: PluginListenerHandle | null = null;
+      let appStateListener: PluginListenerHandle | null = null;
+      let gpsClockInterval = 0;
+      let lastDisplayedAt = 0;
+      let lastQueuedAt = 0;
+      let lastQueuedPosition: CourierLocationInput | null = null;
+      let flushing = false;
+      let queueWrite = Promise.resolve();
+      const queueKey = `courier-location-queue:${courierId}`;
+
+      const readQueue = async (): Promise<CourierLocationInput[]> => {
+        const { value } = await Preferences.get({ key: queueKey });
+        if (!value) return [];
+        try {
+          const parsed: unknown = JSON.parse(value);
+          return Array.isArray(parsed) ? (parsed as CourierLocationInput[]) : [];
+        } catch {
+          await Preferences.remove({ key: queueKey });
+          return [];
+        }
+      };
+      const writeQueue = (items: CourierLocationInput[]) =>
+        Preferences.set({ key: queueKey, value: JSON.stringify(items.slice(-1000)) });
+      const enqueue = (position: CourierLocationInput) => {
+        queueWrite = queueWrite.then(async () => {
+          const items = await readQueue();
+          items.push(position);
+          await writeQueue(items);
+        });
+        return queueWrite;
+      };
+      const sendNativeLocation = async (position: CourierLocationInput) => {
+        const token = await getTokenRef.current();
+        if (!token) throw new Error("A sessão expirou. Entre novamente para enviar a localização.");
+        const response = await CapacitorHttp.post({
+          url: `${nativeApiBaseUrl}/api/courier/location`,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          data: position,
+        });
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`A central respondeu com o código ${response.status}.`);
+        }
+      };
+      const flushQueue = async () => {
+        if (!watching || flushing) return;
+        flushing = true;
+        try {
+          while (watching) {
+            const items = await readQueue();
+            const next = items[0];
+            if (!next) break;
+            await sendNativeLocation(next);
+            const remaining = await readQueue();
+            if (
+              remaining[0]?.measuredAt === next.measuredAt &&
+              remaining[0]?.latitude === next.latitude &&
+              remaining[0]?.longitude === next.longitude
+            ) {
+              remaining.shift();
+              await writeQueue(remaining);
+            }
+            setLocationMessage("");
+            setLastGpsSentAt(Date.now());
+          }
+        } catch {
+          if (watching) {
+            setLocationMessage("Sem conexão com a central. A localização ficará salva e será reenviada quando a internet voltar.");
+          }
+        } finally {
+          flushing = false;
+        }
+      };
+      const onNativePosition = (location?: NativeLocation, error?: CallbackError) => {
+        if (!watching) return;
+        if (error) {
+          setLocationMessage(
+            error.code === "NOT_AUTHORIZED"
+              ? "Localização bloqueada. Permita “o tempo todo” nas configurações do Android."
+              : "Aguardando uma posição GPS válida.",
+          );
+          return;
+        }
+        if (!location || location.latitude == null || location.longitude == null) return;
+        const position: CourierLocationInput = {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracyMeters: location.accuracy,
+          speedMetersPerSecond: location.speed,
+          measuredAt: new Date(location.time ?? Date.now()).toISOString(),
+        };
+        const now = Date.now();
+        setGpsAccuracy(position.accuracyMeters);
+        if (now - lastDisplayedAt >= 5_000) {
+          onCurrentPositionChangeRef.current({
+            latitude: position.latitude,
+            longitude: position.longitude,
+          });
+          lastDisplayedAt = now;
+        }
+        const movedMeters = distanceInMeters(lastQueuedPosition, position);
+        if (lastQueuedAt && now - lastQueuedAt < 15_000 && movedMeters < 30) return;
+
+        lastQueuedAt = now;
+        lastQueuedPosition = position;
+        void enqueue(position)
+          .then(() => flushQueue())
+          .catch(() => {
+            if (watching) setLocationMessage("Não foi possível salvar a localização para reenvio.");
+          });
+      };
+
+      gpsClockInterval = window.setInterval(() => setGpsClock(Date.now()), 5_000);
+      setLocationMessage("Ative o rastreamento para compartilhar o GPS em segundo plano.");
+      void BackgroundGeolocation.addWatcher(
+        {
+          backgroundTitle: "Minas Mais Entregas",
+          backgroundMessage: "Rastreando sua entrega",
+          requestPermissions: false,
+          stale: false,
+          distanceFilter: 0,
+        },
+        onNativePosition,
+      )
+        .then((id) => {
+          if (!watching) {
+            void BackgroundGeolocation.removeWatcher({ id });
+            return;
+          }
+          watcherId = id;
+          setLocationMessage("GPS ativo em segundo plano. O Android exibirá o aviso de rastreamento.");
+          void flushQueue();
+        })
+        .catch((error: unknown) => {
+          if (watching) {
+            setLocationMessage(
+              error instanceof Error
+                ? `Não foi possível iniciar o GPS: ${error.message}`
+                : "Não foi possível iniciar o GPS em segundo plano.",
+            );
+          }
+        });
+
+      void Network.addListener("networkStatusChange", ({ connected }) => {
+        if (connected) void flushQueue();
+      }).then((listener) => {
+        if (watching) networkListener = listener;
+        else void listener.remove();
+      });
+      void CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+        if (isActive) void flushQueue();
+      }).then((listener) => {
+        if (watching) appStateListener = listener;
+        else void listener.remove();
+      });
+
+      return () => {
+        watching = false;
+        window.clearInterval(gpsClockInterval);
+        if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
+        void networkListener?.remove();
+        void appStateListener?.remove();
+      };
+    }
+
     if (!navigator.geolocation) {
       setLocationMessage("Este navegador não oferece localização GPS.");
       return;
@@ -176,7 +381,7 @@ export default function CourierRoutesSection({
       document.removeEventListener("visibilitychange", onVisibilityChange);
       if (wakeLock) void wakeLock.release();
     };
-  }, []);
+  }, [courierId]);
   const gpsAgeSeconds =
     lastGpsSentAt == null ? null : Math.max(0, Math.floor((gpsClock - lastGpsSentAt) / 1000));
   const gpsTone =
@@ -264,7 +469,11 @@ export default function CourierRoutesSection({
       {gpsAccuracy != null && gpsAgeSeconds != null && gpsAgeSeconds <= 60 && (
         <span className="ml-2">Precisão {Math.round(gpsAccuracy)} m</span>
       )}
-      <span className="mt-1 block">O GPS é enviado a cada 15 segundos enquanto o PWA estiver aberto.</span>
+      <span className="mt-1 block">
+        {Capacitor.isNativePlatform()
+          ? "O Android mantém o rastreamento ativo em segundo plano enquanto você estiver conectado."
+          : "O GPS é enviado a cada 15 segundos enquanto o PWA estiver aberto."}
+      </span>
       {locationMessage && <span className="mt-1 block">{locationMessage}</span>}
     </div>
     {hasRouteContent && <section className="mt-6 space-y-4" aria-label="Rotas do motoboy">

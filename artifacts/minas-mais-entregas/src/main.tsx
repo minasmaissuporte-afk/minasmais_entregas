@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import { Capacitor } from '@capacitor/core';
 
 import App from './App';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -16,7 +17,7 @@ createRoot(document.getElementById('root')!, {
   </ErrorBoundary>,
 );
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+if (import.meta.env.PROD && !Capacitor.isNativePlatform() && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     void navigator.serviceWorker
       .register(`${import.meta.env.BASE_URL}sw.js`, {

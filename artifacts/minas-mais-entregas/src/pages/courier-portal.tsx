@@ -17,6 +17,7 @@ import {
   type CourierDeliveryRoute,
 } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
+import { Capacitor } from "@capacitor/core";
 import { ArrowLeft, Bike, CheckCircle2, Clock3, KeyRound, LogOut, Map as MapIcon, PackageCheck, Bell, BellOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -29,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { MapCoordinate } from "@/components/live-map";
 
 type Period = "day" | "week" | "month";
+const isNativeApp = Capacitor.isNativePlatform();
 const periodNames: Record<Period, string> = {
   day: "Hoje",
   week: "Esta semana",
@@ -116,7 +118,11 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   const updateStatus = useUpdateDeliveryStatus();
   const updateLocation = useUpdateCourierLocation();
   const pushKey = useGetVapidPublicKey({
-    query: { queryKey: getGetVapidPublicKeyQueryKey(), retry: false },
+    query: {
+      queryKey: getGetVapidPublicKeyQueryKey(),
+      retry: false,
+      enabled: !isNativeApp,
+    },
   });
   const savePush = useSavePushSubscription();
   const removePush = useRemovePushSubscription();
@@ -134,6 +140,11 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       subscriptionUsesVapidKey(pushSubscription, currentVapidBytes),
   );
   useEffect(() => {
+    if (isNativeApp) {
+      setServiceWorkerStatus("unsupported");
+      setPushMessage("Avisos remotos do APK precisam de configuração Firebase/FCM. O aviso persistente de rastreamento continua ativo.");
+      return;
+    }
     if (!("serviceWorker" in navigator)) {
       setServiceWorkerStatus("unsupported");
       return;
@@ -165,6 +176,10 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   }, []);
   const togglePush = async () => {
     setPushMessage("");
+    if (isNativeApp) {
+      setPushMessage("Avisos remotos do APK precisam de configuração Firebase/FCM.");
+      return;
+    }
     if (!pushKey.data?.publicKey || !currentVapidBytes) {
       setPushMessage("A chave VAPID não está disponível ou é inválida. Confira os Secrets e a configuração do servidor.");
       return;
@@ -534,7 +549,9 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             <div>
               <h2 className="text-sm font-bold">Avisos de novas entregas</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                {serviceWorkerStatus === "checking" || pushKey.isLoading
+                {isNativeApp
+                  ? "Avisos remotos do APK precisam de Firebase/FCM. O rastreamento mantém uma notificação persistente."
+                  : serviceWorkerStatus === "checking" || pushKey.isLoading
                   ? "Verificando Service Worker e chave VAPID…"
                   : serviceWorkerStatus === "unsupported"
                     ? "Este navegador não oferece Service Worker."
@@ -557,6 +574,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             className={pushIsActive ? "button-secondary min-h-10" : "button-primary min-h-10"}
             onClick={() => void togglePush()}
             disabled={
+              isNativeApp ||
               pushKey.isLoading ||
               serviceWorkerStatus !== "active" ||
               savePush.isPending ||
@@ -566,7 +584,9 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             data-testid="button-toggle-push"
           >
             {pushIsActive ? <BellOff size={15} /> : <Bell size={15} />}
-            {savePush.isPending || removePush.isPending
+            {isNativeApp
+              ? "Push nativo pendente"
+              : savePush.isPending || removePush.isPending
               ? "Atualizando…"
               : pushIsActive
                 ? "Desativar notificações"
@@ -586,6 +606,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
         )}
 
         <CourierRoutesSection
+          courierId={profile.id}
           routes={routes.data ?? []}
           isLoading={routes.isLoading}
           isError={routes.isError}

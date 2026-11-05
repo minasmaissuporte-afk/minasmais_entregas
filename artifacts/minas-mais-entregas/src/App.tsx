@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ClerkProvider, Show, SignIn, SignUp, useClerk, useUser } from '@clerk/react';
+import { ClerkProvider, Show, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import { ptBR } from '@clerk/localizations';
@@ -16,6 +16,8 @@ import {
   getListStoresQueryKey,
   getListActiveRoutesQueryKey,
   getGetDeliveryAnalyticsQueryKey,
+  setAuthTokenGetter,
+  setBaseUrl,
   useCreateDelivery,
   useCreateDeliveryRoute,
   useDeleteDelivery,
@@ -52,14 +54,23 @@ import Reports from '@/pages/reports';
 import EvidencePhotoAction from '@/components/evidence-photo-action';
 import AccountSecurityPage from '@/pages/account-security';
 import CancellationAlertsPanel from '@/components/cancellation-alerts-panel';
+import { Capacitor } from '@capacitor/core';
+import NativeCourierSetupGate from '@/components/native-courier-setup';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const isNativeApp = Capacitor.isNativePlatform();
+const nativeApiBaseUrl = (
+  import.meta.env.VITE_NATIVE_API_BASE_URL || 'https://minas-mais-entregas.replit.app'
+).replace(/\/+$/, '');
+if (isNativeApp) setBaseUrl(nativeApiBaseUrl);
 const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
 );
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+const clerkProxyUrl = isNativeApp
+  ? `${nativeApiBaseUrl}/api/__clerk`
+  : import.meta.env.VITE_CLERK_PROXY_URL;
 if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY');
 
 const clerkAppearance = {
@@ -1186,7 +1197,13 @@ function UserPortalRoute() {
   if (!auth.isSignedIn) return <Redirect to="/" />;
   if (profile.isError || !profile.data) return <ProfileError retry={() => void profile.refetch()} />;
   if (profile.data.role === 'PENDING') return <PendingApproval profile={profile.data} />;
-  if (profile.data.role === 'COURIER') return <CourierPortal profile={profile.data} />;
+  if (profile.data.role === 'COURIER') {
+    return (
+      <NativeCourierSetupGate userId={profile.data.id}>
+        <CourierPortal profile={profile.data} />
+      </NativeCourierSetupGate>
+    );
+  }
   if (profile.data.role === 'STORE_MANAGER' || profile.data.role === 'STORE_STAFF') {
     return <StorePortal profile={profile.data} />;
   }
@@ -1236,6 +1253,7 @@ function ClerkRoutes() {
     routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
   >
     <QueryClientProvider client={queryClient}>
+      <NativeApiAuthBridge />
       <ClerkQueryClientCacheInvalidator />
       <TooltipProvider>
         <Switch>
@@ -1255,6 +1273,22 @@ function ClerkRoutes() {
       </TooltipProvider>
     </QueryClientProvider>
   </ClerkProvider>;
+}
+
+function NativeApiAuthBridge() {
+  const { getToken } = useAuth();
+  const queryClient = useQueryClient();
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+
+  useEffect(() => {
+    if (!isNativeApp) return;
+    setAuthTokenGetter(() => getTokenRef.current());
+    void queryClient.invalidateQueries();
+    return () => setAuthTokenGetter(null);
+  }, [queryClient]);
+
+  return null;
 }
 
 function App() {

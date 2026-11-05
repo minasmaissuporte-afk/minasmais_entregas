@@ -35,6 +35,14 @@ Não inventar coordenadas: o mapa deve exibir somente posições GPS realmente r
 
 **How to apply:** mantenha posições atuais protegidas por perfil e vinculadas ao atendimento; informe quando o GPS estiver ausente ou desatualizado, sem apresentar pontos estimados como atuais.
 
+## APK Android
+
+O wrapper Capacitor Android deve carregar o site publicado em `https://minas-mais-entregas.replit.app/user-portal` e reutilizar o login web do Clerk, sem criar um fluxo nativo separado.
+
+**Why:** o usuário escolheu o site publicado para manter o mesmo acesso usado no navegador.
+
+**How to apply:** GPS e plugins nativos devem funcionar sobre essa origem remota; se o Clerk exigir configuração de WebView, informe a dependência e não tente contorná-la por código.
+
 ## Cancelamento em rota aceita
 
 Quando uma entrega de uma rota aceita não puder ser concluída, remova somente essa entrega da sequência e recalcule as paradas restantes a partir do GPS atual. Se o produto estiver com o motoboy, mantenha o pedido em retorno à filial até a Central confirmar o recebimento. Em pane/acidente, interrompa a rota, devolva os pedidos pendentes à fila e sinalize a Central com prioridade. Não altere a seleção manual dos pedidos que formam uma rota.
