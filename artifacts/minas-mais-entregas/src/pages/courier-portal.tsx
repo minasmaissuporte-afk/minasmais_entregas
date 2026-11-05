@@ -27,7 +27,7 @@ import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
-import { ArrowLeft, Bell, BellOff, Bike, Check, CheckCircle2, Clock3, Hand, History, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, PackageCheck, Phone, Route as RouteIcon, TrendingUp } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, Check, CheckCircle2, Clock3, Hand, History, House, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, PackageCheck, Phone, Route as RouteIcon, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
@@ -727,96 +727,86 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   return (
     <main className={`courier-pwa min-h-[100dvh] bg-[#f5f2ee] text-[#272729] ${activeTab === "map" ? "fixed inset-0 z-40 overflow-hidden" : "pb-[calc(88px+env(safe-area-inset-bottom))]"}`}>
       {activeTab !== "map" && (
-        <header className="courier-header px-4 pb-4 pt-[max(10px,env(safe-area-inset-top))] text-white">
-          <div className="mx-auto max-w-2xl">
-            <div className="flex min-h-10 items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2.5" aria-label="Minas Mais Entregas">
-                <span className="courier-brand-mark"><Bike size={18} strokeWidth={2.4} /></span>
-                <span className="truncate text-[11px] font-extrabold uppercase leading-[1.15] tracking-[.12em]">MINAS MAIS<br />ENTREGAS</span>
+        <header className="courier-header px-4 pb-3 pt-[max(10px,env(safe-area-inset-top))] text-white">
+          <div className="courier-header-inner mx-auto max-w-2xl">
+            <div className="courier-header-top">
+              <div className="courier-official-brand" aria-label="Minas Mais Entregas">
+                <img src={`${import.meta.env.BASE_URL}brand-logo-source.png`} alt="Drogarias MinasMais" />
+                <span>MINAS MAIS ENTREGAS</span>
               </div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="courier-header-status"
-                  aria-label={gpsStatus.tone === "red" ? "GPS com problema. Ver detalhes" : "Ver status do GPS"}
-                  aria-expanded={gpsDetailsOpen}
-                  onClick={() => { setGpsDetailsOpen((open) => !open); setPushDetailsOpen(false); }}
-                  data-testid="button-courier-gps-status"
-                >
-                  <LocateFixed size={17} /><i className={`status-dot status-${gpsStatus.tone}`} />
-                </button>
-                <button
-                  type="button"
-                  className="courier-header-status"
-                  aria-label={pushIsActive ? "Notificações ativadas. Ver detalhes" : "Notificações desativadas. Ver detalhes"}
-                  aria-expanded={pushDetailsOpen}
-                  onClick={() => { setPushDetailsOpen((open) => !open); setGpsDetailsOpen(false); }}
-                  data-testid="button-courier-push-status"
-                >
-                  {pushIsActive ? <Bell size={17} /> : <BellOff size={17} />}
-                  <i className={`status-dot ${pushIsActive ? "status-green" : "status-yellow"}`} />
-                </button>
-                <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-                  <SheetTrigger asChild>
-                    <button type="button" className="courier-avatar-button" aria-label="Abrir perfil" data-testid="button-courier-profile">
-                      {firstName.charAt(0).toLocaleUpperCase("pt-BR")}
+              <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+                <SheetTrigger asChild>
+                  <button type="button" className="courier-avatar-button" aria-label="Abrir perfil" data-testid="button-courier-profile">
+                    {firstName.charAt(0).toLocaleUpperCase("pt-BR")}
+                  </button>
+                </SheetTrigger>
+                <SheetContent side="right" className="courier-profile-sheet flex w-[min(23rem,calc(100vw-1rem))] flex-col border-0 bg-[#faf8f4] p-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))] [&>button]:grid [&>button]:h-12 [&>button]:min-h-12 [&>button]:min-w-12 [&>button]:w-12 [&>button]:place-items-center">
+                  <SheetHeader className="text-left">
+                    <SheetTitle className="text-xl font-bold">Seu perfil</SheetTitle>
+                    <SheetDescription>Seus dados locais e preferências deste aparelho.</SheetDescription>
+                  </SheetHeader>
+                  <div className="mt-6 flex items-center gap-3 rounded-2xl bg-white p-4">
+                    <span className="courier-profile-avatar">{firstName.charAt(0).toLocaleUpperCase("pt-BR")}</span>
+                    <div className="min-w-0"><p className="truncate text-sm font-bold">{profile.name || firstName}</p><p className="truncate text-xs text-muted-foreground">{profile.email}</p></div>
+                  </div>
+                  <dl className="mt-4 divide-y divide-[#e9e4dc] rounded-2xl bg-white px-4">
+                    <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Telefone</dt><dd className="mt-1 text-sm">{profile.phone || "Não informado"}</dd></div>
+                    <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Filial</dt><dd className="mt-1 text-sm">{profile.storeName || profile.storeId || "Não vinculada"}</dd></div>
+                    <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Conta</dt><dd className="mt-1 text-sm">{profile.email}</dd></div>
+                  </dl>
+                  <div className="mt-4 space-y-2">
+                    <button type="button" className="button-secondary min-h-12 w-full justify-start" aria-label={gpsStatus.tone === "red" ? "GPS com problema. Ver detalhes" : "Ver status do GPS"} aria-expanded={gpsDetailsOpen} onClick={() => { setGpsDetailsOpen((open) => !open); setPushDetailsOpen(false); }} data-testid="button-courier-gps-status">
+                      <LocateFixed size={17} /> GPS · {gpsStatus.tone === "red" ? "Verificar" : gpsStatus.tone === "green" ? "Ativo" : "Aguardando"}
                     </button>
-                  </SheetTrigger>
-                  <SheetContent side="right" className="courier-profile-sheet flex w-[min(23rem,calc(100vw-1rem))] flex-col border-0 bg-[#faf8f4] p-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))] [&>button]:grid [&>button]:h-12 [&>button]:min-h-12 [&>button]:min-w-12 [&>button]:w-12 [&>button]:place-items-center">
-                    <SheetHeader className="text-left">
-                      <SheetTitle className="text-xl font-bold">Seu perfil</SheetTitle>
-                      <SheetDescription>Seus dados locais e preferências deste aparelho.</SheetDescription>
-                    </SheetHeader>
-                    <div className="mt-6 flex items-center gap-3 rounded-2xl bg-white p-4">
-                      <span className="courier-profile-avatar">{firstName.charAt(0).toLocaleUpperCase("pt-BR")}</span>
-                      <div className="min-w-0"><p className="truncate text-sm font-bold">{profile.name || firstName}</p><p className="truncate text-xs text-muted-foreground">{profile.email}</p></div>
-                    </div>
-                    <dl className="mt-4 divide-y divide-[#e9e4dc] rounded-2xl bg-white px-4">
-                      <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Telefone</dt><dd className="mt-1 text-sm">{profile.phone || "Não informado"}</dd></div>
-                      <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Filial</dt><dd className="mt-1 text-sm">{profile.storeName || profile.storeId || "Não vinculada"}</dd></div>
-                      <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Conta</dt><dd className="mt-1 text-sm">{profile.email}</dd></div>
-                    </dl>
-                    <div className="mt-4 space-y-2">
-                      <button type="button" className="button-secondary min-h-12 w-full justify-start" onClick={() => void togglePush()} disabled={pushToggleDisabled} data-testid="button-courier-notifications">
-                        {pushIsActive ? <BellOff size={17} /> : <Bell size={17} />}
-                        {pushIsActive ? "Desativar notificações" : "Ativar notificações"}
-                      </button>
-                      {pushMessage && <p role="status" className="px-1 text-xs text-[#8b3d45]">{pushMessage}</p>}
-                      <Link href="/account" onClick={() => setMenuOpen(false)} className="button-secondary min-h-12 w-full justify-start" data-testid="link-courier-password">
-                        <KeyRound size={17} /> Alterar senha
-                      </Link>
-                    </div>
-                    <p className="mt-auto border-t border-[#e9e4dc] pt-4 text-xs text-muted-foreground">Minas Mais Entregas · Versão {appMetadata.version}</p>
-                    <button type="button" className="button-quiet min-h-12 w-full justify-start" onClick={() => void handleSignOut()} data-testid="button-courier-sign-out">
-                      <LogOut size={17} /> Sair da conta
+                    <button type="button" className="button-secondary min-h-12 w-full justify-start" aria-label={pushIsActive ? "Notificações ativadas. Ver detalhes" : "Notificações desativadas. Ver detalhes"} aria-expanded={pushDetailsOpen} onClick={() => { setPushDetailsOpen((open) => !open); setGpsDetailsOpen(false); }} data-testid="button-courier-push-status">
+                      {pushIsActive ? <Bell size={17} /> : <BellOff size={17} />} Notificações · {pushIsActive ? "Ativadas" : "Desativadas"}
                     </button>
-                  </SheetContent>
-                </Sheet>
-              </div>
+                    {(gpsDetailsOpen || pushDetailsOpen) && (
+                      <aside className="courier-profile-status" role="status">
+                        {gpsDetailsOpen ? <>
+                          <div className="flex items-center gap-2 text-sm font-bold"><LocateFixed size={16} /> Status do GPS</div>
+                          <p className="mt-2 text-xs">{gpsStatus.hasSent ? gpsNeedsAttention ? `Último envio há ${Math.floor(gpsStatus.ageSeconds / 60)} min.` : `Último envio há ${gpsStatus.ageSeconds} s.` : "Aguardando a primeira posição do aparelho."}</p>
+                          {gpsStatus.accuracyMeters != null && <p className="mt-1 text-xs text-muted-foreground">Precisão aproximada: {Math.round(gpsStatus.accuracyMeters)} m.</p>}
+                          {gpsStatus.locationMessage && <p className="mt-2 text-xs text-muted-foreground">{gpsStatus.locationMessage}</p>}
+                          <button type="button" className="button-secondary mt-3 min-h-12 w-full justify-center" onClick={() => refreshGps()}><LocateFixed size={15} /> Tentar atualizar GPS</button>
+                        </> : <>
+                          <div className="flex items-center gap-2 text-sm font-bold">{pushIsActive ? <Bell size={16} /> : <BellOff size={16} />} Notificações</div>
+                          <p className="mt-2 text-xs">{!notificationStatusReady ? "Verificando este aparelho…" : pushIsActive ? isNativeApp ? "Ativadas neste aparelho." : "Ativadas para este PWA." : serviceWorkerStatus === "missing" ? "O Service Worker não está ativo. Feche e reabra o PWA." : pushKey.isError || (!isNativeApp && !currentVapidBytes) ? "Não foi possível carregar a configuração das notificações." : "Desativadas neste aparelho."}</p>
+                          {pushMessage && <p className="mt-2 text-xs text-[#8b3d45]">{pushMessage}</p>}
+                          <button type="button" className="button-secondary mt-3 min-h-12 w-full justify-center" onClick={() => void togglePush()} disabled={pushToggleDisabled}><Bell size={15} /> Configurar notificações</button>
+                        </>}
+                      </aside>
+                    )}
+                    <button type="button" className="button-secondary min-h-12 w-full justify-start" onClick={() => void togglePush()} disabled={pushToggleDisabled} data-testid="button-courier-notifications">
+                      {pushIsActive ? <BellOff size={17} /> : <Bell size={17} />}
+                      {pushIsActive ? "Desativar notificações" : "Ativar notificações"}
+                    </button>
+                    {pushMessage && <p role="status" className="px-1 text-xs text-[#8b3d45]">{pushMessage}</p>}
+                    <Link href="/account" onClick={() => setMenuOpen(false)} className="button-secondary min-h-12 w-full justify-start" data-testid="link-courier-password">
+                      <KeyRound size={17} /> Alterar senha
+                    </Link>
+                  </div>
+                  <p className="mt-auto border-t border-[#e9e4dc] pt-4 text-xs text-muted-foreground">Minas Mais Entregas · Versão {appMetadata.version}</p>
+                  <button type="button" className="button-quiet min-h-12 w-full justify-start" onClick={() => void handleSignOut()} data-testid="button-courier-sign-out">
+                    <LogOut size={17} /> Sair da conta
+                  </button>
+                </SheetContent>
+              </Sheet>
             </div>
-            <div className="mt-3 flex items-center justify-between gap-3">
+            <h1 className="courier-greeting">Olá, {firstName} <Hand size={17} aria-hidden="true" /></h1>
+            <section className={`courier-online-card ${isOnline ? "is-online" : "is-offline"}`} aria-label="Disponibilidade do motoboy">
               <div className="min-w-0">
-                <p className="flex items-center gap-1.5 text-[13px] text-white/80"><Hand size={15} /> Olá, {firstName}</p>
-                <h1 className="mt-0.5 text-xl font-extrabold tracking-[-.03em]">Sua jornada, no seu ritmo.</h1>
+                <div className="flex items-center gap-2">
+                  <span className={`courier-online-pulse ${isOnline ? "is-online" : ""}`} />
+                  <span className="text-[12px] font-extrabold">{isOnline ? "Você está online" : "Você está offline"}</span>
+                </div>
+                <p className="mt-1 text-[12px] leading-snug text-current/75">{isOnline ? "Disponível para receber pedidos" : "Ative para receber pedidos"}</p>
               </div>
-              <span className="shrink-0 rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.12em]">Motoboy</span>
-            </div>
-            {(gpsDetailsOpen || pushDetailsOpen) && (
-              <aside className="relative z-30 mt-3 rounded-xl bg-white p-4 text-[#29292b] shadow-lg" role="status">
-                {gpsDetailsOpen ? <>
-                  <div className="flex items-center gap-2 text-sm font-bold"><LocateFixed size={16} /> Status do GPS</div>
-                  <p className="mt-2 text-xs">{gpsStatus.hasSent ? gpsNeedsAttention ? `Último envio há ${Math.floor(gpsStatus.ageSeconds / 60)} min.` : `Último envio há ${gpsStatus.ageSeconds} s.` : "Aguardando a primeira posição do aparelho."}</p>
-                  {gpsStatus.accuracyMeters != null && <p className="mt-1 text-xs text-muted-foreground">Precisão aproximada: {Math.round(gpsStatus.accuracyMeters)} m.</p>}
-                  {gpsStatus.locationMessage && <p className="mt-2 text-xs text-muted-foreground">{gpsStatus.locationMessage}</p>}
-                  <button type="button" className="button-secondary mt-3 min-h-12 w-full justify-center" onClick={() => refreshGps()}><LocateFixed size={15} /> Tentar atualizar GPS</button>
-                </> : <>
-                  <div className="flex items-center gap-2 text-sm font-bold">{pushIsActive ? <Bell size={16} /> : <BellOff size={16} />} Notificações</div>
-                  <p className="mt-2 text-xs">{!notificationStatusReady ? "Verificando este aparelho…" : pushIsActive ? isNativeApp ? "Ativadas neste aparelho." : "Ativadas para este PWA." : serviceWorkerStatus === "missing" ? "O Service Worker não está ativo. Feche e reabra o PWA." : pushKey.isError || (!isNativeApp && !currentVapidBytes) ? "Não foi possível carregar a configuração das notificações." : "Desativadas neste aparelho."}</p>
-                  {pushMessage && <p className="mt-2 text-xs text-[#8b3d45]">{pushMessage}</p>}
-                  <button type="button" className="button-secondary mt-3 min-h-12 w-full justify-center" onClick={() => void togglePush()} disabled={pushToggleDisabled}><Bell size={15} /> Configurar notificações</button>
-                </>}
-              </aside>
-            )}
+              <button type="button" role="switch" aria-checked={isOnline} aria-label={isOnline ? "Ficar offline" : "Ficar online"} className={`courier-online-toggle ${isOnline ? "active" : ""}`} onClick={() => void toggleAvailability()} disabled={updateAvailability.isPending} aria-busy={updateAvailability.isPending} data-testid="toggle-courier-availability">
+                <span className="courier-online-knob">{updateAvailability.isPending ? <LoaderCircle size={14} className="animate-spin" /> : isOnline ? <Check size={14} /> : null}</span>
+              </button>
+            </section>
+            {availabilityError && <div className="mt-2 rounded-xl border border-[#edc9c4] bg-[#fff1ed] px-3 py-2.5 text-xs leading-relaxed text-[#94382e]" role="alert" data-testid="alert-courier-availability">{availabilityError}</div>}
           </div>
         </header>
       )}
@@ -824,19 +814,6 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       <div className={activeTab === "map" ? "h-full w-full" : "mx-auto max-w-2xl px-3 pt-3 sm:px-5"}>
         <Tabs value={activeTab} onValueChange={changeActiveTab}>
           <TabsContent value="deliveries" forceMount aria-hidden={activeTab !== "deliveries"} className={`courier-tab-panel courier-tab-panel--deliveries ${activeTab === "deliveries" ? "mt-0" : ""} ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`} data-transitioning={tabTransitioning ? "true" : "false"}>
-            <section className={`courier-online-card ${isOnline ? "is-online" : "is-offline"}`} aria-label="Disponibilidade do motoboy">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className={`courier-online-pulse ${isOnline ? "is-online" : ""}`} />
-                  <span className="text-[10px] font-extrabold uppercase tracking-[.14em]">{isOnline ? "Você está online" : "Você está offline"}</span>
-                </div>
-                <p className="mt-1 text-[12px] leading-snug text-current/75">{isOnline ? "Pronto para receber novas entregas." : "Ative para começar a receber pedidos."}</p>
-              </div>
-              <button type="button" role="switch" aria-checked={isOnline} aria-label={isOnline ? "Ficar offline" : "Ficar online"} className={`courier-online-toggle ${isOnline ? "active" : ""}`} onClick={() => void toggleAvailability()} disabled={updateAvailability.isPending} aria-busy={updateAvailability.isPending} data-testid="toggle-courier-availability">
-                <span className="courier-online-knob">{updateAvailability.isPending ? <LoaderCircle size={14} className="animate-spin" /> : isOnline ? <Check size={14} /> : null}</span>
-              </button>
-            </section>
-            {availabilityError && <div className="mt-2 rounded-xl border border-[#edc9c4] bg-[#fff1ed] px-3 py-2.5 text-xs leading-relaxed text-[#94382e]" role="alert" data-testid="alert-courier-availability">{availabilityError}</div>}
             {(notificationsNeedAttention || gpsNeedsAttention) && (
               <section className="mt-3 flex items-start gap-2 rounded-xl border border-[#ead9b4] bg-[#fff8e9] p-3 text-[#6d5121]" role="status" data-testid="alert-courier-device">
                 {notificationsNeedAttention ? <BellOff size={16} className="mt-0.5 shrink-0" /> : <LocateFixed size={16} className="mt-0.5 shrink-0" />}
@@ -872,6 +849,9 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             <div className="courier-activity-switch" role="tablist" aria-label="Histórico e ganhos">
               <button type="button" role="tab" aria-selected="true" onClick={() => changeActiveTab("history")} data-testid="tab-courier-history">Histórico</button>
               <button type="button" role="tab" aria-selected="false" onClick={() => changeActiveTab("earnings")} data-testid="tab-courier-earnings-page">Ganhos</button>
+            </div>
+            <div className="courier-period-switch mt-3" role="tablist" aria-label="Período do histórico">
+              {(["day", "week", "month"] as const).map((option) => <button key={option} type="button" role="tab" aria-selected={period === option} onClick={() => setPeriod(option)} data-testid={`tab-history-period-${option}`}>{periodNames[option]}</button>)}
             </div>
             <section className="courier-total-strip" aria-label="Totais do período">
               {(["day", "week", "month"] as const).map((key) => {
@@ -925,7 +905,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
 
       {activeTab !== "map" && <nav className="courier-bottom-nav" aria-label="Navegação principal">
         <button type="button" className={activeTab === "deliveries" ? "active" : ""} onClick={() => changeActiveTab("deliveries")} aria-current={activeTab === "deliveries" ? "page" : undefined} data-testid="nav-courier-home">
-          <span className="courier-nav-icon"><Bike size={19} /></span><span>Início</span>{pendingOffers > 0 && <i className="courier-offer-badge">{pendingOffers}</i>}
+          <span className="courier-nav-icon"><House size={19} /></span><span>Início</span>{pendingOffers > 0 && <i className="courier-offer-badge">{pendingOffers}</i>}
         </button>
         <button type="button" className="courier-nav-map" onClick={() => changeActiveTab("map")} aria-label="Abrir mapa" data-testid="nav-courier-map"><span><MapIcon size={22} /></span><small>Mapa</small></button>
         <button type="button" className={activeTab === "history" || activeTab === "earnings" ? "active" : ""} onClick={() => changeActiveTab("history")} aria-current={activeTab === "history" || activeTab === "earnings" ? "page" : undefined} data-testid="nav-courier-history"><span className="courier-nav-icon"><History size={19} /></span><span>Histórico e ganhos</span></button>
@@ -967,23 +947,20 @@ function CourierIndividualDeliveryCard({
       : <MapPin size={16} />;
 
   return (
-    <article className={`panel p-4 sm:p-5 ${active ? "border-l-4 border-l-[#a91d2a]" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
+    <article className={`panel courier-delivery-card ${active ? "courier-delivery-card--active border-l-4 border-l-[#a91d2a]" : ""}`} data-delivery-status={delivery.status} data-testid={`card-delivery-${delivery.id}`}>
+      <div className="courier-delivery-card-heading">
         <div className="min-w-0">
-          <div className="font-mono text-xs font-semibold text-[#a91d2a]">{delivery.code}</div>
-          <h3 className="mt-1 text-sm font-bold">{delivery.customerName}</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {delivery.storeName}{delivery.storeAddress ? ` · ${delivery.storeAddress}` : ""}
-          </p>
+          <div className="courier-delivery-code">{delivery.status === "OFFERED" ? `Nova entrega ${delivery.code}` : delivery.code}</div>
+          <h3>{delivery.customerName}</h3>
+          {delivery.status !== "OFFERED" && <p>{statusLabel[delivery.status] ?? delivery.status}</p>}
         </div>
-        <span className="shrink-0 rounded-full bg-[#f6f4f1] px-2.5 py-1 text-[10px] font-semibold">
-          {statusLabel[delivery.status] ?? delivery.status}
+        <span className="courier-delivery-mark" aria-hidden="true">
+          <PackageCheck size={20} />
         </span>
       </div>
-      <p className="mt-3 text-sm leading-relaxed">{delivery.destination}</p>
       {delivery.storeLatitude != null && delivery.storeLongitude != null &&
         delivery.customerLatitude != null && delivery.customerLongitude != null && (
-        <div className="courier-map-preview mt-3 overflow-hidden rounded-xl border border-[#e9e3da]" data-testid={`map-preview-${delivery.id}`}>
+        <div className="courier-map-preview courier-delivery-map mt-3 overflow-hidden rounded-xl border border-[#e9e3da]" data-testid={`map-preview-${delivery.id}`}>
           <LiveMap
             markers={[
               {
@@ -1012,6 +989,10 @@ function CourierIndividualDeliveryCard({
           />
         </div>
       )}
+      <div className="courier-delivery-locations">
+        <p><MapPin size={15} aria-hidden="true" /><span><b>Retirada:</b> {delivery.storeName}{delivery.storeAddress ? ` · ${delivery.storeAddress}` : ""}</span></p>
+        <p><MapPin size={15} aria-hidden="true" /><span><b>Destino:</b> {delivery.destination}</span></p>
+      </div>
       {delivery.notes && <p className="mt-2 rounded-lg bg-[#f6f4f1] p-3 text-xs">Observações: {delivery.notes}</p>}
       {(delivery.estimatedMinutes != null || delivery.distanceKm != null) && (
         <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-[#6d625a]" aria-label="Estimativa da entrega">
@@ -1025,7 +1006,7 @@ function CourierIndividualDeliveryCard({
         </p>
       )}
       {!isReturning && (active || ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status)) && (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="courier-delivery-contact-actions mt-3 flex flex-wrap gap-2">
           {delivery.customerPhone && (
             <>
               <a className="button-secondary min-h-12" href={`tel:${delivery.customerPhone}`}>
@@ -1044,10 +1025,10 @@ function CourierIndividualDeliveryCard({
           {active && <CourierUnableToDeliverAction deliveryId={delivery.id} disabled={busy} />}
         </div>
       )}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-        <span className="text-sm font-bold">{money(delivery.deliveryAmount)}</span>
+      <div className="courier-delivery-footer mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+        <span className="courier-delivery-amount">{money(delivery.deliveryAmount)}</span>
         {delivery.status === "IN_TRANSIT" && nextStatus ? (
-          <div className="w-full space-y-2">
+          <div className="courier-delivery-evidence w-full space-y-2">
             <EvidencePhotoAction
               deliveryId={delivery.id}
               disabled={busy}

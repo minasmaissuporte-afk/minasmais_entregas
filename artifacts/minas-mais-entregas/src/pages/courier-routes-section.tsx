@@ -26,7 +26,7 @@ import {
   type CourierDeliveryRoute,
   type Delivery,
 } from "@workspace/api-client-react";
-import { Check, CheckCircle2, Clock3, LoaderCircle, Map, MapPin, Navigation, PackageCheck, RefreshCw, Route as RouteIcon } from "lucide-react";
+import { Check, Clock3, LoaderCircle, Map, MapPin, Navigation, PackageCheck, PackageSearch, Power, RefreshCw, Route as RouteIcon } from "lucide-react";
 import LiveMap, { type MapCoordinate, type MapMarker } from "@/components/live-map";
 import EvidencePhotoAction from "@/components/evidence-photo-action";
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
@@ -592,13 +592,14 @@ export default function CourierRoutesSection({
         </div>
       ) : workItems.length === 0 ? (
         <div className="courier-awaiting-card" role="status" data-testid="status-courier-awaiting">
-          <span className="courier-awaiting-icon"><CheckCircle2 size={20} /></span>
-          <div className="min-w-0 flex-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#587c5a]">{online ? "Disponível" : "Offline"}</span>
-            <h2 className="mt-1 text-sm font-bold">{online ? "Aguardando pedidos" : "Você está offline"}</h2>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{online ? "Assim que a Central enviar uma oferta, ela aparece aqui." : "Fique online para receber novas ofertas."}</p>
+          <span className={`courier-awaiting-icon ${online ? "" : "courier-awaiting-icon--offline"}`}>
+            {online ? <PackageSearch size={34} strokeWidth={1.5} /> : <Power size={34} strokeWidth={1.5} />}
+          </span>
+          <div className="courier-awaiting-copy">
+            <h2>{online ? "Aguardando pedidos..." : "Você está offline — ative para receber pedidos"}</h2>
+            <p>{online ? "Tudo pronto por aqui. Vamos avisar quando uma nova entrega chegar." : "Quando estiver pronto, ligue a disponibilidade no cabeçalho."}</p>
+            {online && <span className="courier-live-label"><i /> Buscando entregas próximas</span>}
           </div>
-          {online && <span className="courier-live-label"><i /> AO VIVO</span>}
         </div>
       ) : (
         <>
@@ -655,7 +656,7 @@ function CourierRouteOfferCard({
   onAccept: () => void;
   onDecline: () => void;
 }) {
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(true);
   const preview = useGetCourierRoutePreview(route.id, {
     query: {
       queryKey: getGetCourierRoutePreviewQueryKey(route.id),
@@ -687,8 +688,8 @@ function CourierRouteOfferCard({
     : [];
 
   return (
-    <article className="panel p-4 sm:p-5" data-testid={`card-route-offer-${route.id}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <article className="panel courier-route-offer-card p-4 sm:p-5" data-testid={`card-route-offer-${route.id}`}>
+      <div className="courier-route-offer-heading flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-sm font-bold"><RouteIcon size={17} className="text-primary" />{route.deliveryCount} {route.deliveryCount === 1 ? "entrega" : "entregas"}</div>
           <p className="mt-1 text-xs text-muted-foreground">Confira a sequência antes de aceitar. Ela será travada ao confirmar.</p>
@@ -699,7 +700,7 @@ function CourierRouteOfferCard({
         </div>
       </div>
 
-      <div className="mt-4 divide-y divide-border border-y border-border">
+      <div className="courier-route-offer-deliveries mt-4 divide-y divide-border border-y border-border">
         {route.deliveries.map((delivery) => (
           <div key={delivery.id} className="flex items-start justify-between gap-3 py-3">
             <div className="min-w-0">
@@ -711,7 +712,7 @@ function CourierRouteOfferCard({
         ))}
       </div>
 
-      <div className="mt-3 flex gap-2">
+      <div className="courier-route-offer-controls mt-3 flex gap-2">
         <button
           type="button"
           className="button-secondary min-h-12 flex-1 justify-center"
@@ -778,7 +779,7 @@ function CourierRouteOfferCard({
       )}
 
       <button
-        className="button-primary mt-3 min-h-12 w-full justify-center"
+          className="courier-route-offer-accept button-primary mt-3 min-h-12 w-full justify-center"
         type="button"
         disabled={busy}
         onClick={onAccept}
