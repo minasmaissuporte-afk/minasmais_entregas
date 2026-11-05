@@ -58,6 +58,7 @@ import type {
   HealthStatus,
   ListCouriersParams,
   ListDeliveriesParams,
+  NativePushTokenInput,
   PushConfig,
   PushSubscriptionInput,
   Store,
@@ -882,6 +883,182 @@ export const useRemovePushSubscription = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRemovePushSubscriptionMutationOptions(options), queryClient);
+    }
+
+export const getSaveNativePushTokenUrl = () => {
+
+
+
+
+  return `/api/push/native-token`
+}
+
+/**
+ * @summary Save the signed-in courier's native Firebase push token
+ */
+export const saveNativePushToken = async (nativePushTokenInput: NativePushTokenInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<void>(getSaveNativePushTokenUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(nativePushTokenInput)
+  }
+);}
+
+
+
+
+
+export const getSaveNativePushTokenMutationKey = () => ['saveNativePushToken'] as const;
+
+export const getSaveNativePushTokenMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveNativePushToken>>, TError,SaveNativePushTokenMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveNativePushToken>>, TError,SaveNativePushTokenMutationVariables, TContext> => {
+
+const mutationKey = getSaveNativePushTokenMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveNativePushToken>>, SaveNativePushTokenMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveNativePushToken(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveNativePushTokenMutationResult = NonNullable<Awaited<ReturnType<typeof saveNativePushToken>>>
+    export type SaveNativePushTokenMutationBody = BodyType<NativePushTokenInput>
+    export type SaveNativePushTokenMutationError = ErrorType<unknown>
+    export type SaveNativePushTokenMutationVariables = {data: BodyType<NativePushTokenInput>}
+
+    /**
+ * @summary Save the signed-in courier's native Firebase push token
+ */
+export const useSaveNativePushToken = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveNativePushToken>>, TError,SaveNativePushTokenMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof saveNativePushToken>>,
+        TError,
+        SaveNativePushTokenMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveNativePushTokenMutationOptions(options), queryClient);
+    }
+
+export const getRemoveNativePushTokenUrl = () => {
+
+
+
+
+  return `/api/push/native-token`
+}
+
+/**
+ * @summary Remove the signed-in user's native Firebase push token
+ */
+export const removeNativePushToken = async (nativePushTokenInput: NativePushTokenInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<void>(getRemoveNativePushTokenUrl(),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(nativePushTokenInput)
+  }
+);}
+
+
+
+
+
+export const getRemoveNativePushTokenMutationKey = () => ['removeNativePushToken'] as const;
+
+export const getRemoveNativePushTokenMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeNativePushToken>>, TError,RemoveNativePushTokenMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeNativePushToken>>, TError,RemoveNativePushTokenMutationVariables, TContext> => {
+
+const mutationKey = getRemoveNativePushTokenMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeNativePushToken>>, RemoveNativePushTokenMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  removeNativePushToken(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveNativePushTokenMutationResult = NonNullable<Awaited<ReturnType<typeof removeNativePushToken>>>
+    export type RemoveNativePushTokenMutationBody = BodyType<NativePushTokenInput>
+    export type RemoveNativePushTokenMutationError = ErrorType<unknown>
+    export type RemoveNativePushTokenMutationVariables = {data: BodyType<NativePushTokenInput>}
+
+    /**
+ * @summary Remove the signed-in user's native Firebase push token
+ */
+export const useRemoveNativePushToken = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeNativePushToken>>, TError,RemoveNativePushTokenMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof removeNativePushToken>>,
+        TError,
+        RemoveNativePushTokenMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRemoveNativePushTokenMutationOptions(options), queryClient);
     }
 
 export const getListDeliveryCancellationReasonsUrl = () => {

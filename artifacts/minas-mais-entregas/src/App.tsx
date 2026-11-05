@@ -55,6 +55,7 @@ import EvidencePhotoAction from '@/components/evidence-photo-action';
 import AccountSecurityPage from '@/pages/account-security';
 import CancellationAlertsPanel from '@/components/cancellation-alerts-panel';
 import { Capacitor } from '@capacitor/core';
+import { Network } from '@capacitor/network';
 import NativeCourierSetupGate from '@/components/native-courier-setup';
 
 const queryClient = new QueryClient();
@@ -119,6 +120,14 @@ const clerkAppearance = {
     otpCodeFieldInput: 'border-[#e2e0dd] text-[#24272d]',
     formFieldRow: 'gap-1',
     main: 'text-[#24272d]',
+  },
+};
+const nativeClerkAppearance = {
+  ...clerkAppearance,
+  elements: {
+    socialButtonsBlockButton: { display: 'none' },
+    socialButtonsBlockButtonText: { display: 'none' },
+    socialButtonsBlockDivider: { display: 'none' },
   },
 };
 
@@ -1235,7 +1244,7 @@ function ClerkRoutes() {
   return <ClerkProvider
     publishableKey={clerkPubKey}
     proxyUrl={clerkProxyUrl}
-    appearance={clerkAppearance}
+    appearance={isNativeApp ? nativeClerkAppearance : clerkAppearance}
     signInUrl={`${basePath}/sign-in`}
     signUpUrl={`${basePath}/sign-up`}
     localization={{
@@ -1254,6 +1263,7 @@ function ClerkRoutes() {
   >
     <QueryClientProvider client={queryClient}>
       <NativeApiAuthBridge />
+      <NativeConnectivityGuard />
       <ClerkQueryClientCacheInvalidator />
       <TooltipProvider>
         <Switch>
@@ -1289,6 +1299,45 @@ function NativeApiAuthBridge() {
   }, [queryClient]);
 
   return null;
+}
+
+function NativeConnectivityGuard() {
+  const [offline, setOffline] = useState(false);
+
+  useEffect(() => {
+    if (!isNativeApp) return;
+    let mounted = true;
+    let listener: { remove: () => Promise<void> } | undefined;
+    void Network.getStatus()
+      .then((status) => {
+        if (mounted) setOffline(!status.connected);
+      })
+      .catch(() => undefined);
+    void Network.addListener('networkStatusChange', (status) => {
+      if (mounted) setOffline(!status.connected);
+    }).then((nextListener) => {
+      if (mounted) listener = nextListener;
+      else void nextListener.remove();
+    });
+    return () => {
+      mounted = false;
+      void listener?.remove();
+    };
+  }, []);
+
+  if (!offline) return null;
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-[#f4f3f1] p-5">
+      <section className="panel w-full max-w-sm p-6 text-center" role="alert" aria-live="assertive">
+        <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#a91d2a] text-sm font-bold text-white">MM</div>
+        <h1 className="mt-4 text-lg font-bold">Sem conexão</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Sem conexão — tentando novamente. Confira a internet do aparelho.</p>
+        <button className="button-primary mt-5 min-h-10" type="button" onClick={() => window.location.reload()}>
+          Tentar novamente
+        </button>
+      </section>
+    </div>
+  );
 }
 
 function App() {

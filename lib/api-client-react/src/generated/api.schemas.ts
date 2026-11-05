@@ -233,6 +233,14 @@ export interface PushSubscriptionInput {
   auth: string;
 }
 
+export interface NativePushTokenInput {
+  /**
+     * @minLength 1
+     * @maxLength 4096
+     */
+  token: string;
+}
+
 export type DeliveryEvidenceUploadInputContentType = typeof DeliveryEvidenceUploadInputContentType[keyof typeof DeliveryEvidenceUploadInputContentType];
 
 

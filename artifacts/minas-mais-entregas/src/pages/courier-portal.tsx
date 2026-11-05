@@ -8,6 +8,8 @@ import {
   useGetVapidPublicKey,
   useSavePushSubscription,
   useRemovePushSubscription,
+  useSaveNativePushToken,
+  useRemoveNativePushToken,
   useGetCourierEarnings,
   useListCourierRoutes,
   useListDeliveries,
@@ -18,9 +20,12 @@ import {
 } from "@workspace/api-client-react";
 import { useClerk } from "@clerk/react";
 import { Capacitor } from "@capacitor/core";
+import { PushNotifications } from "@capacitor/push-notifications";
+import { LocalNotifications } from "@capacitor/local-notifications";
+import { Preferences } from "@capacitor/preferences";
 import { ArrowLeft, Bike, CheckCircle2, Clock3, KeyRound, LogOut, Map as MapIcon, PackageCheck, Bell, BellOff } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "wouter";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "wouter";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
 import CourierRouteMapTab from "@/components/courier-route-map-tab";
 import CourierRoutesSection from "@/pages/courier-routes-section";
@@ -90,6 +95,7 @@ function subscriptionUsesVapidKey(
 
 export default function CourierPortal({ profile }: { profile: AppUser }) {
   const { signOut } = useClerk();
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"deliveries" | "map">("deliveries");
   const [currentPosition, setCurrentPosition] = useState<MapCoordinate | null>(null);
@@ -97,6 +103,8 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   const [actionError, setActionError] = useState("");
   const [pushMessage, setPushMessage] = useState("");
   const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
+  const [nativePushActive, setNativePushActive] = useState(false);
+  const [nativePushToken, setNativePushToken] = useState<string | null>(null);
   const [serviceWorkerStatus, setServiceWorkerStatus] = useState<
     "checking" | "active" | "missing" | "unsupported"
   >("checking");
@@ -126,6 +134,12 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   });
   const savePush = useSavePushSubscription();
   const removePush = useRemovePushSubscription();
+  const saveNativePush = useSaveNativePushToken();
+  const removeNativePush = useRemoveNativePushToken();
+  const saveNativePushRef = useRef(saveNativePush.mutateAsync);
+  saveNativePushRef.current = saveNativePush.mutateAsync;
+  const removeNativePushRef = useRef(removeNativePush.mutateAsync);
+  removeNativePushRef.current = removeNativePush.mutateAsync;
   const currentVapidBytes = useMemo(() => {
     if (!pushKey.data?.publicKey) return null;
     try {
@@ -134,15 +148,104 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       return null;
     }
   }, [pushKey.data?.publicKey]);
-  const pushIsActive = Boolean(
-    pushSubscription &&
-      currentVapidBytes &&
-      subscriptionUsesVapidKey(pushSubscription, currentVapidBytes),
-  );
+  const pushIsActive = isNativeApp
+    ? nativePushActive
+    : Boolean(
+        pushSubscription &&
+          currentVapidBytes &&
+          subscriptionUsesVapidKey(pushSubscription, currentVapidBytes),
+      );
+  useEffect(() => {
+    if (!isNativeApp) return;
+    let mounted = true;
+    const tokenKey = `native-fcm-token:${profile.id}`;
+    const enabledKey = `native-fcm-enabled:${profile.id}`;
+    const handles: Array<{ remove: () => Promise<void> }> = [];
+
+    void Promise.all([
+      Preferences.get({ key: tokenKey }),
+      Preferences.get({ key: enabledKey }),
+    ]).then(async ([savedToken, enabled]) => {
+      if (!mounted) return;
+      setNativePushToken(savedToken.value);
+      const permission = await PushNotifications.checkPermissions();
+      if (permission.receive === "granted" && enabled.value === "true") {
+        await PushNotifications.register();
+      }
+    }).catch(() => {
+      if (mounted) setPushMessage("Não foi possível verificar as notificações deste aparelho.");
+    });
+
+    void PushNotifications.addListener("registration", async ({ value }) => {
+      if (!mounted || !value) return;
+      try {
+        await saveNativePushRef.current({ data: { token: value } });
+        await Preferences.set({ key: tokenKey, value });
+        await Preferences.set({ key: enabledKey, value: "true" });
+        setNativePushToken(value);
+        setNativePushActive(true);
+        setPushMessage("Notificações ativadas neste aparelho.");
+      } catch {
+        setNativePushActive(false);
+        setPushMessage("O aparelho recebeu o token, mas não foi possível salvar a inscrição no servidor.");
+      }
+    }).then((handle) => {
+      if (mounted) handles.push(handle);
+      else void handle.remove();
+    });
+
+    void PushNotifications.addListener("registrationError", () => {
+      if (mounted) {
+        setNativePushActive(false);
+        setPushMessage("Não foi possível registrar este aparelho no Firebase. Verifique a configuração do app.");
+      }
+    }).then((handle) => {
+      if (mounted) handles.push(handle);
+      else void handle.remove();
+    });
+
+    void PushNotifications.addListener("pushNotificationReceived", async (notification) => {
+      if (!mounted) return;
+      const title = notification.title || "Nova entrega";
+      const body = notification.body || "Há uma atualização para você.";
+      setPushMessage(`${title}: ${body}`);
+      try {
+        await LocalNotifications.schedule({
+          notifications: [{
+            id: Math.floor(Date.now() % 2_000_000_000),
+            title,
+            body,
+            schedule: { at: new Date(Date.now() + 250) },
+            extra: notification.data,
+          }],
+        });
+      } catch {
+        // The in-app message remains visible if Android suppresses a foreground notification.
+      }
+    }).then((handle) => {
+      if (mounted) handles.push(handle);
+      else void handle.remove();
+    });
+
+    void PushNotifications.addListener("pushNotificationActionPerformed", ({ notification }) => {
+      if (!mounted) return;
+      const target = notification.data?.url;
+      if (typeof target === "string" && target.startsWith("/") && !target.startsWith("//")) {
+        setLocation(target);
+      }
+    }).then((handle) => {
+      if (mounted) handles.push(handle);
+      else void handle.remove();
+    });
+
+    return () => {
+      mounted = false;
+      for (const handle of handles) void handle.remove();
+    };
+  }, [profile.id, setLocation]);
   useEffect(() => {
     if (isNativeApp) {
       setServiceWorkerStatus("unsupported");
-      setPushMessage("Avisos remotos do APK precisam de configuração Firebase/FCM. O aviso persistente de rastreamento continua ativo.");
       return;
     }
     if (!("serviceWorker" in navigator)) {
@@ -174,10 +277,40 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       window.clearTimeout(timeoutId);
     };
   }, []);
+  const toggleNativePush = async () => {
+    setPushMessage("");
+    try {
+      if (nativePushActive && nativePushToken) {
+        await removeNativePush.mutateAsync({ data: { token: nativePushToken } });
+        await Preferences.set({ key: `native-fcm-enabled:${profile.id}`, value: "false" });
+        setNativePushActive(false);
+        setPushMessage("Notificações desativadas neste aparelho.");
+        return;
+      }
+      let permission = await PushNotifications.checkPermissions();
+      if (permission.receive !== "granted") {
+        permission = await PushNotifications.requestPermissions();
+      }
+      if (permission.receive !== "granted") {
+        throw new Error("Permita notificações nas configurações do Android para receber novas entregas.");
+      }
+      await PushNotifications.createChannel({
+        id: "delivery-updates",
+        name: "Novas entregas",
+        description: "Avisos de novas entregas e atualizações da rota",
+        importance: 5,
+      });
+      await Preferences.set({ key: `native-fcm-enabled:${profile.id}`, value: "true" });
+      setPushMessage("Ativando notificações…");
+      await PushNotifications.register();
+    } catch (error) {
+      setPushMessage(error instanceof Error ? error.message : "Não foi possível ativar as notificações.");
+    }
+  };
   const togglePush = async () => {
     setPushMessage("");
     if (isNativeApp) {
-      setPushMessage("Avisos remotos do APK precisam de configuração Firebase/FCM.");
+      await toggleNativePush();
       return;
     }
     if (!pushKey.data?.publicKey || !currentVapidBytes) {
@@ -258,6 +391,17 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     } catch (error) {
       setPushMessage(error instanceof Error ? error.message : "Não foi possível atualizar as notificações.");
     }
+  };
+  const handleSignOut = async () => {
+    if (isNativeApp && nativePushToken) {
+      try {
+        await removeNativePush.mutateAsync({ data: { token: nativePushToken } });
+        await Preferences.set({ key: `native-fcm-enabled:${profile.id}`, value: "false" });
+      } catch {
+        // Continue sign-out even if the server cannot be reached.
+      }
+    }
+    await signOut({ redirectUrl: import.meta.env.BASE_URL });
   };
   const groupedDeliveryIds = useMemo(
     () => new Set((routes.data ?? []).flatMap((route) => route.deliveries.map((delivery) => delivery.id))),
@@ -355,7 +499,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             </Link>
             <button
               className="button-quiet min-h-12 px-2 text-xs sm:px-3"
-              onClick={() => void signOut({ redirectUrl: import.meta.env.BASE_URL })}
+              onClick={() => void handleSignOut()}
             >
               <LogOut size={15} /> Sair
             </button>
@@ -550,7 +694,9 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
               <h2 className="text-sm font-bold">Avisos de novas entregas</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 {isNativeApp
-                  ? "Avisos remotos do APK precisam de Firebase/FCM. O rastreamento mantém uma notificação persistente."
+                  ? pushIsActive
+                    ? "Notificações Firebase ativadas neste aparelho."
+                    : "Ative para receber avisos de novas entregas neste aparelho."
                   : serviceWorkerStatus === "checking" || pushKey.isLoading
                   ? "Verificando Service Worker e chave VAPID…"
                   : serviceWorkerStatus === "unsupported"
@@ -574,18 +720,23 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             className={pushIsActive ? "button-secondary min-h-10" : "button-primary min-h-10"}
             onClick={() => void togglePush()}
             disabled={
-              isNativeApp ||
               pushKey.isLoading ||
-              serviceWorkerStatus !== "active" ||
+              (!isNativeApp && serviceWorkerStatus !== "active") ||
               savePush.isPending ||
               removePush.isPending ||
-              !currentVapidBytes
+              (!isNativeApp && !currentVapidBytes) ||
+              saveNativePush.isPending ||
+              removeNativePush.isPending
             }
             data-testid="button-toggle-push"
           >
             {pushIsActive ? <BellOff size={15} /> : <Bell size={15} />}
             {isNativeApp
-              ? "Push nativo pendente"
+              ? saveNativePush.isPending || removeNativePush.isPending
+                ? "Atualizando…"
+                : pushIsActive
+                  ? "Desativar notificações"
+                  : "Ativar notificações"
               : savePush.isPending || removePush.isPending
               ? "Atualizando…"
               : pushIsActive

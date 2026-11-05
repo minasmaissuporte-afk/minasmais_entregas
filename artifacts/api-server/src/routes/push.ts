@@ -3,10 +3,12 @@ import { and, eq } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   RemovePushSubscriptionBody,
+  RemoveNativePushTokenBody,
+  SaveNativePushTokenBody,
   SavePushSubscriptionBody,
   GetVapidPublicKeyResponse,
 } from "@workspace/api-zod";
-import { db, pushSubscriptionsTable } from "@workspace/db";
+import { db, nativePushTokensTable, pushSubscriptionsTable } from "@workspace/db";
 import { requireAuthentication, requireRole, type AppUserProfile } from "../middlewares/accessControl";
 import {
   getPushConfig,
@@ -14,6 +16,7 @@ import {
   getVapidPublicKey,
   pruneStalePushSubscriptions,
 } from "../lib/webPush";
+import { isFirebasePushConfigured } from "../lib/firebasePush";
 
 const router: IRouter = Router();
 
@@ -97,6 +100,68 @@ router.delete(
         and(
           eq(pushSubscriptionsTable.endpoint, body.data.endpoint),
           eq(pushSubscriptionsTable.userId, profile.id),
+        ),
+      );
+    res.sendStatus(204);
+  },
+);
+
+router.post(
+  "/push/native-token",
+  requireAuthentication,
+  requireRole("COURIER", "ADMIN", "CENTRAL"),
+  async (req, res): Promise<void> => {
+    const body = SaveNativePushTokenBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: body.error.message });
+      return;
+    }
+    if (!isFirebasePushConfigured()) {
+      res.status(503).json({ error: "As notificações Firebase ainda não estão configuradas no servidor." });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    if (profile.role === "COURIER" && !profile.courierId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
+      return;
+    }
+    await db
+      .insert(nativePushTokensTable)
+      .values({
+        id: randomUUID(),
+        courierId: profile.role === "COURIER" ? profile.courierId : null,
+        userId: profile.id,
+        token: body.data.token,
+      })
+      .onConflictDoUpdate({
+        target: nativePushTokensTable.token,
+        set: {
+          courierId: profile.role === "COURIER" ? profile.courierId : null,
+          userId: profile.id,
+          updatedAt: new Date(),
+        },
+      });
+    res.sendStatus(204);
+  },
+);
+
+router.delete(
+  "/push/native-token",
+  requireAuthentication,
+  requireRole("COURIER", "ADMIN", "CENTRAL"),
+  async (req, res): Promise<void> => {
+    const body = RemoveNativePushTokenBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: body.error.message });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    await db
+      .delete(nativePushTokensTable)
+      .where(
+        and(
+          eq(nativePushTokensTable.token, body.data.token),
+          eq(nativePushTokensTable.userId, profile.id),
         ),
       );
     res.sendStatus(204);

@@ -10,6 +10,17 @@ const config: CapacitorConfig = {
   },
   server: {
     androidScheme: "https",
+    url: "https://minas-mais-entregas.replit.app/user-portal",
+    allowNavigation: [
+      "minas-mais-entregas.replit.app",
+      "*.minas-mais-entregas.replit.app",
+      "clerk.com",
+      "*.clerk.com",
+      "*.clerk.dev",
+      "*.clerk.accounts.dev",
+      "*.accounts.dev",
+    ],
+    errorPath: "native-offline.html",
   },
   plugins: {
     CapacitorHttp: {

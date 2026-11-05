@@ -41,7 +41,7 @@ O wrapper Capacitor Android deve carregar o site publicado em `https://minas-mai
 
 **Why:** o usuário escolheu o site publicado para manter o mesmo acesso usado no navegador.
 
-**How to apply:** GPS e plugins nativos devem funcionar sobre essa origem remota; se o Clerk exigir configuração de WebView, informe a dependência e não tente contorná-la por código.
+**How to apply:** mantenha o login no domínio publicado, aceite cookies no WebView, permita os domínios do Clerk e oculte login Google no APK; não altere o painel do Clerk. Só proponha uma alternativa de login depois de testar no aparelho.
 
 ## Cancelamento em rota aceita
 

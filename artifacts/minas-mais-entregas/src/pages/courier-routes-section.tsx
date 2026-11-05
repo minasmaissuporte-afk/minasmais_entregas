@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/react";
 import { App as CapacitorApp } from "@capacitor/app";
-import { Capacitor, CapacitorHttp, Network, Preferences, registerPlugin } from "@capacitor/core";
+import { Capacitor, CapacitorHttp, registerPlugin } from "@capacitor/core";
 import type { PluginListenerHandle } from "@capacitor/core";
+import { Network } from "@capacitor/network";
+import { Preferences } from "@capacitor/preferences";
 import {
   type BackgroundGeolocationPlugin,
   type CallbackError,
@@ -211,7 +213,7 @@ export default function CourierRoutesSection({
           measuredAt: new Date(location.time ?? Date.now()).toISOString(),
         };
         const now = Date.now();
-        setGpsAccuracy(position.accuracyMeters);
+        setGpsAccuracy(position.accuracyMeters ?? null);
         if (now - lastDisplayedAt >= 5_000) {
           onCurrentPositionChangeRef.current({
             latitude: position.latitude,

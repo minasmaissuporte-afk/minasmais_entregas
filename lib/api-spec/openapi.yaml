@@ -143,6 +143,33 @@ paths:
       responses:
         "204":
           description: Subscription removed
+  /push/native-token:
+    post:
+      operationId: saveNativePushToken
+      tags: [courier]
+      summary: Save the signed-in courier's native Firebase push token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativePushTokenInput"
+      responses:
+        "204":
+          description: Firebase token saved
+    delete:
+      operationId: removeNativePushToken
+      tags: [courier]
+      summary: Remove the signed-in user's native Firebase push token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativePushTokenInput"
+      responses:
+        "204":
+          description: Firebase token removed
   /delivery-cancellation-reasons:
     get:
       operationId: listDeliveryCancellationReasons
@@ -946,6 +973,11 @@ components:
         endpoint: { type: string, format: uri, minLength: 10 }
         p256dh: { type: string, minLength: 16 }
         auth: { type: string, minLength: 8 }
+    NativePushTokenInput:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string, minLength: 1, maxLength: 4096 }
     DeliveryEvidenceUploadInput:
       type: object
       required: [name, size, contentType]

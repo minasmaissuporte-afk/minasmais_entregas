@@ -8,6 +8,7 @@ import {
   pushSubscriptionsTable,
 } from "@workspace/db";
 import { logger } from "./logger";
+import { notifyNativeCouriers } from "./firebasePush";
 
 type VapidKeyName = "VAPID_PUBLIC_KEY" | "VAPID_PRIVATE_KEY";
 type NormalizedKey = { value: string; bytes: Buffer };
@@ -267,6 +268,7 @@ export async function notifyCouriers(
   payload: { title: string; body: string; url?: string },
 ): Promise<void> {
   if (!courierIds.length) return;
+  await notifyNativeCouriers(courierIds, payload);
   const config = loadVapidConfiguration();
   if (!config) {
     logger.warn("Web push is not configured; notification was not sent");

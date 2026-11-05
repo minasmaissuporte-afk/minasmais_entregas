@@ -191,6 +191,34 @@ export const RemovePushSubscriptionResponse = zod.void()
 
 
 /**
+ * @summary Save the signed-in courier's native Firebase push token
+ */
+export const saveNativePushTokenBodyTokenMax = 4096;
+
+
+
+export const SaveNativePushTokenBody = zod.object({
+  "token": zod.string().min(1).max(saveNativePushTokenBodyTokenMax)
+})
+
+export const SaveNativePushTokenResponse = zod.void()
+
+
+/**
+ * @summary Remove the signed-in user's native Firebase push token
+ */
+export const removeNativePushTokenBodyTokenMax = 4096;
+
+
+
+export const RemoveNativePushTokenBody = zod.object({
+  "token": zod.string().min(1).max(removeNativePushTokenBodyTokenMax)
+})
+
+export const RemoveNativePushTokenResponse = zod.void()
+
+
+/**
  * @summary List active courier cancellation reasons
  */
 export const ListDeliveryCancellationReasonsResponseItem = zod.object({

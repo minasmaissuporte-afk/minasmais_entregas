@@ -59,6 +59,7 @@ export * from './getDeliveryAnalyticsParams';
 export * from './healthStatus';
 export * from './listCouriersParams';
 export * from './listDeliveriesParams';
+export * from './nativePushTokenInput';
 export * from './pushConfig';
 export * from './pushSubscriptionInput';
 export * from './routeCoordinate';

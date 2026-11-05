@@ -30,6 +30,30 @@ export const pushSubscriptionsTable = pgTable(
   ],
 );
 
+export const nativePushTokensTable = pgTable(
+  "native_push_tokens",
+  {
+    id: text("id").primaryKey(),
+    courierId: text("courier_id"),
+    userId: text("user_id").references(() => appUsersTable.id, {
+      onDelete: "cascade",
+    }),
+    token: text("token").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("native_push_tokens_token_idx").on(table.token),
+    index("native_push_tokens_courier_idx").on(table.courierId),
+    index("native_push_tokens_user_idx").on(table.userId),
+  ],
+);
+
 export const deliveryEvidenceUploadsTable = pgTable(
   "delivery_evidence_uploads",
   {

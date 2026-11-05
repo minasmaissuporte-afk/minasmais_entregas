@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f3f1" />
+    <title>Sem conexão — Minas Mais Entregas</title>
+    <style>
+      :root { color-scheme: light; font-family: Arial, sans-serif; background: #f4f3f1; color: #24272d; }
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; }
+      main { width: min(100%, 440px); padding: 28px; border: 1px solid #e7e6e3; border-radius: 20px; background: #fff; text-align: center; box-shadow: 0 12px 36px #24272d12; }
+      .mark { width: 52px; height: 52px; margin: 0 auto 18px; display: grid; place-items: center; border-radius: 16px; background: #a91d2a; color: white; font-weight: 800; }
+      h1 { margin: 0; font-size: 22px; }
+      p { margin: 10px 0 0; color: #6c7078; line-height: 1.5; }
+      button { margin-top: 22px; min-height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: #a91d2a; color: white; font-weight: 700; }
+      #status { margin-top: 14px; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <main role="status" aria-live="polite">
+      <div class="mark" aria-hidden="true">MM</div>
+      <h1>Sem conexão</h1>
+      <p>Conecte-se à internet para abrir a área do motoboy. O aplicativo tentará novamente automaticamente.</p>
+      <button type="button" onclick="retry()">Tentar agora</button>
+      <p id="status">Tentando novamente…</p>
+    </main>
+    <script>
+      const appUrl = "https://minas-mais-entregas.replit.app/user-portal";
+      function retry() {
+        document.getElementById("status").textContent = "Verificando conexão…";
+        window.location.replace(appUrl);
+      }
+      window.setInterval(() => {
+        if (navigator.onLine) retry();
+      }, 5000);
+    </script>
+  </body>
+</html>

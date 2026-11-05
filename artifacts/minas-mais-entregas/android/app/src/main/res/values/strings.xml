@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Minas Mais Entregas</string>
+    <string name="title_activity_main">Minas Mais Entregas</string>
+    <string name="package_name">br.com.drogariasminasmais.entregas</string>
+    <string name="custom_url_scheme">br.com.drogariasminasmais.entregas</string>
+</resources>

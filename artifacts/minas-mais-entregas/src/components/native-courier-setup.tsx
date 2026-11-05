@@ -2,8 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
-import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
+import { PushNotifications } from "@capacitor/push-notifications";
 import { BatteryCharging, Bell, Check, MapPin, RefreshCw, Settings } from "lucide-react";
 
 interface CourierDevicePermissionStatus {
@@ -180,7 +180,7 @@ export default function NativeCourierSetupGate({
       icon: Bell,
       action: () =>
         runAction("notifications", async () => {
-          await LocalNotifications.requestPermissions();
+          await PushNotifications.requestPermissions();
         }),
       label: "Permitir notificações",
     },
