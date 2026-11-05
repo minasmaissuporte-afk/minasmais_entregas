@@ -1185,6 +1185,200 @@
   .courier-pwa .courier-nav-map > span,
   .courier-pwa :is(button, a) { transition-duration: .01ms !important; }
 }
+
+/* Courier phone shell: keep the header and navigation fixed while only the
+   selected non-map tab scrolls. Inactive force-mounted panels leave the flow. */
+.courier-pwa.courier-app-shell {
+  display: flex;
+  height: 100dvh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.courier-app-shell > .courier-header { flex: none; }
+.courier-app-shell > .courier-content-shell {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: 0;
+}
+.courier-app-shell > .courier-content-shell > [data-orientation] {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+.courier-app-shell .courier-tab-panel {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-top: 0;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
+}
+.courier-app-shell .courier-tab-panel[data-state="inactive"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.courier-app-shell .courier-tab-panel--map {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  overflow: hidden;
+  padding: 0;
+}
+.courier-pwa .courier-header-top {
+  min-height: 45px;
+  align-items: center;
+}
+.courier-pwa .courier-official-brand { display: block; }
+.courier-pwa .courier-official-brand img {
+  width: auto;
+  max-width: clamp(145px, 44vw, 174px);
+  height: 40px;
+  max-height: 40px;
+  border-radius: 0;
+  object-fit: contain;
+  object-position: left center;
+  background: transparent;
+  filter: brightness(0) invert(1);
+}
+.courier-pwa .courier-avatar-button {
+  width: 48px;
+  height: 48px;
+  margin-top: 0;
+  flex: 0 0 48px;
+}
+.courier-pwa .courier-online-toggle {
+  width: 56px;
+  height: 48px;
+  min-width: 48px;
+  flex: 0 0 56px;
+  align-items: center;
+  border-radius: 999px;
+  background: transparent;
+  padding: 0;
+}
+.courier-pwa .courier-online-toggle::before {
+  inset: 13px 0;
+  background: #9299a1;
+}
+.courier-pwa .courier-online-toggle.active::before { background: #258456; }
+.courier-pwa .courier-online-knob {
+  width: 28px;
+  height: 28px;
+  margin-left: 3px;
+  transform: translateX(0);
+  transition: transform 200ms ease;
+}
+.courier-pwa .courier-online-knob.is-online { transform: translateX(22px); }
+.courier-pwa .courier-profile-sheet > button:first-of-type {
+  top: max(8px, env(safe-area-inset-top));
+  right: 8px;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  opacity: 1;
+}
+.courier-pwa .courier-profile-sheet > button[aria-label="Close"]:focus-visible {
+  outline: 3px solid #bc1d2a;
+  outline-offset: 2px;
+}
+.courier-pwa .courier-profile-sheet [data-slot="sheet-header"] { padding-right: 46px; }
+.courier-pwa .courier-profile-avatar { width: 48px; height: 48px; flex: 0 0 48px; }
+.courier-pwa .courier-profile-inline-row {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #e8e4df;
+  border-radius: 14px;
+  background: #fff;
+  padding: 4px 8px 4px 12px;
+}
+.courier-pwa .courier-profile-inline-row .button-secondary {
+  min-height: 48px;
+  border-radius: 10px;
+  padding-inline: 12px;
+}
+.courier-pwa .courier-profile-switch {
+  position: relative;
+  display: flex;
+  width: 52px;
+  min-width: 52px;
+  height: 48px;
+  min-height: 48px;
+  align-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  padding: 0;
+}
+.courier-pwa .courier-profile-switch::before {
+  position: absolute;
+  width: 52px;
+  height: 30px;
+  border-radius: 999px;
+  background: #9299a1;
+  content: "";
+  transition: background-color 200ms ease;
+}
+.courier-pwa .courier-profile-switch.active::before { background: #258456; }
+.courier-pwa .courier-profile-switch > span {
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  transform: translateX(0);
+  transition: transform 200ms ease;
+}
+.courier-pwa .courier-profile-switch.active > span { transform: translateX(22px); }
+.courier-pwa .courier-total-strip--selected {
+  display: block;
+  margin-top: 12px;
+}
+.courier-pwa .courier-total-strip--selected .courier-total-cell {
+  min-height: 78px;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
+  gap: 5px 12px;
+  padding: 13px 15px;
+}
+.courier-pwa .courier-total-strip--selected .courier-total-cell span {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.courier-pwa .courier-total-strip--selected .courier-total-cell strong { font-size: 13px; }
+.courier-pwa .courier-total-strip--selected .courier-total-cell b { font-size: 16px; }
+.courier-app-shell .courier-tab-panel:not(.courier-tab-panel--map) {
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+}
+@media (max-width: 370px) {
+  .courier-pwa .courier-header { padding-right: 12px; padding-left: 12px; }
+  .courier-pwa .courier-official-brand img { max-width: 145px; height: 38px; }
+  .courier-pwa .courier-greeting { font-size: 18px; }
+}
 .courier-pwa .courier-delivery-card {
   overflow: hidden;
   padding: 16px;

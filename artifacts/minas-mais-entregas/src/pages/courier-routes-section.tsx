@@ -753,7 +753,7 @@ function CourierRouteOfferCard({
                 <LiveMap
                   markers={markers}
                   routeGeometry={preview.data.routeGeometry}
-                  ariaLabel={`Prévia do trajeto da rota com ${route.deliveryCount} entregas`}
+                  ariaLabel={`Prévia do trajeto da rota com ${route.deliveryCount} ${route.deliveryCount === 1 ? "entrega" : "entregas"}`}
                   size="compact"
                   showCenterOnMe={false}
                   autoFitOnGeometryChange
@@ -824,7 +824,7 @@ function ActiveRouteCard({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[.12em] text-white/75">Rota aceita · sequência travada</div>
-          <h3 className="mt-1 text-xl font-bold">{route.deliveryCount} entregas</h3>
+          <h3 className="mt-1 text-xl font-bold">{route.deliveryCount} {route.deliveryCount === 1 ? "entrega" : "entregas"}</h3>
         </div>
         <div className="text-right">
           <div className="text-[10px] font-semibold uppercase tracking-[.12em] text-white/75">A receber</div>
