@@ -494,7 +494,7 @@ paths:
     get:
       operationId: autocompleteAddresses
       tags: [directory]
-      summary: Search Brazilian addresses through Mapbox
+      summary: Search Brazilian addresses through Google Maps (Places API)
       parameters:
         - in: query
           name: texto
@@ -613,7 +613,7 @@ paths:
     delete:
       operationId: deleteAccessUser
       tags: [access]
-      summary: Delete an application account and its Clerk login
+      summary: Delete an application account and its login
       parameters:
         - in: path
           name: userId
@@ -630,7 +630,7 @@ paths:
         "409":
           description: Last administrator or account has active courier work
         "502":
-          description: App access was revoked but the Clerk login could not be deleted
+          description: App access was revoked but the login could not be deleted
   /courier/earnings:
     get:
       operationId: getCourierEarnings
@@ -707,7 +707,7 @@ paths:
         "502":
           description: External routing service failed
         "503":
-          description: Mapbox is not configured
+          description: Google Maps is not configured
   /courier/location:
     post:
       operationId: updateCourierLocation
@@ -775,7 +775,7 @@ paths:
         "502":
           description: External routing service failed
         "503":
-          description: Mapbox geocoding is not configured
+          description: Google Maps geocoding is not configured
   /courier/routes/{routeId}/accept:
     post:
       operationId: acceptCourierRoute
@@ -1297,10 +1297,10 @@ components:
         averageTotalMinutes: { type: ["number", "null"] }
     AppUser:
       type: object
-      required: [id, clerkUserId, email, name, role, storeId, courierId]
+      required: [id, authUserId, email, name, role, storeId, courierId]
       properties:
         id: { type: string }
-        clerkUserId: { type: ["string", "null"] }
+        authUserId: { type: ["string", "null"] }
         email: { type: string }
         name: { type: string }
         phone: { type: ["string", "null"] }

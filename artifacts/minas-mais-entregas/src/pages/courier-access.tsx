@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useUser } from "@clerk/react";
+import { useAuth } from "@/lib/auth";
 import { Bike, Download, Smartphone } from "lucide-react";
 import { Link, Redirect } from "wouter";
 
@@ -70,7 +70,7 @@ function InstallPwaAction() {
 }
 
 export default function CourierAccessPage() {
-  const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn } = useAuth();
 
   if (isLoaded && isSignedIn) return <Redirect to="/user-portal" />;
   if (!isLoaded) {
@@ -80,8 +80,8 @@ export default function CourierAccessPage() {
   return (
     <main className="min-h-[100dvh] bg-[#f4f3f1] px-4 py-6 text-[#24272d] sm:px-8">
       <div className="mx-auto max-w-xl">
-        <Link href="/" className="inline-flex items-center gap-3" aria-label="Voltar ao Minas Mais Entregas">
-          <span className="brand-mark">MM</span>
+        <Link href="/" className="inline-flex items-center gap-3" title="Voltar à página inicial">
+          <span className="brand-mark" aria-hidden="true">MM</span>
           <span>
             <span className="block text-sm font-bold">MINAS MAIS</span>
             <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[.16em] text-muted-foreground">Entregas</span>

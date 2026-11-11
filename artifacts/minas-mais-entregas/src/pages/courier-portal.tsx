@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import CourierDeclineButton from "@/components/courier-decline-button";
 import {
   getGetCourierDeliveryNavigationQueryKey,
   getGetCourierEarningsQueryKey,
@@ -21,13 +22,13 @@ import {
   type CourierDeliveryRoute,
   type Delivery,
 } from "@workspace/api-client-react";
-import { useClerk } from "@clerk/react";
+import { useAuth } from "@/lib/auth";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
-import { Bell, BellOff, Check, CheckCircle2, Clock3, Hand, History, House, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, PackageCheck, Phone, Route as RouteIcon, TrendingUp } from "lucide-react";
+import { Bell, BellOff, Check, WifiOff, CheckCircle2, Clock3, Hand, History, House, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, PackageCheck, Phone, Route as RouteIcon, TrendingUp, Wallet } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
@@ -145,7 +146,7 @@ function subscriptionUsesVapidKey(
 }
 
 export default function CourierPortal({ profile }: { profile: AppUser }) {
-  const { signOut } = useClerk();
+  const { signOut } = useAuth();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"deliveries" | "map" | "history" | "earnings">("deliveries");
@@ -160,15 +161,16 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   const [period, setPeriod] = useState<Period>("day");
   const [menuOpen, setMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(profile.courierStatus !== "OFFLINE");
+  const networkOnline = useNetworkOnline();
   const [availabilityError, setAvailabilityError] = useState("");
-  const [declineError, setDeclineError] = useState("");
+  const [declineError, setDeclineError] = useState<{ deliveryId: string; text: string } | null>(null);
   const offerCountInitialized = useRef(false);
   const previousOfferCount = useRef(0);
   const [gpsStatus, setGpsStatus] = useState<CourierGpsStatus>(initialGpsStatus);
   const [appVersion, setAppVersion] = useState(getBrowserBuildLabel);
   const [refreshGps, setRefreshGps] = useState<() => void>(() => undefined);
   const [nativePushStatusReady, setNativePushStatusReady] = useState(!isNativeApp);
-  const [actionError, setActionError] = useState("");
+  const [actionError, setActionError] = useState<{ deliveryId: string; text: string } | null>(null);
   const [pushMessage, setPushMessage] = useState("");
   const changeActiveTab = useCallback((value: string) => {
     if (!["deliveries", "map", "history", "earnings"].includes(value)) return;
@@ -291,7 +293,13 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     ? nativePushStatusReady
     : serviceWorkerStatus !== "checking" && !pushKey.isLoading;
   const notificationsNeedAttention = notificationStatusReady && !pushIsActive;
-  const gpsNeedsAttention = isOnline && gpsStatus.ageSeconds > 60;
+  // Problems the courier can act on (permission denied, GPS off, unsupported) must be shown
+  // right away, not only after a minute without updates.
+  const gpsHasBlockingProblem = /bloquead|indispon[ií]vel|n[aã]o oferece|ative o rastreamento|n[aã]o foi poss[ií]vel/i.test(gpsStatus.locationMessage);
+  const gpsNeedsAttention = isOnline && (gpsStatus.ageSeconds > 60 || gpsHasBlockingProblem);
+  const gpsAttentionMessage = gpsHasBlockingProblem || (gpsStatus.ageSeconds > 60 && gpsStatus.locationMessage && !/^Compartilhando|^GPS ativo em segundo plano/.test(gpsStatus.locationMessage))
+    ? gpsStatus.locationMessage
+    : "Sem envio de GPS há mais de 1 minuto.";
   const profileName = profile.name.trim();
   const genericName = /^(motoboy|motobói|entregador|courier|driver)(\s+\d+)?$/i;
   const nameIsUsable =
@@ -580,7 +588,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
         // Continue sign-out even if the server cannot be reached.
       }
     }
-    await signOut({ redirectUrl: import.meta.env.BASE_URL });
+    await signOut();
   };
   const groupedDeliveryIds = useMemo(
     () => new Set((routes.data ?? []).flatMap((route) => route.deliveries.map((delivery) => delivery.id))),
@@ -668,7 +676,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     }
   };
   const declineIndividualDelivery = async (deliveryId: string) => {
-    setDeclineError("");
+    setDeclineError(null);
     try {
       await declineDelivery.mutateAsync({ deliveryId });
       await Promise.all([
@@ -676,7 +684,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
         queryClient.invalidateQueries({ queryKey: getListCourierRoutesQueryKey() }),
       ]);
     } catch {
-      setDeclineError("Não foi possível recusar esta oferta. Tente novamente.");
+      setDeclineError({ deliveryId, text: courierActionErrorText("Não foi possível recusar esta oferta. Tente novamente.") });
     }
   };
   const returningDeliveries = useMemo(
@@ -685,7 +693,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     [individualDeliveries],
   );
   const updateDelivery = async (deliveryId: string, status: string, evidencePath?: string) => {
-    setActionError("");
+    setActionError(null);
     if (["ACCEPTED", "TO_STORE", "IN_TRANSIT"].includes(status) && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         ({ coords, timestamp }) => {
@@ -722,8 +730,10 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
         queryClient.invalidateQueries({ queryKey: getGetCourierDeliveryNavigationQueryKey(deliveryId) }),
       ]);
     } catch {
-      setActionError("Não foi possível atualizar esta entrega. Tente novamente.");
-      throw new Error("Não foi possível concluir a entrega.");
+      const text = courierActionErrorText("Não foi possível atualizar esta entrega. Tente novamente.");
+      setActionError({ deliveryId, text });
+      // The photo flow shows this message next to its own button and keeps the photo for a retry.
+      throw new Error(status === "COMPLETED" ? `${text} A foto continua aqui.` : text);
     }
   };
   const renderIndividualDelivery = (delivery: Delivery) => (
@@ -737,11 +747,19 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       onUpdate={updateDelivery}
       onDecline={declineIndividualDelivery}
       onShowMap={() => changeActiveTab("map")}
+      // Errors are shown inside the card, next to the button that failed.
+      error={[actionError, declineError].find((item) => item?.deliveryId === delivery.id)?.text}
     />
   );
 
   return (
     <main className={`courier-pwa min-h-[100dvh] bg-[#f5f2ee] text-[#272729] ${activeTab === "map" ? "fixed inset-0 z-40 overflow-hidden" : "courier-app-shell"}`}>
+      {!networkOnline && (
+        <div className="courier-network-banner" role="alert" data-testid="alert-courier-no-internet">
+          <WifiOff size={16} aria-hidden="true" />
+          <span><strong>Sem internet.</strong> Você continua vendo as últimas informações; ações só serão enviadas quando o sinal voltar.</span>
+        </div>
+      )}
       {activeTab !== "map" && (
         <header className="courier-header px-4 pb-3 pt-[max(10px,env(safe-area-inset-top))] text-white">
           <div className="courier-header-inner mx-auto max-w-2xl">
@@ -766,9 +784,9 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                     <div className="min-w-0"><p className="truncate text-sm font-bold">{profile.name || firstName}</p><p className="truncate text-xs text-muted-foreground">{profile.email}</p></div>
                   </div>
                   <dl className="mt-4 divide-y divide-[#e9e4dc] rounded-2xl bg-white px-4">
-                    <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Telefone</dt><dd className={`mt-1 text-sm ${profile.phone ? "" : "text-muted-foreground"}`}>{profile.phone || "Não informado — fale com o administrador"}</dd></div>
-                    <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Filial</dt><dd className={`mt-1 text-sm ${profile.storeName ? "" : "text-muted-foreground"}`}>{profile.storeName || "Não informado — fale com o administrador"}</dd></div>
-                    <div className="py-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Conta</dt><dd className="mt-1 text-sm">{profile.email}</dd></div>
+                    <div className="py-3"><dt className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Telefone</dt><dd className={`mt-1 text-sm ${profile.phone ? "" : "text-muted-foreground"}`}>{profile.phone || "Não informado — fale com o administrador"}</dd></div>
+                    <div className="py-3"><dt className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Filial</dt><dd className={`mt-1 text-sm ${profile.storeName ? "" : "text-muted-foreground"}`}>{profile.storeName || "Não informado — fale com o administrador"}</dd></div>
+                    <div className="py-3"><dt className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Conta</dt><dd className="mt-1 text-sm">{profile.email}</dd></div>
                   </dl>
                   <div className="mt-4 space-y-2">
                     <div className="courier-profile-inline-row">
@@ -820,15 +838,13 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
               </section>
             )}
             {gpsNeedsAttention && (
-              <section className="courier-device-notice courier-device-notice--gps" role="status" data-testid="alert-courier-gps">
+              <section className="courier-device-notice courier-device-notice--gps" role="alert" data-testid="alert-courier-gps">
                 <LocateFixed size={15} aria-hidden="true" />
-                <span>Sem envio de GPS há mais de 1 minuto.</span>
+                <span>{gpsAttentionMessage}</span>
                 <button type="button" onClick={() => refreshGps()} data-testid="button-courier-device-gps">Verificar</button>
               </section>
             )}
             {returningDeliveries.length > 0 && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-950" role="status">{returningDeliveries.length} {returningDeliveries.length === 1 ? "produto para devolver" : "produtos para devolver"} na filial. A Central confirmará quando receber.</p>}
-            {actionError && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{actionError}</div>}
-            {declineError && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert" data-testid="alert-delivery-decline">{declineError}</div>}
             <CourierRoutesSection
               courierId={profile.id}
               routes={routes.data ?? []}
@@ -906,10 +922,32 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           <span className="courier-nav-icon"><House size={19} /></span><span>Início</span>{pendingOffers > 0 && <i className="courier-offer-badge">{pendingOffers}</i>}
         </button>
         <button type="button" className="courier-nav-map" onClick={() => changeActiveTab("map")} aria-label="Abrir mapa" data-testid="nav-courier-map"><span><MapIcon size={22} /></span><small>Mapa</small></button>
-        <button type="button" className={activeTab === "history" || activeTab === "earnings" ? "active" : ""} onClick={() => changeActiveTab("history")} aria-current={activeTab === "history" || activeTab === "earnings" ? "page" : undefined} data-testid="nav-courier-history"><span className="courier-nav-icon"><History size={19} /></span><span>Histórico e ganhos</span></button>
+        <button type="button" className={activeTab === "history" || activeTab === "earnings" ? "active" : ""} onClick={() => changeActiveTab("earnings")} aria-current={activeTab === "history" || activeTab === "earnings" ? "page" : undefined} data-testid="nav-courier-history"><span className="courier-nav-icon"><Wallet size={19} aria-hidden="true" /></span><span>Ganhos</span></button>
       </nav>
     </main>
   );
+}
+
+/** Phone connectivity (not the courier's availability toggle). */
+function useNetworkOnline() {
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine !== false);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine !== false);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+  return online;
+}
+
+/** Tells the courier whether the problem is the phone's connection or the system. */
+function courierActionErrorText(fallback: string) {
+  return typeof navigator !== "undefined" && navigator.onLine === false
+    ? "Sem internet no momento. Nada foi alterado: tente de novo quando o sinal voltar."
+    : fallback;
 }
 
 function CourierIndividualDeliveryCard({
@@ -922,6 +960,7 @@ function CourierIndividualDeliveryCard({
   onUpdate,
   onDecline,
   onShowMap,
+  error,
 }: {
   delivery: Delivery;
   active: boolean;
@@ -932,6 +971,7 @@ function CourierIndividualDeliveryCard({
   onUpdate: (deliveryId: string, status: string, evidencePath?: string) => Promise<void>;
   onDecline: (deliveryId: string) => Promise<void>;
   onShowMap: () => void;
+  error?: string;
 }) {
   const isReturning = delivery.status === "RETURNING_TO_STORE";
   const phoneDigits = delivery.customerPhone?.replace(/\D/g, "");
@@ -1048,7 +1088,7 @@ function CourierIndividualDeliveryCard({
         </div>
       )}
       {delivery.status !== "OFFERED" && (delivery.estimatedMinutes != null || delivery.distanceKm != null) && (
-        <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-[#6d625a]" aria-label="Estimativa da entrega">
+        <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-[#5f564f]" aria-label="Estimativa da entrega">
           {delivery.estimatedMinutes != null && <span className="inline-flex items-center gap-1 rounded-full bg-[#f4f0eb] px-2.5 py-1.5"><Clock3 size={13} />{delivery.estimatedMinutes} min</span>}
           {delivery.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-[#f4f0eb] px-2.5 py-1.5"><RouteIcon size={13} />{delivery.distanceKm} km</span>}
         </div>
@@ -1107,17 +1147,21 @@ function CourierIndividualDeliveryCard({
         ) : null}
       </div>
       {delivery.status === "OFFERED" && (
-        <button
-          type="button"
-          className="courier-decline-button mt-2 w-full"
-          disabled={busy || declining}
-          onClick={() => void onDecline(delivery.id)}
-          aria-busy={declining}
-          data-testid={`button-decline-delivery-${delivery.id}`}
-        >
-          {declining ? <><LoaderCircle size={15} className="animate-spin" /> Recusando oferta…</> : "Recusar oferta"}
-        </button>
+        <div className="mt-2">
+          <CourierDeclineButton
+            label="Recusar oferta"
+            busyLabel="Recusando oferta…"
+            question="Recusar esta entrega?"
+            detail="Ela volta para a fila da Central e pode ir para outro motoboy."
+            onConfirm={() => void onDecline(delivery.id)}
+            busy={declining}
+            disabled={busy}
+            className="w-full"
+            testId={`button-decline-delivery-${delivery.id}`}
+          />
+        </div>
       )}
+      {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert" data-testid={`alert-delivery-${delivery.id}`}>{error}</div>}
     </article>
   );
 }

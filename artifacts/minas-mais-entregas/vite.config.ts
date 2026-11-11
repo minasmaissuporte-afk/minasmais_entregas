@@ -3,31 +3,24 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 
-import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
+// O .env fica na raiz do monorepo (compartilhado com a API).
+const envDir = path.resolve(import.meta.dirname, '..', '..');
+const fileEnv = loadEnv(process.env.NODE_ENV ?? 'development', envDir, '');
+const env = { ...fileEnv, ...process.env };
 
-const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    'PORT environment variable is required but was not provided.',
-  );
-}
-
+const rawPort = env.WEB_PORT ?? '5173';
 const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
+  throw new Error(`Invalid WEB_PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH;
+const basePath = env.BASE_PATH || '/';
 
-if (!basePath) {
-  throw new Error(
-    'BASE_PATH environment variable is required but was not provided.',
-  );
-}
+// Em desenvolvimento, /api é encaminhado para a API local (no Replit isso era feito pelo roteador da plataforma).
+const apiTarget = env.API_PROXY_TARGET || `http://localhost:${env.PORT || '8080'}`;
 
 const versionPwaCache = {
   name: 'version-pwa-cache',
@@ -62,22 +55,9 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss({ optimize: false }),
-    runtimeErrorOverlay(),
     versionPwaCache,
-    ...(process.env.NODE_ENV !== 'production' &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import('@replit/vite-plugin-cartographer').then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, '..'),
-            }),
-          ),
-          await import('@replit/vite-plugin-dev-banner').then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
   ],
+  envDir,
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, 'src'),
@@ -103,10 +83,16 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    proxy: {
+      '/api': { target: apiTarget, changeOrigin: false },
+    },
   },
   preview: {
     port,
     host: '0.0.0.0',
     allowedHosts: true,
+    proxy: {
+      '/api': { target: apiTarget, changeOrigin: false },
+    },
   },
 });

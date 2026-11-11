@@ -18,6 +18,9 @@ export default function SwipeToConfirm({
   const offsetRef = useRef(0);
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
+  // Tap alternative (keyboard, screen readers, users who cannot drag): it needs a
+  // second, explicit tap so an accidental touch cannot finish the delivery.
+  const [askingTapConfirm, setAskingTapConfirm] = useState(false);
 
   const updateOffset = (value: number) => {
     offsetRef.current = value;
@@ -28,6 +31,7 @@ export default function SwipeToConfirm({
     if (!disabled) {
       confirmedRef.current = false;
       updateOffset(0);
+      setAskingTapConfirm(false);
     }
   }, [disabled]);
 
@@ -85,11 +89,12 @@ export default function SwipeToConfirm({
     <div className="space-y-2" role="group" aria-label="Confirmar entrega">
       <div
         ref={trackRef}
-        className={`relative h-14 overflow-hidden rounded-xl border border-[#e6d5d7] bg-[#fff7f7] ${disabled ? "opacity-60" : ""}`}
+        className={`relative h-14 select-none overflow-hidden rounded-xl border border-[#e6d5d7] bg-[#fff7f7] ${disabled ? "opacity-60" : ""}`}
         style={{ touchAction: "pan-y" }}
       >
         <span
-          className="pointer-events-none absolute inset-0 grid place-items-center px-14 text-center text-xs font-semibold text-[#8d2832] transition-opacity"
+          className="pointer-events-none absolute inset-0 grid place-items-center px-14 text-center text-sm font-semibold text-[#7a1f28] transition-opacity"
+          aria-hidden="true"
           style={{ opacity: Math.max(0.15, 1 - offset / Math.max(1, maxOffset())) }}
         >
           {disabled ? "Aguarde a confirmação…" : label}
@@ -103,8 +108,9 @@ export default function SwipeToConfirm({
             transition: dragging ? "none" : "transform 180ms ease",
             touchAction: "pan-y",
           }}
-          aria-label={label}
-          aria-busy={disabled}
+          // Drag-only control: keyboard and screen-reader users use the tap button below.
+          tabIndex={-1}
+          aria-hidden="true"
           disabled={disabled}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -114,14 +120,37 @@ export default function SwipeToConfirm({
           {disabled ? <LoaderCircle size={19} className="animate-spin" /> : <ChevronRight size={22} />}
         </button>
       </div>
-      <button
-        className="button-quiet min-h-9 w-full justify-center text-xs"
-        type="button"
-        disabled={disabled}
-        onClick={confirmByButton}
-      >
-        Ou toque para confirmar
-      </button>
+      {askingTapConfirm ? (
+        <div className="grid grid-cols-2 gap-2" role="group" aria-label="Confirmar sem deslizar">
+          <button
+            className="button-secondary min-h-12 justify-center text-sm"
+            type="button"
+            onClick={() => setAskingTapConfirm(false)}
+          >
+            Voltar
+          </button>
+          <button
+            className="button-primary min-h-12 justify-center text-sm"
+            type="button"
+            disabled={disabled}
+            aria-busy={disabled}
+            onClick={confirmByButton}
+            autoFocus
+          >
+            Confirmar agora
+          </button>
+        </div>
+      ) : (
+        <button
+          className="button-quiet min-h-12 w-full justify-center text-sm"
+          type="button"
+          disabled={disabled}
+          aria-label={`${label} sem deslizar`}
+          onClick={() => setAskingTapConfirm(true)}
+        >
+          Prefere tocar? Confirmar com dois toques
+        </button>
+      )}
     </div>
   );
 }

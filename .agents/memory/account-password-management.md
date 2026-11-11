@@ -3,7 +3,7 @@ name: Senha da conta
 description: Requisito para criar ou trocar senha em contas autenticadas pelo webapp/PWA.
 ---
 
-Usuários autenticados devem conseguir criar ou trocar a senha dentro do webapp. Para contas que entram apenas com código de e-mail, permita criar a primeira senha sem exigir uma senha atual; para contas com senha, valide a senha atual. A senha deve permanecer sob gestão do Clerk, sem ser armazenada pelo aplicativo.
+Usuários autenticados devem conseguir criar ou trocar a senha dentro do webapp. Para contas que entram apenas com código de e-mail, permita criar a primeira senha sem exigir uma senha atual; para contas com senha, valide a senha atual. A senha deve permanecer sob gestão do Supabase Auth, sem ser armazenada pelo aplicativo (desde 09/11/2026; antes era o Clerk). Como o Supabase não informa se a conta tem senha, o app marca `user_metadata.has_password` ao criar ou trocar a senha.
 
 **Why:** o usuário pediu uma opção interna para troca de senha e recuperação de acesso, inclusive para pessoas que usam o PWA.
 

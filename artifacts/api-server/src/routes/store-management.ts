@@ -28,9 +28,9 @@ import {
   type AppUserProfile,
 } from "../middlewares/accessControl";
 import {
-  MapboxApiError,
-  mapboxAutocomplete,
-} from "../lib/mapbox";
+  MapsApiError,
+  autocompleteAddresses,
+} from "../lib/googleMaps";
 
 const router: IRouter = Router();
 router.use(requireAuthentication);
@@ -229,25 +229,27 @@ router.get(
   "/enderecos/autocomplete",
   requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
   async (req, res): Promise<void> => {
-    const query = AutocompleteAddressesQueryParams.safeParse(req.query);
+    // O schema gerado usa coerce: sem o parâmetro, `undefined` virava o texto "undefined".
+    const rawText = typeof req.query.texto === "string" ? req.query.texto : "";
+    const query = AutocompleteAddressesQueryParams.safeParse({ texto: rawText });
     if (!query.success || query.data.texto.trim().length < 3) {
       res.status(422).json({ error: "Digite pelo menos 3 caracteres do endereço." });
       return;
     }
 
     try {
-      const suggestions = await mapboxAutocomplete(query.data.texto.trim());
+      const suggestions = await autocompleteAddresses(query.data.texto.trim());
       res.json(AutocompleteAddressesResponse.parse(suggestions));
     } catch (error) {
-      const mapboxError =
-        error instanceof MapboxApiError
+      const mapsError =
+        error instanceof MapsApiError
           ? error
-          : new MapboxApiError("Não foi possível consultar endereços agora.");
+          : new MapsApiError("Não foi possível consultar endereços agora.");
       req.log.warn(
-        { status: mapboxError.status },
-        "Mapbox autocomplete request failed",
+        { status: mapsError.status },
+        "Google Maps address search failed",
       );
-      res.status(mapboxError.status).json({ error: mapboxError.message });
+      res.status(mapsError.status).json({ error: mapsError.message });
     }
   },
 );

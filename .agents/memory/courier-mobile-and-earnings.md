@@ -25,7 +25,7 @@ O usuário confirmou em 30 de outubro de 2026 que o teste de login funcionou cor
 
 **Why:** o fluxo de acesso já foi testado pelo usuário no ambiente disponível.
 
-**How to apply:** considere esse ambiente verificado; valide novamente após republicar, pois as contas do Clerk de desenvolvimento e produção são separadas.
+**How to apply:** considere esse ambiente verificado; valide novamente após republicar, pois os projetos Supabase de desenvolvimento e produção têm contas separadas.
 
 ## Localização e mapas
 
@@ -37,11 +37,11 @@ Não inventar coordenadas: o mapa deve exibir somente posições GPS realmente r
 
 ## APK Android
 
-O wrapper Capacitor Android deve carregar o site publicado em `https://minas-mais-entregas.replit.app/user-portal` e reutilizar o login web do Clerk, sem criar um fluxo nativo separado.
+O wrapper Capacitor Android deve carregar o site publicado em `https://minas-mais-entregas.replit.app/user-portal` e reutilizar o login web (Supabase Auth desde 09/11/2026; antes Clerk), sem criar um fluxo nativo separado.
 
 **Why:** o usuário escolheu o site publicado para manter o mesmo acesso usado no navegador.
 
-**How to apply:** mantenha o login no domínio publicado, aceite cookies no WebView, permita os domínios do Clerk e oculte login Google no APK; não altere o painel do Clerk. Só proponha uma alternativa de login depois de testar no aparelho.
+**How to apply:** mantenha o login no domínio publicado, aceite cookies no WebView, permita o domínio do Supabase (`*.supabase.co`) e oculte login Google no APK. Só proponha uma alternativa de login depois de testar no aparelho.
 
 ## Cancelamento em rota aceita
 

@@ -2550,7 +2550,7 @@ export const getAutocompleteAddressesUrl = (params: AutocompleteAddressesParams,
 }
 
 /**
- * @summary Search Brazilian addresses through Mapbox
+ * @summary Search Brazilian addresses through Google Maps (Places API)
  */
 export const autocompleteAddresses = async (params: AutocompleteAddressesParams, options?: Parameters<typeof customFetch>[1]): Promise<AddressSuggestion[]> => {
 
@@ -2621,7 +2621,7 @@ export function useAutocompleteAddresses<TData = Awaited<ReturnType<typeof autoc
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Search Brazilian addresses through Mapbox
+ * @summary Search Brazilian addresses through Google Maps (Places API)
  */
 
 export function useAutocompleteAddresses<TData = Awaited<ReturnType<typeof autocompleteAddresses>>, TError = ErrorType<void>>(
@@ -3138,7 +3138,7 @@ export const getDeleteAccessUserUrl = (userId: string,) => {
 }
 
 /**
- * @summary Delete an application account and its Clerk login
+ * @summary Delete an application account and its login
  */
 export const deleteAccessUser = async (userId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
 
@@ -3190,7 +3190,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteAccessUserMutationVariables = {userId: string}
 
     /**
- * @summary Delete an application account and its Clerk login
+ * @summary Delete an application account and its login
  */
 export const useDeleteAccessUser = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAccessUser>>, TError,DeleteAccessUserMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}

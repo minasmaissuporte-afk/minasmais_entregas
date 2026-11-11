@@ -49,12 +49,12 @@ import {
   type AppUserProfile,
 } from "../middlewares/accessControl";
 import {
-  MapboxApiError,
-  mapboxDirections,
-  mapboxGeocodeAddress,
-  mapboxOptimizeShipments,
-  type MapboxOptimizationSolution,
-} from "../lib/mapbox";
+  MapsApiError,
+  computeDrivingRoute,
+  geocodeAddress as googleGeocodeAddress,
+  optimizeShipments,
+  type OptimizedVisit,
+} from "../lib/googleMaps";
 import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
 import { notifyAvailableCouriers, notifyCentralUsers } from "../lib/webPush";
 import { getCourierDisplayName, getCourierFirstName } from "../lib/courierName";
@@ -87,34 +87,6 @@ type RouteStopRow = {
 };
 
 type Coordinate = { latitude: number; longitude: number };
-
-function extractRouteGeometry(coordinates: unknown): Coordinate[] | null {
-  const points: Coordinate[] = [];
-  const visit = (value: unknown) => {
-    if (!Array.isArray(value)) return;
-    if (
-      value.length >= 2 &&
-      typeof value[0] === "number" &&
-      typeof value[1] === "number"
-    ) {
-      const [longitude, latitude] = value;
-      if (
-        Number.isFinite(latitude) &&
-        Number.isFinite(longitude) &&
-        latitude >= -90 &&
-        latitude <= 90 &&
-        longitude >= -180 &&
-        longitude <= 180
-      ) {
-        points.push({ latitude, longitude });
-      }
-      return;
-    }
-    for (const nested of value) visit(nested);
-  };
-  visit(coordinates);
-  return points.length >= 2 ? points : null;
-}
 
 class RoutePlanningError extends Error {
   constructor(
@@ -256,11 +228,11 @@ function storedCoordinate(
 
 async function geocodeAddress(address: string, city: string): Promise<Coordinate> {
   try {
-    return await mapboxGeocodeAddress(
+    return await googleGeocodeAddress(
       `${address}, ${city}, Minas Gerais, Brasil`,
     );
   } catch (error) {
-    if (error instanceof MapboxApiError) {
+    if (error instanceof MapsApiError) {
       throw new RoutePlanningError(error.message, error.status);
     }
     throw error;
@@ -311,71 +283,26 @@ async function optimizeRoute(
     customerByDelivery.set(row.delivery.id, customer);
   }));
 
-  const locations = new Map<string, { name: string; coordinates: [number, number] }>();
-  const addLocation = (name: string, coordinate: Coordinate) => {
-    if (!locations.has(name)) {
-      locations.set(name, {
-        name,
-        coordinates: [coordinate.longitude, coordinate.latitude],
-      });
-    }
-  };
-  addLocation("courier-start", start);
-
-  const pickupLocationByDelivery = new Map<string, string>();
-  const dropoffLocationByDelivery = new Map<string, string>();
-  const pickupLocationByStore = new Map<string, string>();
-  for (const row of rows) {
-    const alreadyPickedUp = alreadyPickedUpDeliveryIds.has(row.delivery.id);
-    const pickupLocation = alreadyPickedUp
-      ? "courier-start"
-      : pickupLocationByStore.get(row.delivery.storeId) ??
-        `store-${row.delivery.storeId}`;
-    if (!alreadyPickedUp) {
-      pickupLocationByStore.set(row.delivery.storeId, pickupLocation);
-    }
-    pickupLocationByDelivery.set(row.delivery.id, pickupLocation);
-    dropoffLocationByDelivery.set(row.delivery.id, `dropoff-${row.delivery.id}`);
-    addLocation(pickupLocation, pickupByDelivery.get(row.delivery.id)!);
-    addLocation(
-      `dropoff-${row.delivery.id}`,
-      customerByDelivery.get(row.delivery.id)!,
-    );
-  }
-
-  let solution: MapboxOptimizationSolution;
+  let visits: OptimizedVisit[];
   try {
-    solution = await mapboxOptimizeShipments({
-      locations: [...locations.values()],
-      shipments: rows.map((row) => ({
-        name: row.delivery.id,
-        from: pickupLocationByDelivery.get(row.delivery.id)!,
-        to: dropoffLocationByDelivery.get(row.delivery.id)!,
-        pickup_duration: alreadyPickedUpDeliveryIds.has(row.delivery.id) ? 0 : 120,
-        dropoff_duration: 90,
-      })),
+    visits = await optimizeShipments({
+      start,
+      shipments: rows.map((row) => {
+        const alreadyPickedUp = alreadyPickedUpDeliveryIds.has(row.delivery.id);
+        return {
+          id: row.delivery.id,
+          pickup: alreadyPickedUp ? null : pickupByDelivery.get(row.delivery.id)!,
+          delivery: customerByDelivery.get(row.delivery.id)!,
+          pickupDurationSeconds: 120,
+          deliveryDurationSeconds: 90,
+        };
+      }),
     });
   } catch (error) {
-    if (error instanceof MapboxApiError) {
+    if (error instanceof MapsApiError) {
       throw new RoutePlanningError(error.message, error.status);
     }
     throw error;
-  }
-  if (solution.dropped?.shipments?.length) {
-    throw new RoutePlanningError(
-      "O Mapbox não conseguiu incluir todas as entregas. Confira os endereços e tente novamente.",
-      422,
-    );
-  }
-
-  const optimizedRoute =
-    solution.routes?.find((route) => route.vehicle === "courier") ??
-    solution.routes?.[0];
-  if (!optimizedRoute) {
-    throw new RoutePlanningError(
-      "O Mapbox não retornou uma rota para estas entregas.",
-      502,
-    );
   }
 
   const rowByDelivery = new Map(rows.map((row) => [row.delivery.id, row]));
@@ -386,34 +313,24 @@ async function optimizeRoute(
     latitude: number;
     longitude: number;
   }> = [];
-  for (const optimizedStop of optimizedRoute.stops ?? []) {
-    const isPickup = optimizedStop.type === "pickup";
-    const isDropoff = optimizedStop.type === "dropoff";
-    if (!isPickup && !isDropoff) continue;
-    const shipmentIds = (isPickup
-      ? optimizedStop.pickups
-      : optimizedStop.dropoffs) as unknown;
-    if (!Array.isArray(shipmentIds)) continue;
-
-    for (const shipmentId of shipmentIds) {
-      if (typeof shipmentId !== "string") continue;
-      if (isPickup && alreadyPickedUpDeliveryIds.has(shipmentId)) continue;
-      const row = rowByDelivery.get(shipmentId);
-      if (!row) continue;
-      const coordinate = isPickup
-        ? pickupByDelivery.get(shipmentId)
-        : customerByDelivery.get(shipmentId);
-      if (!coordinate) continue;
-      stops.push({
-        deliveryId: shipmentId,
-        kind: isPickup ? "pickup" : "delivery",
-        address: isPickup
-          ? `${row.storeAddress}, ${row.storeCity}`
-          : row.delivery.destination,
-        latitude: coordinate.latitude,
-        longitude: coordinate.longitude,
-      });
-    }
+  for (const visit of visits) {
+    const isPickup = visit.kind === "pickup";
+    if (isPickup && alreadyPickedUpDeliveryIds.has(visit.shipmentId)) continue;
+    const row = rowByDelivery.get(visit.shipmentId);
+    if (!row) continue;
+    const coordinate = isPickup
+      ? pickupByDelivery.get(visit.shipmentId)
+      : customerByDelivery.get(visit.shipmentId);
+    if (!coordinate) continue;
+    stops.push({
+      deliveryId: visit.shipmentId,
+      kind: visit.kind,
+      address: isPickup
+        ? `${row.storeAddress}, ${row.storeCity}`
+        : row.delivery.destination,
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+    });
   }
 
   const expectedStops =
@@ -425,49 +342,37 @@ async function optimizeRoute(
       502,
     );
   }
+  // A rota é aberta: começa na posição do motoboy e termina na última entrega.
   const directionCoordinates: Coordinate[] = [
     start,
     ...stops.map(({ latitude, longitude }) => ({ latitude, longitude })),
   ];
-  const endingStop = optimizedRoute.stops?.find(
-    (stop) => stop.type === "end" || stop.type === "arrive",
-  );
-  const endingLocation = endingStop?.location
-    ? locations.get(endingStop.location)?.coordinates
-    : undefined;
-  if (endingLocation) {
-    directionCoordinates.push({
-      longitude: endingLocation[0],
-      latitude: endingLocation[1],
-    });
-  }
 
   let directions;
   try {
-    directions = await mapboxDirections(directionCoordinates);
+    directions = await computeDrivingRoute(directionCoordinates);
   } catch (error) {
-    if (error instanceof MapboxApiError) {
+    if (error instanceof MapsApiError) {
       throw new RoutePlanningError(error.message, error.status);
     }
     throw error;
   }
-  const routeGeometry = extractRouteGeometry(directions.geometry?.coordinates);
-  if (!routeGeometry) {
+  if (directions.geometry.length < 2) {
     throw new RoutePlanningError(
-      "O Mapbox não retornou o traçado viário desta rota.",
+      "O Google Maps não retornou o traçado viário desta rota.",
       502,
     );
   }
   return {
     stops,
-    routeGeometry,
+    routeGeometry: directions.geometry,
     distanceMeters:
-      typeof directions.distance === "number"
-        ? Math.round(directions.distance)
+      directions.distanceMeters !== null
+        ? Math.round(directions.distanceMeters)
         : null,
     durationSeconds:
-      typeof directions.duration === "number"
-        ? Math.round(directions.duration + rows.length * 210)
+      directions.durationSeconds !== null
+        ? Math.round(directions.durationSeconds + rows.length * 210)
         : null,
   };
 }
@@ -1045,14 +950,15 @@ router.get(
           targetsStore ? row.storeAddress : row.delivery.destination,
           row.storeCity,
         ));
-      const directions = await mapboxDirections([
+      const directions = await computeDrivingRoute([
         {
           latitude: courier.currentLatitude,
           longitude: courier.currentLongitude,
         },
         targetPosition,
       ]);
-      const routeGeometry = extractRouteGeometry(directions.geometry?.coordinates);
+      const routeGeometry =
+        directions.geometry.length >= 2 ? directions.geometry : null;
       if (!routeGeometry) {
         throw new RoutePlanningError("Não foi possível traçar a rota para este endereço.", 422);
       }
@@ -1067,12 +973,12 @@ router.get(
           targetLabel,
           targetAddress,
           distanceMeters:
-            typeof directions.distance === "number"
-              ? Math.round(directions.distance)
+            directions.distanceMeters !== null
+              ? Math.round(directions.distanceMeters)
               : null,
           durationSeconds:
-            typeof directions.duration === "number"
-              ? Math.round(directions.duration)
+            directions.durationSeconds !== null
+              ? Math.round(directions.durationSeconds)
               : null,
           routeGeometry,
           lastLocationAt: courier.lastLocationAt.toISOString(),
@@ -1082,7 +988,7 @@ router.get(
       const routeError =
         error instanceof RoutePlanningError
           ? error
-          : error instanceof MapboxApiError
+          : error instanceof MapsApiError
             ? new RoutePlanningError(error.message, error.status)
           : new RoutePlanningError("Não foi possível calcular a rota agora.", 502);
       res.status(routeError.status).json({ error: routeError.message });
@@ -1610,6 +1516,18 @@ router.post(
     const rows = await routeDeliveries(route.deliveryIds);
     if (rows.length !== route.deliveryIds.length) {
       res.status(409).json({ error: "Uma entrega da rota não está mais disponível." });
+      return;
+    }
+
+    // Checa antes de consultar o Google Maps: evita gastar uma otimização (e mostrar erro de mapa)
+    // quando o motoboy já está ocupado. A transação abaixo confere de novo, com lock.
+    const [currentCourier] = await db
+      .select({ status: couriersTable.status })
+      .from(couriersTable)
+      .where(eq(couriersTable.id, profile.courierId))
+      .limit(1);
+    if (!currentCourier || currentCourier.status !== "AVAILABLE") {
+      res.status(409).json({ error: "Você já está em uma rota ativa." });
       return;
     }
 

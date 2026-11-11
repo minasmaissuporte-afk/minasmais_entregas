@@ -575,7 +575,8 @@ export default function StoreManagement() {
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
             <input
-              className="w-full pl-9"
+              className="w-full"
+              style={{ paddingLeft: "2.25rem" }} // a regra global de input (fora do @layer) anularia o pl-9
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
               placeholder="Buscar por filial, cidade ou endereço"
@@ -615,6 +616,11 @@ export default function StoreManagement() {
                     <span className="rounded-md bg-[#f9eded] px-2 py-0.5 text-[10px] font-semibold text-[#a91d2a]">
                       {store.deliveryFee.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} / entrega
                     </span>
+                    {!store.active && (
+                      <span className="rounded-md bg-[#ececec] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#4a4d52]">
+                        Inativa
+                      </span>
+                    )}
                   </div>
                   <p className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
                     <MapPin size={13} className="mt-0.5 shrink-0" />

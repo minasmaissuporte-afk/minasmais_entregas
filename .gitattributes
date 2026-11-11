@@ -1,0 +1,8 @@
+# Mantém LF no repositório (servidor Linux, gradlew e scripts .sh), mesmo editando no Windows
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary
+*.jar binary
+*.keystore binary

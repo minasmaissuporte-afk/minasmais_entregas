@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { clerkClient, getAuth } from "@clerk/express";
+import { deleteAuthUser, getAuthUser } from "../lib/supabaseAuth";
 import { and, desc, eq, gte, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
@@ -400,12 +400,12 @@ function startOfSaoPauloPeriod(period: "day" | "week" | "month") {
 }
 
 router.get("/me", async (req, res): Promise<void> => {
-  const clerkUserId = getAuth(req).userId;
-  if (!clerkUserId) {
+  const authUser = getAuthUser(res);
+  if (!authUser) {
     res.status(401).json({ error: "Autenticação necessária." });
     return;
   }
-  const profile = await resolveAppUser(clerkUserId);
+  const profile = await resolveAppUser(authUser);
   if (!profile) {
     res.status(403).json({ error: "Não foi possível identificar o e-mail da conta." });
     return;
@@ -496,7 +496,7 @@ router.patch(
       return;
     }
     if (
-      target.clerkUserId === profile.clerkUserId &&
+      target.authUserId === profile.authUserId &&
       body.data.role !== "ADMIN"
     ) {
       res.status(400).json({ error: "O administrador não pode remover o próprio acesso." });
@@ -670,7 +670,7 @@ router.delete(
         .for("update")
         .limit(1);
       if (!target) return { error: "not_found" as const };
-      if (target.clerkUserId && target.clerkUserId === profile.clerkUserId) {
+      if (target.authUserId && target.authUserId === profile.authUserId) {
         return { error: "self" as const };
       }
 
@@ -747,24 +747,18 @@ router.delete(
       return;
     }
 
-    if (result.target.clerkUserId) {
+    if (result.target.authUserId) {
       try {
-        await clerkClient.users.deleteUser(result.target.clerkUserId);
+        await deleteAuthUser(result.target.authUserId);
       } catch (error) {
-        const status =
-          error && typeof error === "object" && "status" in error
-            ? Number(error.status)
-            : null;
-        if (status !== 404) {
-          req.log?.error(
-            { err: error, accountId: result.target.id },
-            "Failed to delete Clerk login after revoking application access",
-          );
-          res.status(502).json({
-            error: "O acesso ao sistema foi bloqueado, mas não foi possível excluir o login. Tente novamente.",
-          });
-          return;
-        }
+        req.log?.error(
+          { err: error, accountId: result.target.id },
+          "Failed to delete Supabase login after revoking application access",
+        );
+        res.status(502).json({
+          error: "O acesso ao sistema foi bloqueado, mas não foi possível excluir o login. Tente novamente.",
+        });
+        return;
       }
     }
 
@@ -2041,7 +2035,8 @@ router.patch(
     });
 
     if ("error" in result) {
-      const status = result.error === "not_found" ? 404 : 409;
+      const status =
+        result.error === "not_found" ? 404 : result.error === "forbidden" ? 403 : 409;
       const message =
         result.error === "not_found"
           ? "Entrega não encontrada."

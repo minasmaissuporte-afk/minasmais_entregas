@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import CourierDeclineButton from "@/components/courier-decline-button";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@clerk/react";
+import { supabase } from "@/lib/auth";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor, CapacitorHttp, registerPlugin } from "@capacitor/core";
 import type { PluginListenerHandle } from "@capacitor/core";
@@ -119,24 +120,58 @@ export default function CourierRoutesSection({
   const completeStop = useCompleteCourierRouteStop();
   const recordArrival = useRecordCourierStopArrival();
   const updateLocation = useUpdateCourierLocation();
-  const { getToken } = useAuth();
-  const getTokenRef = useRef(getToken);
-  getTokenRef.current = getToken;
+  // Fresh Supabase access token for the native background GPS upload (refreshed by supabase-js).
+  const getTokenRef = useRef(async () => (await supabase.auth.getSession()).data.session?.access_token ?? null);
   const updateLocationRef = useRef(updateLocation.mutateAsync);
   updateLocationRef.current = updateLocation.mutateAsync;
   const onCurrentPositionChangeRef = useRef(onCurrentPositionChange);
   onCurrentPositionChangeRef.current = onCurrentPositionChange;
   const [busyRouteId, setBusyRouteId] = useState<string | null>(null);
   const [busyRouteAction, setBusyRouteAction] = useState<"accept" | "decline" | "stop" | null>(null);
-  const [errorMessage, setErrorMessage] = useState("");
+  // Errors are shown inside the route card whose action failed, next to its buttons.
+  const [routeError, setRouteError] = useState<{ routeId: string; text: string } | null>(null);
+  const showRouteError = (routeId: string, error: unknown, fallback: string) => {
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    setRouteError({
+      routeId,
+      text: offline
+        ? "Sem internet no momento. Nada foi alterado: tente de novo quando o sinal voltar."
+        : error instanceof Error && error.message ? error.message : fallback,
+    });
+  };
   const [locationMessage, setLocationMessage] = useState("");
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [lastGpsSentAt, setLastGpsSentAt] = useState<number | null>(null);
   const [gpsClock, setGpsClock] = useState(Date.now());
   const gpsStartedAt = useRef(Date.now());
   const gpsRefreshRef = useRef<() => void>(() => undefined);
-  const [arrivedStoreStopId, setArrivedStoreStopId] = useState<string | null>(null);
+  // The API does not expose store arrival yet, so remember it on the device: an app reload
+  // (common on Android or bad networks) must not ask the courier to register arrival again.
+  const arrivalStorageKey = `courier-arrived-store-stop:${courierId}`;
+  const [arrivedStoreStopId, setArrivedStoreStopIdState] = useState<string | null>(() => {
+    try {
+      return window.localStorage.getItem(arrivalStorageKey);
+    } catch {
+      return null;
+    }
+  });
+  const setArrivedStoreStopId = (stopId: string | null) => {
+    setArrivedStoreStopIdState(stopId);
+    try {
+      if (stopId) window.localStorage.setItem(arrivalStorageKey, stopId);
+      else window.localStorage.removeItem(arrivalStorageKey);
+    } catch {
+      // Storage unavailable: keep the in-memory value only.
+    }
+  };
   const activeRoute = routes.find((route) => route.status === "ACCEPTED");
+  const arrivedStopStillPending = Boolean(arrivedStoreStopId && routes.some((route) =>
+    route.status === "ACCEPTED" && route.stops.some((stop) => stop.id === arrivedStoreStopId && stop.status === "PENDING")));
+  useEffect(() => {
+    // Only drop the saved arrival once routes have loaded successfully and the stop is done or gone.
+    if (!isLoading && !isError && arrivedStoreStopId && !arrivedStopStillPending) setArrivedStoreStopId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, isError, arrivedStoreStopId, arrivedStopStillPending]);
   const offeredRoutes = routes.filter((route) => route.status === "OFFERED");
 
   useEffect(() => {
@@ -471,7 +506,7 @@ export default function CourierRoutesSection({
   };
 
   const handleAccept = async (route: CourierDeliveryRoute) => {
-    setErrorMessage("");
+    setRouteError(null);
     setBusyRouteId(route.id);
     setBusyRouteAction("accept");
     try {
@@ -488,7 +523,7 @@ export default function CourierRoutesSection({
       void triggerCourierLightHaptic();
       await refreshRouteData();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Não foi possível aceitar a rota.");
+      showRouteError(route.id, error, "Não foi possível aceitar a rota.");
     } finally {
       setBusyRouteId(null);
       setBusyRouteAction(null);
@@ -496,14 +531,14 @@ export default function CourierRoutesSection({
   };
 
   const handleDeclineRoute = async (route: CourierDeliveryRoute) => {
-    setErrorMessage("");
+    setRouteError(null);
     setBusyRouteId(route.id);
     setBusyRouteAction("decline");
     try {
       await declineRoute.mutateAsync({ routeId: route.id });
       await refreshRouteData();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Não foi possível recusar esta rota.");
+      showRouteError(route.id, error, "Não foi possível recusar esta rota.");
     } finally {
       setBusyRouteId(null);
       setBusyRouteAction(null);
@@ -511,7 +546,7 @@ export default function CourierRoutesSection({
   };
 
   const handleCompleteStop = async (routeId: string, stopId: string, evidencePath?: string) => {
-    setErrorMessage("");
+    setRouteError(null);
     setBusyRouteId(routeId);
     setBusyRouteAction("stop");
     try {
@@ -520,7 +555,10 @@ export default function CourierRoutesSection({
       if (stop?.kind === "delivery") void triggerCourierLightHaptic();
       await refreshRouteData();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Não foi possível concluir esta parada.");
+      // With a photo, the evidence component shows the error next to its own button.
+      if (!evidencePath) showRouteError(routeId, error, "Não foi possível concluir esta parada.");
+      // Rethrow so the caller (e.g. the evidence photo flow) keeps its state and shows the error next to the action.
+      throw error instanceof Error ? error : new Error("Não foi possível concluir esta parada.");
     } finally {
       setBusyRouteId(null);
       setBusyRouteAction(null);
@@ -528,7 +566,7 @@ export default function CourierRoutesSection({
   };
 
   const handleStoreArrival = async (routeId: string, stopId: string) => {
-    setErrorMessage("");
+    setRouteError(null);
     setBusyRouteId(routeId);
     setBusyRouteAction("stop");
     try {
@@ -536,7 +574,7 @@ export default function CourierRoutesSection({
       setArrivedStoreStopId(stopId);
       await refreshRouteData();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Não foi possível registrar a chegada à loja.");
+      showRouteError(routeId, error, "Não foi possível registrar a chegada à loja.");
     } finally {
       setBusyRouteId(null);
       setBusyRouteAction(null);
@@ -585,7 +623,6 @@ export default function CourierRoutesSection({
     deliveries.filter((delivery) => delivery.status === "OFFERED").length;
   return (
     <section className="mt-4 space-y-3" aria-label="Entregas e rotas">
-      {errorMessage && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{errorMessage}</div>}
 
       {isLoading ? (
         <div className="space-y-3" role="status" aria-label="Carregando suas entregas">
@@ -635,9 +672,10 @@ export default function CourierRoutesSection({
                 busy={busyRouteId === item.route.id}
                 locationMessage={locationMessage}
                 arrivedStoreStopId={arrivedStoreStopId}
+                error={routeError?.routeId === item.route.id ? routeError.text : undefined}
                 onShowMap={onShowMap}
                 onArrive={(stopId) => void handleStoreArrival(item.route.id, stopId)}
-                onComplete={(stopId, evidencePath) => void handleCompleteStop(item.route.id, stopId, evidencePath)}
+                onComplete={(stopId, evidencePath) => handleCompleteStop(item.route.id, stopId, evidencePath)}
               />
             ) : (
               <CourierRouteOfferCard
@@ -647,6 +685,7 @@ export default function CourierRoutesSection({
                 busyAction={busyRouteId === item.route.id ? busyRouteAction : null}
                 onAccept={() => void handleAccept(item.route)}
                 onDecline={() => void handleDeclineRoute(item.route)}
+                error={routeError?.routeId === item.route.id ? routeError.text : undefined}
               />
             ))}
           </div>
@@ -662,12 +701,14 @@ function CourierRouteOfferCard({
   busyAction,
   onAccept,
   onDecline,
+  error,
 }: {
   route: CourierDeliveryRoute;
   busy: boolean;
   busyAction: "accept" | "decline" | "stop" | null;
   onAccept: () => void;
   onDecline: () => void;
+  error?: string;
 }) {
   const [previewOpen, setPreviewOpen] = useState(true);
   const preview = useGetCourierRoutePreview(route.id, {
@@ -709,7 +750,7 @@ function CourierRouteOfferCard({
         </div>
       </div>
 
-      <div className="courier-route-offer-controls mt-3 flex gap-2">
+      <div className="courier-route-offer-controls mt-3 flex flex-wrap gap-2">
         <button
           type="button"
           className="button-secondary min-h-12 flex-1 justify-center"
@@ -721,16 +762,17 @@ function CourierRouteOfferCard({
         >
           <Map size={16} /> {previewOpen ? "Ocultar prévia" : "Prévia da rota"}
         </button>
-        <button
-          type="button"
-          className="courier-decline-button min-h-12 px-3"
-          onClick={onDecline}
+        <CourierDeclineButton
+          label="Recusar"
+          busyLabel="Recusando…"
+          question="Recusar esta rota?"
+          detail="Todas as entregas dela voltam para a fila da Central."
+          onConfirm={onDecline}
+          busy={busyAction === "decline"}
           disabled={busy}
-          aria-busy={busyAction === "decline"}
-          data-testid={`button-decline-route-${route.id}`}
-        >
-          {busyAction === "decline" ? <><LoaderCircle size={15} className="animate-spin" /> Recusando…</> : "Recusar"}
-        </button>
+          className="min-h-12 px-3"
+          testId={`button-decline-route-${route.id}`}
+        />
       </div>
 
       {previewOpen && (
@@ -788,8 +830,9 @@ function CourierRouteOfferCard({
           ? <><LoaderCircle size={16} className="animate-spin" /> Calculando melhor rota…</>
           : <><Navigation size={16} /> Aceitar e calcular rota</>}
       </button>
-      <p className="mt-2 text-center text-[11px] text-muted-foreground" role={busy ? "status" : undefined}>
-        {busy ? "Aguarde a ação atual terminar para evitar envio duplicado." : "O navegador pedirá sua localização para confirmar a rota."}
+      {error && <div role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" data-testid={`alert-route-${route.id}`}>{error}</div>}
+      <p className="mt-2 text-center text-xs text-muted-foreground" role={busy ? "status" : undefined}>
+        {busy ? "Aguarde a ação atual terminar para evitar envio duplicado." : "O aparelho pedirá sua localização para confirmar a rota."}
       </p>
     </article>
   );
@@ -803,6 +846,7 @@ function ActiveRouteCard({
   onShowMap,
   onArrive,
   onComplete,
+  error,
 }: {
   route: CourierDeliveryRoute;
   busy: boolean;
@@ -810,7 +854,8 @@ function ActiveRouteCard({
   arrivedStoreStopId: string | null;
   onShowMap: () => void;
   onArrive: (stopId: string) => void;
-  onComplete: (stopId: string, evidencePath?: string) => void;
+  onComplete: (stopId: string, evidencePath?: string) => Promise<void>;
+  error?: string;
 }) {
   const completedStops = route.stops.filter((stop) => stop.status === "DONE").length;
   const nextStop = route.stops.find((stop) => stop.status === "PENDING");
@@ -821,11 +866,11 @@ function ActiveRouteCard({
     <article className="overflow-hidden rounded-2xl bg-[#a91d2a] p-4 text-white shadow-sm sm:p-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[.12em] text-white/75">Rota aceita · sequência travada</div>
+          <div className="text-xs font-semibold uppercase tracking-[.08em] text-white/85">Rota aceita · sequência travada</div>
           <h3 className="mt-1 text-xl font-bold">{route.deliveryCount} {route.deliveryCount === 1 ? "entrega" : "entregas"}</h3>
         </div>
         <div className="text-right">
-          <div className="text-[10px] font-semibold uppercase tracking-[.12em] text-white/75">A receber</div>
+          <div className="text-xs font-semibold uppercase tracking-[.08em] text-white/85">A receber</div>
           <div className="mt-1 text-lg font-bold">{money(route.amountToReceive)}</div>
         </div>
       </header>
@@ -875,7 +920,7 @@ function ActiveRouteCard({
                   deliveryId={nextStop.deliveryId}
                   disabled={busy}
                   label="Enviar foto e concluir entrega"
-                  onComplete={async (evidencePath) => onComplete(nextStop.id, evidencePath)}
+                  onComplete={(evidencePath) => onComplete(nextStop.id, evidencePath)}
                 />
                 <CourierUnableToDeliverAction
                   deliveryId={nextStop.deliveryId}
@@ -900,7 +945,7 @@ function ActiveRouteCard({
                 className="button-primary min-h-12 justify-center"
                 type="button"
                 disabled={busy}
-                onClick={() => onComplete(nextStop.id)}
+                onClick={() => void onComplete(nextStop.id).catch(() => undefined)}
                 aria-busy={busy}
               >
                 {busy
@@ -914,6 +959,7 @@ function ActiveRouteCard({
               Aguarde a confirmação para evitar registrar a ação novamente.
             </p>
           )}
+          {error && <div role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" data-testid={`alert-route-${route.id}`}>{error}</div>}
         </div>
       ) : (
         <div className="mt-4 rounded-xl bg-white p-4 text-sm font-semibold text-[#24272d]">Rota concluída. Todas as paradas foram finalizadas.</div>
@@ -927,7 +973,7 @@ function ActiveRouteCard({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-semibold">{stop.sequence}. {stop.kind === "pickup" ? "Retirada" : "Entrega"} · {stop.code}</span>
-              <span className="mt-0.5 block truncate text-[11px] text-white/75">{stop.address}</span>
+              <span className="mt-0.5 block truncate text-xs text-white/85">{stop.address}</span>
             </span>
           </li>
         ))}

@@ -1,31 +1,26 @@
-.live-mapbox-frame {
+.live-map-frame {
   width: 100%;
   height: 450px;
   min-height: 320px;
 }
 
 @media (max-width: 639px) {
-  .live-mapbox-frame--default {
+  .live-map-frame--default {
     height: 60vh;
     min-height: 320px;
   }
 }
 
-.live-mapbox-frame--compact {
+.live-map-frame--compact {
   height: 220px;
   min-height: 220px;
 }
 
-.live-mapbox-frame--full-screen {
+.live-map-frame--full-screen {
   height: 100vh;
   height: 100dvh;
   min-height: 100vh;
   min-height: 100dvh;
-}
-
-.live-mapbox-frame--full-screen .mapboxgl-ctrl-bottom-left,
-.live-mapbox-frame--full-screen .mapboxgl-ctrl-bottom-right {
-  bottom: calc(30dvh + 24px + env(safe-area-inset-bottom)) !important;
 }
 
 .courier-route-map-screen {
@@ -59,7 +54,7 @@
   height: 100%;
 }
 
-.courier-route-map-screen__map .live-mapbox-frame--full-screen {
+.courier-route-map-screen__map .live-map-frame--full-screen {
   height: 100%;
   min-height: 0;
 }
@@ -213,18 +208,9 @@
   font-weight: 500;
 }
 
-.courier-route-map-screen .mapboxgl-ctrl-top-right {
-  top: max(env(safe-area-inset-top), 0.5rem);
-  right: 0.5rem;
-}
-
-.courier-route-map-screen .mapboxgl-ctrl-bottom-left,
-.courier-route-map-screen .mapboxgl-ctrl-bottom-right {
-  bottom: calc(var(--courier-panel-height, 30dvh) + 8px) !important;
-}
-
-.courier-route-map-screen .mapboxgl-ctrl-attrib {
-  max-width: min(70vw, 320px);
+/* Controle de zoom do Google Maps (fica no canto superior direito). */
+.courier-route-map-screen .gm-bundled-control {
+  margin-top: max(env(safe-area-inset-top), 0.5rem) !important;
 }
 
 @media (min-height: 850px) {
@@ -258,7 +244,7 @@
     font-size: 0.75rem;
   }
 
-  .courier-route-map-screen .mapboxgl-ctrl-top-right .mapboxgl-ctrl-group {
+  .courier-route-map-screen .gm-bundled-control {
     display: none;
   }
 }
@@ -285,19 +271,6 @@
     border-radius: 0;
     padding: calc(env(safe-area-inset-top) + 0.625rem) 0.75rem
       calc(env(safe-area-inset-bottom) + 0.625rem);
-  }
-
-  .courier-route-map-screen .mapboxgl-ctrl-top-right {
-    right: calc(40% + 0.5rem);
-  }
-
-  .courier-route-map-screen .mapboxgl-ctrl-bottom-left,
-  .courier-route-map-screen .mapboxgl-ctrl-bottom-right {
-    bottom: 0.5rem !important;
-  }
-
-  .courier-route-map-screen .mapboxgl-ctrl-bottom-right {
-    right: calc(40% + 0.5rem);
   }
 
   .courier-route-map-screen__handle {
