@@ -1,10 +1,10 @@
 import { lazy, Suspense } from "react";
-import type { MapCoordinate, MapMarker, MapSize } from "./live-mapbox";
+import type { MapCoordinate, MapMarker, MapSize } from "./live-googlemap";
 import "./live-map-frame.css";
 
-export type { MapCoordinate, MapMarker, MapSize } from "./live-mapbox";
+export type { MapCoordinate, MapMarker, MapSize } from "./live-googlemap";
 
-const MapboxMap = lazy(() => import("./live-mapbox"));
+const GoogleMap = lazy(() => import("./live-googlemap"));
 
 export default function LiveMap({
   markers,
@@ -51,7 +51,7 @@ export default function LiveMap({
     <Suspense
       fallback={
         <div
-          className={`live-mapbox-frame live-mapbox-frame--${size} bg-[#f3f2ef]`}
+          className={`live-map-frame live-map-frame--${size} bg-[#f3f2ef]`}
           role="region"
           aria-label={ariaLabel}
           aria-busy="true"
@@ -59,7 +59,7 @@ export default function LiveMap({
         />
       }
     >
-      <MapboxMap
+      <GoogleMap
         markers={markers}
         routeGeometry={routeGeometry}
         ariaLabel={ariaLabel}

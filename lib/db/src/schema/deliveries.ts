@@ -58,7 +58,8 @@ export const appUsersTable = pgTable(
   "app_users",
   {
     id: text("id").primaryKey(),
-    clerkUserId: text("clerk_user_id").unique(),
+    // Supabase Auth user id (auth.users.id). Linked by e-mail on first sign-in.
+    authUserId: text("auth_user_id").unique(),
     email: text("email").notNull().unique(),
     name: text("name").notNull(),
     role: text("role").notNull().default("PENDING"),

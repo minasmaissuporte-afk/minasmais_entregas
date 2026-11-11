@@ -9,12 +9,14 @@ import {
   type AppUser,
 } from "@workspace/api-client-react";
 import { Check, KeyRound, LogOut, PackageCheck } from "lucide-react";
-import { useClerk } from "@clerk/react";
+import { useAuth } from "@/lib/auth";
 import LiveMap, { type MapMarker } from "@/components/live-map";
 import { Link } from "wouter";
+import { StatusBadge } from "@/components/delivery-status";
+import { AutoDismissFeedback, type FeedbackMessage } from "@/components/auto-dismiss-feedback";
 
 export default function StorePortal({ profile }: { profile: AppUser }) {
-  const { signOut } = useClerk();
+  const { signOut } = useAuth();
   const queryClient = useQueryClient();
   const [selectedCourierId, setSelectedCourierId] = useState("");
   const deliveries = useListDeliveries(
@@ -54,11 +56,20 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
       kind: "courier",
     }));
   const updateStatus = useUpdateDeliveryStatus();
-  const confirmPickup = (deliveryId: string) => {
+  const [pendingDeliveryId, setPendingDeliveryId] = useState<string | null>(null);
+  const [pickupFeedback, setPickupFeedback] = useState<{ deliveryId: string; feedback: FeedbackMessage } | null>(null);
+  const confirmPickup = (deliveryId: string, code: string) => {
+    setPickupFeedback(null);
+    setPendingDeliveryId(deliveryId);
     updateStatus.mutate(
       { deliveryId, data: { status: "IN_TRANSIT" } },
       {
-        onSuccess: () => void queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
+        onSuccess: () => {
+          setPickupFeedback({ deliveryId, feedback: { kind: "success", text: `Saída de ${code} confirmada. O motoboy já está a caminho do cliente.` } });
+          void queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
+        },
+        onError: () => setPickupFeedback({ deliveryId, feedback: { kind: "error", text: "Não foi possível confirmar a saída. Verifique a conexão e tente novamente." } }),
+        onSettled: () => setPendingDeliveryId(null),
       },
     );
   };
@@ -80,7 +91,7 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
             </Link>
             <button
               className="button-quiet min-h-9 px-2 text-xs sm:px-3"
-              onClick={() => void signOut({ redirectUrl: import.meta.env.BASE_URL })}
+              onClick={() => void signOut()}
             >
               <LogOut size={15} /> Sair
             </button>
@@ -133,7 +144,10 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
         {deliveries.isLoading ? (
           <div className="panel p-5 text-sm text-muted-foreground">Carregando entregas…</div>
         ) : deliveries.isError ? (
-          <div className="panel p-5 text-sm text-red-700">Não foi possível carregar as entregas.</div>
+          <div className="panel p-5 text-sm text-red-700" role="alert">
+            Não foi possível carregar as entregas.
+            <button className="button-secondary mt-3 block" type="button" onClick={() => void deliveries.refetch()}>Tentar novamente</button>
+          </div>
         ) : deliveries.data?.length ? (
           <div className="space-y-3">
             {deliveries.data.map((delivery) => (
@@ -145,19 +159,25 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
                     <p className="mt-1 text-xs text-muted-foreground">{delivery.destination}</p>
                     <p className="mt-1 text-[11px] text-muted-foreground">Pedido {delivery.orderNumber}</p>
                   </div>
-                  <span className="rounded-full bg-[#f6f4f1] px-2.5 py-1 text-[10px] font-semibold">
-                    {delivery.status.replaceAll("_", " ")}
-                  </span>
+                  <StatusBadge status={delivery.status} />
                 </div>
                 {delivery.status === "AT_STORE" ? (
                   <button
                     className="button-primary mt-4 w-full sm:w-auto"
-                    disabled={updateStatus.isPending}
-                    onClick={() => confirmPickup(delivery.id)}
+                    disabled={pendingDeliveryId === delivery.id}
+                    aria-busy={pendingDeliveryId === delivery.id}
+                    onClick={() => confirmPickup(delivery.id, delivery.code)}
                   >
-                    <Check size={15} /> Confirmar saída para entrega
+                    <Check size={15} /> {pendingDeliveryId === delivery.id ? "Confirmando saída…" : "Confirmar saída para entrega"}
                   </button>
                 ) : null}
+                {pickupFeedback?.deliveryId === delivery.id && (
+                  <AutoDismissFeedback
+                    feedback={pickupFeedback.feedback}
+                    onDismiss={() => setPickupFeedback(null)}
+                    className="mt-3"
+                  />
+                )}
               </article>
             ))}
           </div>

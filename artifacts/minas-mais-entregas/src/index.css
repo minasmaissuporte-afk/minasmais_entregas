@@ -1,7 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
-@layer theme, base, clerk, components, utilities;
+@layer theme, base, components, utilities;
 @import 'tailwindcss';
-@import '@clerk/themes/shadcn.css';
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
 
@@ -132,7 +131,7 @@
 
   --muted: 220 14% 94%;
 
-  --muted-foreground: 220 9% 48%;
+  --muted-foreground: 220 9% 40%;
 
   --accent: 356 75% 96%;
 
@@ -343,7 +342,7 @@
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 
 .brand-mark { display:grid; place-items:center; width:36px; height:36px; color:#fff; background:#b91e2c; border-radius:10px 10px 10px 3px; font-size:12px; font-weight:800; letter-spacing:-.08em; }
-.nav-caption,.eyebrow { color:#8b8d91; font-size:9px; font-weight:700; letter-spacing:.14em; }
+.nav-caption,.eyebrow { color:#5f6268; font-size:9px; font-weight:700; letter-spacing:.14em; }
 .nav-caption { padding:0 12px 10px; }
 .nav-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; color:#65676c; font-size:13px; font-weight:600; transition:background .16s,color .16s; }
 .nav-link:hover,.nav-active { color:#a91c29; background:#fbf0f1; }
@@ -352,7 +351,7 @@
 .topbar { display:flex; align-items:center; height:54px; padding:0 22px; border-bottom:1px solid #e7e6e3; background:rgba(255,255,255,.76); }
 .online-indicator { display:flex; align-items:center; gap:6px; border:1px solid #dce9dd; background:#f3f8f3; color:#4d7857; padding:5px 9px; border-radius:20px; font-size:10px; font-weight:700; }
 .online-indicator i { width:6px; height:6px; border-radius:50%; background:#5c9868; }
-.online-indicator--offline { border-color:#e1e2e4; background:#f2f2f3; color:#73767c; }
+.online-indicator--offline { border-color:#e1e2e4; background:#f2f2f3; color:#55585e; }
 .online-indicator--offline i { background:#85888e; }
 .panel { background:#fff; border:1px solid #e7e6e3; border-radius:11px; box-shadow:0 1px 2px rgba(24,28,32,.025); }
 .metric-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
@@ -372,7 +371,7 @@
 .badge-blue { color:#4e667e; background:#eaf0f5; }
 .badge-green { color:#40734b; background:#eaf3eb; }
 .badge-amber { color:#90631d; background:#fbf2df; }
-.badge-muted { color:#6d7075; background:#eeeeed; }
+.badge-muted { color:#55585e; background:#eeeeed; }
 .button-primary,.button-secondary,.button-quiet,.button-small { display:inline-flex; align-items:center; justify-content:center; gap:7px; border-radius:7px; font-size:12px; font-weight:700; transition:background .16s,border-color .16s,transform .16s; }
 .button-primary { padding:0 14px; min-height:38px; color:white; background:#b91e2c; box-shadow:0 1px 2px #8f1d2633; }
 .button-primary:hover { background:#a41926; transform:translateY(-1px); }
@@ -380,7 +379,9 @@
 .button-secondary { min-height:36px; padding:0 12px; border:1px solid #dfdedb; color:#42464d; background:white; }
 .button-secondary:hover,.button-quiet:hover { border-color:#c7c3bf; background:#f8f7f5; }
 .button-quiet { min-height:32px; padding:0 9px; border:1px solid transparent; color:#666a70; }
-.button-small { min-height:28px; padding:0 9px; font-size:10px; }
+.button-small { min-height:28px; padding:0 9px; font-size:10px; white-space:nowrap; }
+/* Selos de status e de prioridade nunca quebram em duas linhas (ex.: "Em entrega"). */
+.badge-neutral,.badge-red,.badge-blue,.badge-green,.badge-amber,.badge-muted { white-space:nowrap; }
 .button-red-outline { color:#a91d2a; border:1px solid #ead0d2; background:#fff; }
 .button-red-outline:hover { background:#fbf0f1; }
 .icon-button,.icon-button-sm { display:grid; place-items:center; color:#777b80; border-radius:7px; transition:background .15s,color .15s; }
@@ -635,7 +636,8 @@
 .courier-profile-sheet button:focus-visible,
 .courier-pwa button:focus-visible,
 .courier-pwa a:focus-visible {
-  outline: 3px solid #f5bd59;
+  /* Dark ring: ≥3:1 on white surfaces (the former #f5bd59 had 1.7:1). The red header keeps the yellow ring below. */
+  outline: 3px solid #1f2329;
   outline-offset: 2px;
 }
 .courier-online-card {
@@ -778,7 +780,7 @@
 .courier-total-cell strong { font-size: 10px; }
 .courier-total-cell b { color: #b50916; font-size: 12px; }
 .courier-history-row { padding: 14px; }
-.courier-map-preview .live-mapbox-frame--compact { height: 132px; min-height: 132px; }
+.courier-map-preview .live-map-frame--compact { height: 132px; min-height: 132px; }
 .courier-decline-button {
   display: inline-flex;
   min-height: 48px;
@@ -1012,7 +1014,7 @@
 }
 .courier-pwa .courier-awaiting-copy p {
   margin-top: 9px;
-  color: #747a82;
+  color: #5c6168;
   font-size: 13px;
   line-height: 1.45;
 }
@@ -1057,7 +1059,7 @@
   border-radius: 12px;
   background: #e9ecea;
 }
-.courier-pwa .courier-map-preview .live-mapbox-frame--compact {
+.courier-pwa .courier-map-preview .live-map-frame--compact {
   height: 116px;
   min-height: 116px;
 }
@@ -1079,7 +1081,7 @@
   border-radius: 14px;
   background: #f7f8f8;
 }
-.courier-pwa .courier-route-preview .courier-map-preview .live-mapbox-frame--compact { height: 116px; min-height: 116px; }
+.courier-pwa .courier-route-preview .courier-map-preview .live-map-frame--compact { height: 116px; min-height: 116px; }
 .courier-pwa .courier-activity-switch,
 .courier-pwa .courier-period-switch {
   border-color: #e7e8ea;
@@ -1134,7 +1136,7 @@
   background: #fff;
 }
 .courier-pwa .courier-header a:focus-visible,
-.courier-pwa button:focus-visible { outline-color: #ffd76f; }
+.courier-pwa .courier-header button:focus-visible { outline-color: #ffd76f; }
 @media (max-width: 430px) {
   .courier-pwa .courier-header { padding-right: 20px; padding-left: 20px; }
   .courier-pwa .courier-online-card { padding-right: 12px; padding-left: 12px; }
@@ -1396,7 +1398,7 @@
   color: var(--courier-red);
 }
 .courier-pwa .courier-delivery-map { margin-top: 10px; }
-.courier-pwa .courier-delivery-map .live-mapbox-frame--compact { height: 116px; min-height: 116px; }
+.courier-pwa .courier-delivery-map .live-map-frame--compact { height: 116px; min-height: 116px; }
 .courier-pwa .courier-delivery-locations {
   display: grid;
   gap: 7px;
@@ -1539,7 +1541,7 @@
 .courier-pwa .courier-route-offer-accept { order: 4; margin-top: 12px; border-radius: 999px; }
 .courier-pwa .courier-route-offer-card > p { order: 6; }
 .courier-pwa .courier-route-preview { padding: 0; background: transparent; }
-.courier-pwa .courier-route-preview .courier-map-preview .live-mapbox-frame--compact { height: 118px; min-height: 118px; }
+.courier-pwa .courier-route-preview .courier-map-preview .live-map-frame--compact { height: 118px; min-height: 118px; }
 .courier-pwa .courier-route-preview ol li { border: 0; background: #f7f8f8; }
 .courier-pwa .courier-route-preview ol li > span:first-child { background: #fff0f1; color: #c51c2a; }
 .courier-pwa .courier-history-row { padding: 15px; }
@@ -1619,21 +1621,35 @@
   }
 }
 .delivery-table { border-collapse:collapse; }
-.delivery-table th { padding:11px 15px; text-align:left; color:#929397; background:#fbfaf9; font-size:9px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; border-bottom:1px solid #ecebe9; }
+.delivery-table th { padding:11px 15px; text-align:left; color:#5f6268; background:#fbfaf9; font-size:9px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; border-bottom:1px solid #ecebe9; }
 .delivery-table td { padding:13px 15px; border-bottom:1px solid #f0efed; vertical-align:middle; font-size:12px; }
 .delivery-table tbody tr:last-child td { border-bottom:0; }
 .table-code { color:#a41c29; font-family:var(--app-font-mono); font-size:11px; font-weight:600; }
-.table-code span { display:block; margin-top:4px; color:#96979a; font-family:var(--app-font-sans); font-size:10px; font-weight:500; }
-.priority-tag { display:inline-block; margin-top:5px; border-radius:3px; background:#fff1e3; color:#a36019; padding:2px 5px; font-size:8px; font-weight:800; letter-spacing:.08em; }
+.table-code span { display:block; margin-top:4px; color:#62666c; font-family:var(--app-font-sans); font-size:10px; font-weight:500; }
+.priority-tag { display:inline-block; margin-top:5px; border-radius:3px; background:#fff1e3; color:#8a4f12; padding:2px 5px; font-size:8px; font-weight:800; letter-spacing:.08em; }
 .search-box { display:flex; align-items:center; gap:8px; min-height:35px; border:1px solid #e4e2df; border-radius:7px; padding:0 9px; color:#8a8c90; }
-.search-box:focus-within { border-color:#c5787e; box-shadow:0 0 0 2px #bd29361a; }
+.search-box:focus-within { border-color:#b0505a; box-shadow:0 0 0 3px #bd293633; }
+.search-box:has(input:focus-visible) { outline:2px solid hsl(var(--ring)); outline-offset:1px; }
+.search-box input:focus-visible { outline:none; }
 .search-box input { min-width:0; flex:1; border:0; outline:0; background:transparent; color:#34363a; font-size:11px; }
 .search-submit { border-left:1px solid #e7e5e2; padding-left:9px; color:#9f202b; font-size:10px; font-weight:700; }
-.filter-select, input, textarea { outline:none; }
+/* Keyboard focus must stay visible (WCAG 2.4.7): panel controls get a ring from the --ring token.
+   :where() keeps specificity at zero so component-specific focus styles still win. */
+@layer base {
+  /* In the base layer so Tailwind utilities (e.g. shadcn's focus-visible:ring) can still override it. */
+  :where(button, a[href], summary, [role="button"], [role="tab"], [role="option"], [tabindex]:not([tabindex="-1"])):focus-visible { outline:2px solid hsl(var(--ring)); outline-offset:2px; }
+}
 .filter-select { min-height:35px; max-width:100%; border:1px solid #e4e2df; border-radius:7px; background:white; padding:0 10px; color:#55595f; font-size:11px; }
-.filter-select:focus,input:focus,textarea:focus { border-color:#c5787e; box-shadow:0 0 0 2px #bd29361a; }
+.filter-select:focus,input:focus,textarea:focus,select:focus { border-color:#b0505a; box-shadow:0 0 0 3px #bd293633; outline:none; }
+.filter-select:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible { outline:2px solid hsl(var(--ring)); outline-offset:1px; }
 input:not(.search-box input),textarea { width:100%; border:1px solid #e2e0dd; border-radius:7px; background:#fff; padding:9px 10px; color:#32353a; font-size:12px; }
 input::placeholder,textarea::placeholder { color:#a1a1a3; }
+/* Selects dos formulários em modal com o mesmo visual dos inputs (antes ficavam sem borda). */
+.modal-card select { width:100%; border:1px solid #e2e0dd; border-radius:7px; background-color:#fff; padding:9px 10px; color:#32353a; font-size:12px; }
+/* 16px on phones: avoids the iOS auto-zoom that `maximum-scale=1` used to block, now that pinch zoom is allowed again. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),textarea,select,.filter-select,.search-box input { font-size:16px; }
+}
 textarea { resize:vertical; }
 .cancellation-reason-row > input[type="checkbox"] { width:20px; min-width:20px; height:20px; flex:0 0 20px; padding:0; }
 .cancellation-reason-row > input[type="text"] { width:0; min-width:0; height:48px; flex:1 1 auto; padding:0 12px; font-size:14px; }
@@ -1882,21 +1898,22 @@ textarea { resize:vertical; }
   border: 1px solid #f0dfb8;
   border-radius: 10px;
   background: #fff9ec;
-  padding: 5px 8px 5px 10px;
-  color: #765b2a;
-  font-size: 11px;
-  line-height: 1.25;
+  padding: 6px 6px 6px 10px;
+  color: #6b5225;
+  font-size: 13px;
+  line-height: 1.3;
 }
 .courier-pwa .courier-device-notice > svg { flex: none; }
 .courier-pwa .courier-device-notice > span { min-width: 0; flex: 1; }
 .courier-pwa .courier-device-notice > button {
-  min-height: 30px;
+  flex: none;
+  min-height: 44px;
   border: 0;
   border-radius: 7px;
   background: transparent;
   padding: 0 8px;
   color: #b40d23;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 800;
 }
 .courier-pwa .courier-device-notice--gps { margin-top: 6px; }
@@ -2104,19 +2121,7 @@ textarea { resize:vertical; }
   text-decoration: none;
 }
 .courier-pwa .courier-route-map-screen__unable.courier-map-text-link:hover { background: transparent; text-decoration: underline; }
-.courier-pwa .courier-route-map-screen .mapboxgl-ctrl-top-right { display: none; }
-.courier-pwa .courier-route-map-screen .mapboxgl-ctrl-bottom-left,
-.courier-pwa .courier-route-map-screen .mapboxgl-ctrl-bottom-right {
-  bottom: calc(var(--courier-panel-height, 220px) + 5px) !important;
-}
-.courier-pwa .courier-route-map-screen .mapboxgl-ctrl-attrib {
-  max-width: min(70vw, 300px);
-  border-radius: 4px;
-  background: rgb(255 255 255 / 92%);
-  color: #343a40;
-  font-size: 9px;
-}
-.courier-pwa .courier-route-map-screen .mapboxgl-ctrl-logo { transform: scale(.82); transform-origin: bottom left; }
+.courier-pwa .courier-route-map-screen .gm-bundled-control { display: none !important; }
 .courier-pwa .courier-route-offer-card {
   overflow: hidden;
   border: 0;
@@ -2331,4 +2336,211 @@ textarea { resize:vertical; }
 @media (max-width: 370px) {
   .courier-pwa .courier-official-brand .courier-official-brand__name { font-size: 18px; }
   .courier-pwa .courier-official-brand .courier-official-brand__subtitle { font-size: 9px; }
+}
+
+/* ==========================================================================
+   Motoboy PWA: legibility and touch in the field (sun, gloves, one hand).
+   Kept at the end of the file so it wins over the earlier .courier-pwa layers
+   without changing their layout. Minimums: 12px for helper labels, 13px for
+   status, 16px for the stop address; secondary gray #5f646b (≈6:1 on white);
+   48px touch targets for actions.
+   ========================================================================== */
+.courier-pwa .courier-bottom-nav > button,
+.courier-pwa .courier-bottom-nav > button:last-child,
+.courier-pwa .courier-nav-map > small { font-size: 12px; }
+.courier-pwa .courier-offer-badge { font-size: 11px; }
+
+.courier-pwa .courier-feed-heading span,
+.courier-pwa .courier-offline-note small,
+.courier-pwa .courier-active-delivery__code,
+.courier-pwa .courier-active-delivery-heading span,
+.courier-pwa .courier-route-offer-heading > div:first-child p,
+.courier-pwa .courier-online-card p { color: #5f646b; }
+.courier-pwa .courier-online-card p,
+.courier-pwa .courier-route-offer-heading > div:first-child p { font-size: 12px; }
+.courier-pwa .courier-active-delivery__status,
+.courier-pwa .courier-keep-open-note { color: #4f545b; font-size: 13px; }
+.courier-pwa .courier-active-delivery__evidence > div > p { color: #5f646b; font-size: 12px; }
+/* Swipe track label: was #72777e on #e9ebee (3.7:1). */
+.courier-pwa .courier-active-delivery__evidence [role="group"] > div:first-child > span { color: #3f444a; }
+
+.courier-pwa .courier-route-map-screen__eyebrow { font-size: 12px; }
+.courier-pwa .courier-route-map-screen__address { font-size: 16px; line-height: 1.35; }
+.courier-pwa .courier-total-cell span { color: #5f646b; font-size: 11px; }
+.courier-pwa .courier-total-cell strong { font-size: 12px; }
+.courier-pwa .courier-history-status { font-size: 11px; }
+.courier-pwa .courier-grouped-offer-title > span,
+.courier-pwa .courier-route-numbered-stops > li > span:first-child { font-size: 12px; }
+
+.courier-pwa .courier-active-delivery__unable,
+.courier-pwa .courier-route-map-screen__unable.courier-map-text-link { min-height: 48px !important; }
+.courier-pwa .courier-route-offer-controls > button:first-child,
+.courier-pwa .courier-route-offer-controls > button:last-child,
+.courier-pwa .courier-route-map-screen__actions > a,
+.courier-pwa .courier-route-map-screen__actions--secondary > a,
+.courier-pwa .courier-route-map-screen__actions:not(.courier-route-map-screen__actions--secondary) > a,
+.courier-pwa .courier-delivery-contact-actions > button.button-outlined,
+.courier-pwa .courier-delivery-card[data-delivery-status="IN_TRANSIT"] .courier-delivery-contact-actions .button-outlined,
+.courier-pwa .courier-active-delivery__evidence [role="group"] > div:first-child > button,
+.courier-pwa .courier-period-switch button { min-height: 48px; }
+.courier-pwa .courier-route-map-screen__actions > a { font-size: 14px; }
+
+/* Confirm step for declining an offer or a route (components/courier-decline-button.tsx). */
+.courier-decline-confirm {
+  flex-basis: 100%;
+  width: 100%;
+  border: 1px solid #f0d3d6;
+  border-radius: 12px;
+  background: #fff6f6;
+  padding: 12px;
+  color: #3f2a2d;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.courier-decline-confirm > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.courier-decline-confirm .button-secondary,
+.courier-decline-confirm .courier-decline-button { min-height: 48px; justify-content: center; font-size: 14px; }
+.courier-decline-confirm .courier-decline-button { border-color: #c81725; background: #fff; color: #b40d23; }
+.courier-pwa .courier-decline-button { font-size: 13px; color: #5f564f; }
+
+/* Phone has no internet (pages/courier-portal.tsx). Sticky so it stays visible on every tab, including the map. */
+.courier-network-banner {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: max(10px, env(safe-area-inset-top)) 16px 10px;
+  background: #24272d;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.courier-network-banner > svg { flex: none; margin-top: 2px; }
+
+/* ==========================================================================
+   Painel administrativo (Figma "Dashboard Administrativo Minas Mais Entregas").
+   Tokens from the file's "Direção visual": #B91E2C, #182230, #667085, #EAECF0,
+   #F7F8FA, #218052 · Inter 12/14/16/24/30 · spacing 4–32 · radius 8/12 · Lucide 18/20.
+   Scoped to .admin-ui so the courier PWA and the store portal keep their look.
+   ========================================================================== */
+.admin-ui {
+  --adm-primary: #b91e2c;
+  --adm-primary-hover: #a01a26;
+  --adm-ink: #182230;
+  --adm-muted: #667085;
+  --adm-subtle: #98a2b3;
+  --adm-border: #eaecf0;
+  --adm-border-strong: #e4e7ec;
+  --adm-field-border: #dfe3e8;
+  --adm-bg: #f6f7f9;
+  --adm-surface-soft: #f8f9fb;
+  --adm-chip: #f2f4f7;
+  --adm-nav-active: #fceef0;
+  --adm-success: #1b6e46;
+  --adm-success-bg: #eaf7f0;
+  --adm-info: #3a61b4;
+  --adm-info-bg: #eff4ff;
+  --adm-danger-bg: #fff0f1;
+  --adm-warning: #9a5b00;
+  --adm-warning-bg: #fffaf0;
+  --adm-map-route: #456fad;
+  min-height: 100dvh;
+  background: var(--adm-bg);
+  color: var(--adm-ink);
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+}
+.admin-ui :where(h1, h2, h3, p) { margin: 0; }
+.adm-card {
+  border: 1px solid var(--adm-border);
+  border-radius: 12px;
+  background: #fff;
+}
+.adm-skeleton {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--adm-chip), #f8f9fb, var(--adm-chip));
+  background-size: 200% 100%;
+  animation: skeleton-shift 1.4s ease infinite;
+}
+.adm-select {
+  width: 100%;
+  height: 38px;
+  appearance: none;
+  border: 1px solid var(--adm-field-border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0 36px 0 12px;
+  color: var(--adm-ink);
+  font: 500 12px/1 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.adm-select:hover { border-color: #c9ced6; }
+.adm-select:focus { outline: none; border-color: var(--adm-primary); box-shadow: 0 0 0 3px #b91e2c26; }
+.adm-select:focus-visible { outline: 2px solid var(--adm-primary); outline-offset: 1px; }
+.adm-select[data-active="true"] { border-color: #e6b3ba; background: #fffafa; }
+@media (max-width: 767px) { .adm-select { height: 44px; font-size: 16px; } }
+.adm-action {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 0 18px;
+  font: 600 12px/1 'Inter', system-ui, sans-serif;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.adm-action--primary { background: var(--adm-primary); color: #fff; }
+.adm-action--primary:hover:not(:disabled) { background: var(--adm-primary-hover); }
+.adm-action--secondary { border: 1px solid var(--adm-border-strong); background: #fff; color: var(--adm-ink); }
+.adm-action--secondary:hover:not(:disabled) { background: var(--adm-surface-soft); }
+.adm-action:disabled { cursor: not-allowed; opacity: .6; }
+.adm-nav-item {
+  position: relative;
+  display: flex;
+  height: 42px;
+  align-items: center;
+  gap: 12px;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--adm-muted);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background .15s, color .15s;
+}
+.adm-nav-item:hover { background: var(--adm-surface-soft); color: var(--adm-ink); }
+.adm-nav-item[aria-current="page"] { background: var(--adm-nav-active); color: var(--adm-primary); font-weight: 600; }
+.adm-nav-item > svg { flex: none; }
+.adm-link {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  color: var(--adm-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+.adm-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.adm-icon-button {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--adm-muted);
+  transition: background .15s, color .15s;
+}
+.adm-icon-button:hover { background: var(--adm-chip); color: var(--adm-ink); }
+.adm-row { transition: background .12s; }
+.adm-row:hover { background: #fafbfc; }
+.adm-map-frame .live-map-frame { height: 376px; min-height: 300px; }
+.adm-map-frame--tall .live-map-frame { height: calc(100dvh - 210px); min-height: 420px; }
+@media (max-width: 639px) { .adm-map-frame .live-map-frame { height: 320px; } }
+@media (prefers-reduced-motion: reduce) {
+  .admin-ui *, .admin-ui *::before, .admin-ui *::after { transition: none !important; animation: none !important; }
 }

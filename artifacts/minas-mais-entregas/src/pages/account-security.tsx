@@ -1,37 +1,16 @@
 import { useState, type FormEvent } from "react";
-import { useClerk, useUser } from "@clerk/react";
 import { ArrowLeft, KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import { Link } from "wouter";
-
-function getErrorMessage(error: unknown) {
-  const clerkError = error as {
-    errors?: Array<{ code?: string; longMessage?: string; message?: string }>;
-  };
-  const first = clerkError?.errors?.[0];
-  if (first?.code === "form_password_incorrect") {
-    return "A senha atual não confere.";
-  }
-  if (first?.code === "form_password_pwned") {
-    return "Escolha outra senha. Essa senha consta em uma lista de senhas comprometidas.";
-  }
-  if (first?.longMessage || first?.message) {
-    return first.longMessage ?? first.message ?? "Não foi possível atualizar a senha.";
-  }
-  return error instanceof Error
-    ? error.message
-    : "Não foi possível atualizar a senha. Confira a conexão e tente novamente.";
-}
+import { authErrorMessage, HAS_PASSWORD_FLAG, supabase, useAuth, userHasPassword } from "@/lib/auth";
 
 export default function AccountSecurityPage() {
-  const { user, isLoaded } = useUser();
-  const { signOut } = useClerk();
+  const { user, isLoaded, signOut } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [hasPassword, setHasPassword] = useState<boolean | null>(null);
 
   if (!isLoaded || !user) {
     return (
@@ -43,11 +22,9 @@ export default function AccountSecurityPage() {
     );
   }
 
-  const passwordEnabled = hasPassword ?? user.passwordEnabled;
-  const email =
-    user.primaryEmailAddress?.emailAddress ??
-    user.emailAddresses[0]?.emailAddress ??
-    "Conta conectada";
+  // Accounts that only used the e-mail code or Google can create their first password without a current one.
+  const passwordEnabled = userHasPassword(user);
+  const email = user.email ?? "Conta conectada";
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -69,17 +46,26 @@ export default function AccountSecurityPage() {
 
     setIsSaving(true);
     try {
-      const updatedUser = await user.updatePassword({
-        newPassword,
-        ...(passwordEnabled ? { currentPassword } : {}),
+      if (passwordEnabled) {
+        // Supabase does not check the current password on update, so confirm it first.
+        const { error: checkError } = await supabase.auth.signInWithPassword({ email: user.email ?? "", password: currentPassword });
+        if (checkError) {
+          setError(authErrorMessage(checkError).startsWith("E-mail ou senha") ? "A senha atual não confere." : authErrorMessage(checkError));
+          return;
+        }
+      }
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+        data: { [HAS_PASSWORD_FLAG]: true },
       });
-      setHasPassword(updatedUser.passwordEnabled);
+      if (updateError) {
+        setError(authErrorMessage(updateError, "Não foi possível atualizar a senha. Confira a conexão e tente novamente."));
+        return;
+      }
       setCurrentPassword("");
       setNewPassword("");
       setConfirmation("");
-      setSuccess("Senha atualizada com sucesso.");
-    } catch (updateError) {
-      setError(getErrorMessage(updateError));
+      setSuccess(passwordEnabled ? "Senha atualizada com sucesso." : "Senha criada. Agora você também pode entrar com e-mail e senha.");
     } finally {
       setIsSaving(false);
     }
@@ -99,7 +85,7 @@ export default function AccountSecurityPage() {
           <button
             type="button"
             className="button-quiet"
-            onClick={() => void signOut({ redirectUrl: import.meta.env.BASE_URL })}
+            onClick={() => void signOut()}
           >
             <LogOut size={15} /> Sair
           </button>

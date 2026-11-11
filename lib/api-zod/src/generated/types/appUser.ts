@@ -10,7 +10,7 @@ import type { AppUserRole } from './appUserRole';
 export interface AppUser {
   id: string;
   /** @nullable */
-  clerkUserId: string | null;
+  authUserId: string | null;
   email: string;
   name: string;
   /** @nullable */

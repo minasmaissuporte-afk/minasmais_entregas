@@ -10,7 +10,7 @@ import {
   type AppUser,
 } from "@workspace/api-client-react";
 import { Check, ShieldCheck, Trash2, UsersRound } from "lucide-react";
-import { useUser } from "@clerk/react";
+import { useAuth } from "@/lib/auth";
 import { useEffect, useState } from "react";
 
 const roles: { value: AppUser["role"]; label: string }[] = [
@@ -23,7 +23,7 @@ const roles: { value: AppUser["role"]; label: string }[] = [
 ];
 
 export default function AccessManagement() {
-  const { user: signedInUser } = useUser();
+  const { user: signedInUser } = useAuth();
   const users = useListAccessUsers();
   const stores = useListStores();
   const couriers = useListCouriers({ includeUnlinked: true });
@@ -76,7 +76,7 @@ export default function AccessManagement() {
                 user={user}
                 stores={stores.data ?? []}
                 couriers={couriers.data ?? []}
-                isCurrentUser={Boolean(user.clerkUserId && user.clerkUserId === signedInUser?.id)}
+                isCurrentUser={Boolean(user.authUserId && user.authUserId === signedInUser?.id)}
                 isLastAdmin={user.role === "ADMIN" && adminCount <= 1}
                 hasActiveWork={Boolean(
                   user.role === "COURIER" &&
@@ -179,7 +179,7 @@ function UserAccessRow({
   };
   const removeAccount = () => {
     if (isCurrentUser || isLastAdmin || hasActiveWork) return;
-    const loginNote = user.clerkUserId
+    const loginNote = user.authUserId
       ? "O login também será excluído."
       : "Não há um login vinculado a este cadastro.";
     const confirmed = window.confirm(
@@ -253,7 +253,8 @@ function UserAccessRow({
   );
 
   return (
-    <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_180px_minmax(240px,1.1fr)_minmax(280px,1.3fr)_auto] xl:items-center">
+    // Mesmas 4 colunas em todas as linhas (conta · perfil · vínculo · ações), para os botões ficarem alinhados.
+    <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 xl:grid-cols-[minmax(200px,1fr)_180px_minmax(360px,2fr)_auto] xl:items-center">
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold">{user.name}</div>
         <div className="mt-1 truncate text-xs text-muted-foreground">{user.email}</div>
@@ -263,14 +264,14 @@ function UserAccessRow({
         aria-label={`Perfil de ${user.name}`}
         value={role}
         onChange={(event) => setRole(event.target.value as AppUser["role"])}
-        disabled={user.role === "ADMIN" && user.clerkUserId === null}
+        disabled={user.role === "ADMIN" && user.authUserId === null}
       >
         {roles.map((item) => (
           <option key={item.value} value={item.value}>{item.label}</option>
         ))}
       </select>
       {needsCourier ? (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid min-w-0 gap-2 sm:grid-cols-2">
           <input
             className="filter-select w-full"
             aria-label={`Nome do motoboy ${user.email}`}
@@ -291,18 +292,14 @@ function UserAccessRow({
             maxLength={40}
             onChange={(event) => setPhone(event.target.value)}
           />
+          {storeSelect}
+          {courierSelect}
         </div>
       ) : needsStore ? (
         storeSelect
       ) : (
         <span className="text-xs text-muted-foreground">Sem vínculo adicional</span>
       )}
-      {needsCourier ? (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {storeSelect}
-          {courierSelect}
-        </div>
-      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 lg:justify-end">
         {message && (
           <span className={`text-[11px] ${message.startsWith("Acesso") ? "text-green-700" : "text-red-700"}`}>

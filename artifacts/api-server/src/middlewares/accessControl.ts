@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { clerkClient, getAuth } from "@clerk/express";
 import type { RequestHandler } from "express";
 import { eq } from "drizzle-orm";
 import { appUsersTable, db } from "@workspace/db";
+import { getAuthUser, type AuthUser } from "../lib/supabaseAuth";
 
 export const appRoles = [
   "ADMIN",
@@ -23,8 +23,8 @@ const bootstrapAdminEmails = new Set(
     .filter(Boolean),
 );
 
-export const requireAuthentication: RequestHandler = (req, res, next) => {
-  if (!getAuth(req).userId) {
+export const requireAuthentication: RequestHandler = (_req, res, next) => {
+  if (!getAuthUser(res)) {
     res.status(401).json({ error: "Autenticação necessária." });
     return;
   }
@@ -41,11 +41,17 @@ async function getInitialRole(email: string): Promise<AppRole> {
   return administrator ? "PENDING" : "ADMIN";
 }
 
-export async function resolveAppUser(clerkUserId: string) {
+/**
+ * Finds (or creates) the application profile for a signed-in Supabase user.
+ * Existing people are matched by e-mail on their first Supabase sign-in, which
+ * keeps their role, store, courier link and delivery history.
+ */
+export async function resolveAppUser(authUser: AuthUser) {
+  const authUserId = authUser.id;
   const [linkedProfile] = await db
     .select()
     .from(appUsersTable)
-    .where(eq(appUsersTable.clerkUserId, clerkUserId))
+    .where(eq(appUsersTable.authUserId, authUserId))
     .limit(1);
   if (linkedProfile) {
     if (linkedProfile.role !== "PENDING") return linkedProfile;
@@ -59,19 +65,10 @@ export async function resolveAppUser(clerkUserId: string) {
     return promoted ?? linkedProfile;
   }
 
-  const clerkUser = await clerkClient.users.getUser(clerkUserId);
-  const email = (
-    clerkUser.primaryEmailAddress?.emailAddress ??
-    clerkUser.emailAddresses[0]?.emailAddress ??
-    ""
-  )
-    .trim()
-    .toLowerCase();
+  const email = authUser.email.trim().toLowerCase();
   if (!email) return null;
 
-  const clerkDisplayName =
-    [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim() ||
-    email;
+  const displayName = authUser.name || email;
   const initialRole = await getInitialRole(email);
   const [emailProfile] = await db
     .select()
@@ -83,7 +80,7 @@ export async function resolveAppUser(clerkUserId: string) {
     const [linked] = await db
       .update(appUsersTable)
       .set({
-        clerkUserId,
+        authUserId,
         role: initialRole === "ADMIN" ? "ADMIN" : emailProfile.role,
         updatedAt: new Date(),
       })
@@ -96,9 +93,9 @@ export async function resolveAppUser(clerkUserId: string) {
     .insert(appUsersTable)
     .values({
       id: randomUUID(),
-      clerkUserId,
+      authUserId,
       email,
-      name: clerkDisplayName,
+      name: displayName,
       role: initialRole,
     })
     .onConflictDoNothing()
@@ -108,21 +105,21 @@ export async function resolveAppUser(clerkUserId: string) {
   const [racedProfile] = await db
     .select()
     .from(appUsersTable)
-    .where(eq(appUsersTable.clerkUserId, clerkUserId))
+    .where(eq(appUsersTable.authUserId, authUserId))
     .limit(1);
   return racedProfile ?? null;
 }
 
 export function requireRole(...allowedRoles: AppRole[]): RequestHandler {
   return async (req, res, next) => {
-    const clerkUserId = getAuth(req).userId;
-    if (!clerkUserId) {
+    const authUser = getAuthUser(res);
+    if (!authUser) {
       res.status(401).json({ error: "Autenticação necessária." });
       return;
     }
 
     try {
-      const profile = await resolveAppUser(clerkUserId);
+      const profile = await resolveAppUser(authUser);
       if (!profile || !allowedRoles.includes(profile.role as AppRole)) {
         res.status(403).json({
           error: "Sua conta ainda não tem acesso a esta área.",

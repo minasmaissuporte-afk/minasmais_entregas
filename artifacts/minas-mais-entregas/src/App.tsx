@@ -1,9 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ClerkProvider, Show, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
-import { publishableKeyFromHost } from '@clerk/react/internal';
-import { shadcn } from '@clerk/themes';
-import { ptBR } from '@clerk/localizations';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   getGetMyProfileQueryKey,
@@ -16,7 +12,6 @@ import {
   getListStoresQueryKey,
   getListActiveRoutesQueryKey,
   getGetDeliveryAnalyticsQueryKey,
-  setAuthTokenGetter,
   setBaseUrl,
   useCreateDelivery,
   useCreateDeliveryRoute,
@@ -40,6 +35,7 @@ import {
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { AutoDismissFeedback, type FeedbackMessage } from '@/components/auto-dismiss-feedback';
+import { Badge, StatusBadge, statusNames } from '@/components/delivery-status';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -57,6 +53,11 @@ import CancellationAlertsPanel from '@/components/cancellation-alerts-panel';
 import { Capacitor } from '@capacitor/core';
 import { Network } from '@capacitor/network';
 import NativeCourierSetupGate from '@/components/native-courier-setup';
+import { AuthProvider, useAuth } from '@/lib/auth';
+import { ForgotPasswordPage, PasswordRecoveryRedirect, ResetPasswordPage, SignInPage, SignUpPage } from '@/pages/auth-pages';
+import AdminShell from '@/components/admin/admin-shell';
+import AdminOverview from '@/components/admin/overview';
+import { CouriersPage, LiveMapPage } from '@/components/admin/admin-pages';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -65,115 +66,6 @@ const nativeApiBaseUrl = (
   import.meta.env.VITE_NATIVE_API_BASE_URL || 'https://minas-mais-entregas.replit.app'
 ).replace(/\/+$/, '');
 if (isNativeApp) setBaseUrl(nativeApiBaseUrl);
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
-const clerkProxyUrl = isNativeApp
-  ? `${nativeApiBaseUrl}/api/__clerk`
-  : import.meta.env.VITE_CLERK_PROXY_URL;
-if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY');
-
-const clerkAppearance = {
-  theme: shadcn,
-  cssLayerName: 'clerk',
-  options: {
-    logoPlacement: 'inside' as const,
-    logoLinkUrl: basePath || '/',
-    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
-  },
-  variables: {
-    colorPrimary: '#b91e2c',
-    colorForeground: '#24272d',
-    colorMutedForeground: '#777a80',
-    colorDanger: '#b42318',
-    colorBackground: '#ffffff',
-    colorInput: '#ffffff',
-    colorInputForeground: '#24272d',
-    colorNeutral: '#e7e6e3',
-    fontFamily: 'DM Sans, sans-serif',
-    borderRadius: '0.75rem',
-  },
-  elements: {
-    rootBox: 'w-full flex justify-center',
-    cardBox: 'bg-white rounded-2xl w-[440px] max-w-full overflow-hidden',
-    card: '!shadow-none !border-0 !bg-transparent !rounded-none',
-    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
-    headerTitle: 'text-[#24272d] font-bold',
-    headerSubtitle: 'text-[#777a80]',
-    socialButtonsBlockButtonText: 'text-[#24272d] font-semibold',
-    formFieldLabel: 'text-[#55595f] font-semibold',
-    footerActionLink: 'text-[#a91d2a] font-semibold',
-    footerActionText: 'text-[#777a80]',
-    dividerText: 'text-[#777a80]',
-    identityPreviewEditButton: 'text-[#a91d2a]',
-    formFieldSuccessText: 'text-green-700',
-    alertText: 'text-red-700',
-    logoBox: 'mx-auto',
-    logoImage: 'max-h-10',
-    socialButtonsBlockButton: 'border-[#e7e6e3] rounded-lg',
-    formButtonPrimary: 'bg-[#b91e2c] hover:bg-[#a41926] text-white rounded-lg',
-    formFieldInput: 'border-[#e2e0dd] rounded-lg text-[#24272d]',
-    footerAction: 'text-[#777a80]',
-    dividerLine: 'bg-[#e7e6e3]',
-    alert: 'rounded-lg',
-    otpCodeFieldInput: 'border-[#e2e0dd] text-[#24272d]',
-    formFieldRow: 'gap-1',
-    main: 'text-[#24272d]',
-  },
-};
-const nativeClerkAppearance = {
-  ...clerkAppearance,
-  elements: {
-    socialButtonsBlockButton: { display: 'none' },
-    socialButtonsBlockButtonText: { display: 'none' },
-    socialButtonsBlockDivider: { display: 'none' },
-  },
-};
-
-function ClerkQueryClientCacheInvalidator() {
-  const { addListener } = useClerk();
-  const client = useQueryClient();
-  const previousUserId = useRef<string | null | undefined>(undefined);
-  useEffect(() => {
-    const unsubscribe = addListener(({ user }) => {
-      const userId = user?.id ?? null;
-      if (previousUserId.current !== undefined && previousUserId.current !== userId) {
-        client.clear();
-      }
-      previousUserId.current = userId;
-    });
-    return unsubscribe;
-  }, [addListener, client]);
-  return null;
-}
-
-function SignInPage() {
-  return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f4f3f1] px-4 py-8">
-      <SignIn
-        routing="path"
-        path={`${basePath}/sign-in`}
-        signUpUrl={`${basePath}/sign-up`}
-        fallbackRedirectUrl={`${basePath}/user-portal`}
-      />
-    </div>
-  );
-}
-
-function SignUpPage() {
-  return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f4f3f1] px-4 py-8">
-      <SignUp
-        routing="path"
-        path={`${basePath}/sign-up`}
-        signInUrl={`${basePath}/sign-in`}
-        fallbackRedirectUrl={`${basePath}/user-portal`}
-      />
-    </div>
-  );
-}
-
 function LandingPage() {
   return (
     <main className="min-h-[100dvh] bg-[#f4f3f1] px-5 py-6 text-[#24272d] sm:px-8">
@@ -228,19 +120,10 @@ function LandingPage() {
 }
 
 function HomeRedirect() {
-  return (
-    <>
-      <Show when="signed-in"><UserPortalRoute /></Show>
-      <Show when="signed-out"><LandingPage /></Show>
-    </>
-  );
+  const { isLoaded, isSignedIn } = useAuth();
+  if (!isLoaded) return <ProfileLoading />;
+  return isSignedIn ? <UserPortalRoute /> : <LandingPage />;
 }
-const statusNames: Record<string, string> = {
-  REQUESTED: 'Solicitada', AWAITING_COURIER: 'Aguardando entregador', OFFERED: 'Oferta enviada',
-  ACCEPTED: 'Aceita', TO_STORE: 'A caminho da loja', AT_STORE: 'Na loja',
-  IN_TRANSIT: 'Em entrega', COMPLETED: 'Concluída', CANCELLED: 'Cancelado pela Central',
-  RETURNING_TO_STORE: 'Retornando à filial', NOT_DELIVERED: 'Não entregue',
-};
 const statusOptions: Record<string, string[]> = {
   REQUESTED: [],
   OFFERED: ['ACCEPTED'],
@@ -253,18 +136,14 @@ const fmtTime = (value?: string | null) => value ? new Date(value).toLocaleStrin
 const timeAgo = (value?: string | null) => {
   if (!value) return 'Localização indisponível';
   const mins = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
-  return mins < 1 ? 'agora' : `há ${mins} min`;
+  return mins < 1 ? 'GPS agora' : `GPS há ${mins} min`;
 };
+/** Última posição conhecida: a da entrega ou, se ela não tiver, a do motoboy atribuído (atualizada a cada 15 s). */
+const lastKnownLocationAt = (
+  delivery: { lastLocationAt?: string | null; courierId?: string | null },
+  couriers?: { id: string; lastLocationAt?: string | null }[],
+) => delivery.lastLocationAt ?? couriers?.find(c => c.id === delivery.courierId)?.lastLocationAt ?? null;
 
-function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: string }) {
-  return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-[.01em] badge-${tone}`}>{children}</span>;
-}
-function StatusBadge({ status }: { status: string }) {
-  const tone = ['COMPLETED'].includes(status) ? 'green' : ['CANCELLED'].includes(status) ? 'muted' :
-    ['IN_TRANSIT', 'TO_STORE', 'AT_STORE'].includes(status) ? 'red' :
-    ['OFFERED', 'AWAITING_COURIER', 'REQUESTED'].includes(status) ? 'amber' : 'blue';
-  return <Badge tone={tone}>{statusNames[status] ?? status.replaceAll('_', ' ')}</Badge>;
-}
 function Skeleton({ rows = 4 }: { rows?: number }) {
   return <div className="space-y-3 p-5" aria-label="Carregando"><div className="skeleton h-5 w-40" />{Array.from({ length: rows }, (_, i) => <div key={i} className="skeleton h-12 w-full" />)}</div>;
 }
@@ -274,67 +153,6 @@ function EmptyState({ title, detail, action }: { title: string; detail: string; 
     <h3 className="font-semibold text-[15px]">{title}</h3><p className="mt-1 max-w-sm text-sm text-muted-foreground">{detail}</p>{action && <div className="mt-4">{action}</div>}
   </div>;
 }
-function AppShell({ children, profile }: { children: ReactNode; profile: AppUser }) {
-  const [location] = useLocation();
-  const { signOut } = useClerk();
-  const summary = useGetDashboardSummary({
-    query: {
-      queryKey: getGetDashboardSummaryQueryKey(),
-      refetchInterval: 15000,
-      refetchOnWindowFocus: true,
-    },
-  });
-  const awaitingCount = summary.data?.awaitingCourier ?? 0;
-  return <div className="ops-shell md:flex">
-    <aside className="ops-sidebar flex md:min-h-[100dvh] md:w-[232px] md:flex-col">
-      <div className="flex w-full items-center gap-3 border-b border-border px-5 py-5 md:border-b-0">
-        <div className="brand-mark">MM</div>
-        <div className="leading-tight"><div className="text-[13px] font-bold tracking-[-.02em]">MINAS MAIS</div><div className="mt-1 text-[10px] font-semibold uppercase tracking-[.16em] text-muted-foreground">Entregas</div></div>
-      </div>
-      <div className="hidden px-3 pt-5 md:block">
-        <div className="nav-caption">OPERAÇÃO</div>
-        <Link href="/" className={`nav-link ${location === '/' ? 'nav-active' : ''}`} data-testid="link-operations">
-          <Truck size={17} strokeWidth={1.8} /><span>Entregas</span>{awaitingCount > 0 && <span className="nav-count-badge ml-auto">{awaitingCount}</span>}
-        </Link>
-        {profile.role === 'ADMIN' && <Link href="/access" className={`nav-link ${location === '/access' ? 'nav-active' : ''}`}>
-          <ShieldCheck size={17} strokeWidth={1.8}/><span>Acessos</span>
-        </Link>}
-        {profile.role === 'ADMIN' && <Link href="/filiais" className={`nav-link ${location === '/filiais' ? 'nav-active' : ''}`}>
-          <MapPin size={17} strokeWidth={1.8}/><span>Filiais</span>
-        </Link>}
-        {(profile.role === 'ADMIN' || profile.role === 'CENTRAL') && <Link href="/reports" className={`nav-link ${location === '/reports' ? 'nav-active' : ''}`}>
-          <History size={17} strokeWidth={1.8}/><span>Relatórios</span>
-        </Link>}
-      </div>
-      <div className="mt-auto hidden border-t border-border p-4 md:block">
-        <div className="flex items-center gap-3 rounded-lg bg-[#f7f6f4] p-3">
-          <div className="avatar avatar-red">{profile.name.slice(0, 2).toUpperCase()}</div>
-          <div className="min-w-0"><div className="truncate text-xs font-semibold">{profile.name}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{profile.email}</div></div>
-        </div>
-      </div>
-    </aside>
-    <main className="min-w-0 flex-1">
-      <header className="topbar">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="hidden sm:inline">Rede Minas Mais</span><span className="hidden sm:inline">/</span><span className="font-semibold text-foreground">{location.startsWith('/deliveries/') ? 'Detalhe da entrega' : location === '/access' ? 'Acessos e perfis' : location === '/filiais' ? 'Filiais' : location === '/reports' ? 'Relatórios' : 'Central de entregas'}</span></div>
-          <div className="ml-auto flex items-center gap-2">
-            <Link href="/account" className="icon-button" aria-label="Minha conta e senha" title="Minha conta e senha"><KeyRound size={16}/></Link>
-            <nav className="flex items-center gap-1 md:hidden" aria-label="Navegação principal">
-              <Link href="/" className="icon-button relative" aria-label={`Entregas${awaitingCount > 0 ? `, ${awaitingCount} aguardando entregador` : ''}`}><Truck size={16}/>{awaitingCount > 0 && <span className="nav-count-badge nav-count-badge--mobile">{awaitingCount}</span>}</Link>
-              {profile.role === 'ADMIN' && <>
-                <Link href="/filiais" className="icon-button" aria-label="Filiais"><MapPin size={16}/></Link>
-                <Link href="/access" className="icon-button" aria-label="Acessos"><ShieldCheck size={16}/></Link>
-              </>}
-              {(profile.role === 'ADMIN' || profile.role === 'CENTRAL') && <Link href="/reports" className="icon-button" aria-label="Relatórios"><History size={16}/></Link>}
-            </nav>
-            <span className="hidden text-[11px] text-muted-foreground sm:inline">Painel operacional</span>
-            <button className="button-quiet" onClick={() => void signOut({ redirectUrl: basePath || '/' })}>Sair</button>
-          </div>
-      </header>
-      <div className="ops-content mx-auto w-full px-4 pb-10 pt-7 sm:px-6 lg:px-9">{children}</div>
-    </main>
-  </div>;
-}
-
 function DeliveryModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const storesQuery = useListStores({ query: { queryKey: getListStoresQueryKey() } });
@@ -343,7 +161,13 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   const [customerCoordinates, setCustomerCoordinates] = useState<{ latitude: number | null; longitude: number | null }>({ latitude: null, longitude: null });
   const [form, setForm] = useState({ customerName: '', customerPhone: '', destination: '', orderNumber: '', notes: '', storeId: '', priority: 'normal' });
   const selectedStore = (storesQuery.data ?? []).find(store => store.id === form.storeId);
-  const update = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value, ...(key === 'destination' ? { customerLatitude: null, customerLongitude: null } : {}) }));
+  const update = (key: string, value: string) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+    // Editing the address invalidates the pin from a previously chosen suggestion;
+    // choosing a suggestion calls onChange first and onSelect right after, so the new pin wins.
+    if (key === 'destination') setCustomerCoordinates({ latitude: null, longitude: null });
+  };
+  const destinationWithoutPin = form.destination.trim().length > 0 && customerCoordinates.latitude === null;
   const hasUnsavedChanges = Boolean(
     form.customerName.trim() ||
     form.customerPhone.trim() ||
@@ -392,6 +216,7 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
             inputClassName="w-full"
             dataTestId="input-destination"
           />
+          {destinationWithoutPin && <span className="mt-1.5 block text-xs text-amber-800" data-testid="text-destination-without-pin">Escolha um endereço da lista para posicionar o pino no mapa do motoboy.</span>}
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Número do pedido"><input required value={form.orderNumber} onChange={e => update('orderNumber', e.target.value)} placeholder="Ex.: 48271" data-testid="input-order-number"/></Field>
@@ -782,8 +607,10 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
   const [dispatchId, setDispatchId] = useState<string | null>(null);
   const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<string[]>([]);
   const [routeFeedback, setRouteFeedback] = useState<FeedbackMessage | null>(null);
-  const [searchText, setSearchText] = useState('');
-  const [search, setSearch] = useState('');
+  // The header search sends the term as ?busca=… to this page.
+  const initialSearch = new URLSearchParams(window.location.search).get('busca')?.trim() ?? '';
+  const [searchText, setSearchText] = useState(initialSearch);
+  const [search, setSearch] = useState(initialSearch);
   const [status, setStatus] = useState('');
   const [storeId, setStoreId] = useState('');
   const [cancelFeedback, setCancelFeedback] = useState<FeedbackMessage | null>(null);
@@ -892,7 +719,7 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
     };
   });
   const storeMarkers: MapMarker[] = (stores.data ?? [])
-    .filter(store => store.latitude != null && store.longitude != null)
+    .filter(store => store.active && store.latitude != null && store.longitude != null)
     .map(store => ({
       id: store.id,
       latitude: store.latitude!,
@@ -906,7 +733,7 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
   const mapMarkers = [...trackingMarkers, ...storeMarkers];
   return <div className="soft-enter">
     <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><div className="eyebrow">VISÃO GERAL · REDE MINAS MAIS</div><h1 className="mt-2 text-[28px] font-bold tracking-[-.045em] sm:text-[34px]">Central de entregas</h1><p className="mt-1 text-sm text-muted-foreground">Acompanhe pedidos, disponibilidade e despacho em um só lugar.</p><p className="mt-2 text-[11px] text-muted-foreground">Atualização automática a cada 15 segundos.</p></div>
+        <div><p className="text-[10px] font-medium tracking-[0.7px] text-[var(--adm-muted)]">OPERAÇÃO / ENTREGAS</p><h1 className="mt-3 text-[24px] font-semibold leading-tight tracking-[-0.01em] sm:text-[28px]">Entregas</h1><p className="mt-2 text-[13px] text-muted-foreground">Fila completa: registro, despacho, rotas agrupadas, cancelamento e ocorrências.</p><p className="mt-2 text-[11px] text-muted-foreground">Atualização automática a cada 15 segundos.</p></div>
       <div className="flex flex-wrap gap-2 self-start sm:self-auto">
         {selectedDeliveryIds.length >= 2 && <button className="button-secondary h-10" onClick={offerGroupedRoute} disabled={createDeliveryRoute.isPending} data-testid="button-create-route"><Bike size={16}/>{createDeliveryRoute.isPending ? 'Criando rota…' : `Agrupar ${selectedDeliveryIds.length} entregas`}</button>}
          {selectedDeliveryIds.length > 0 && <button className="button-quiet h-10" onClick={() => { setSelectedDeliveryIds([]); setRouteFeedback(null); }}>Limpar seleção ({selectedDeliveryIds.length})</button>}
@@ -922,7 +749,7 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
     </section>
     {summary.isError && <div className="mb-5 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"><span>Não foi possível carregar o resumo operacional.</span><button className="inline-flex items-center gap-1 font-semibold" onClick={() => void summary.refetch()}><RefreshCw size={14}/>Tentar novamente</button></div>}
     {hasConnectionError && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">Reconectando… os dados atuais permanecem visíveis e o painel tentará novamente automaticamente.</div>}
-    <CancellationAlertsPanel />
+    <div id="ocorrencias" className="scroll-mt-24"><CancellationAlertsPanel /></div>
     <section className="mb-6 grid gap-4 lg:grid-cols-[1fr_300px]">
       <div className="panel p-4 sm:p-5">
         <div className="mb-4 flex items-center justify-between"><div><div className="eyebrow">TEMPO DE ATENDIMENTO</div><h2 className="mt-1 text-sm font-bold">Ritmo da operação</h2></div><span className="rounded-md bg-[#f5f4f2] px-2 py-1 text-[10px] font-medium text-muted-foreground">média registrada</span></div>
@@ -1013,12 +840,12 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
             <tbody>{deliveries.data.map(d => <tr className="row-hover" key={d.id} data-testid={`row-delivery-${d.id}`}>
               <td>{d.status === 'REQUESTED' ? <input type="checkbox" aria-label={`Selecionar ${d.code} para uma rota`} checked={selectedDeliveryIds.includes(d.id)} disabled={!selectedDeliveryIds.includes(d.id) && selectedDeliveryIds.length >= 10} onChange={e => toggleRouteDelivery(d.id, e.target.checked)} className="h-4 w-4 accent-[#b91e2c]"/> : <span className="text-xs text-muted-foreground">—</span>}</td>
               <td><Link href={`/deliveries/${d.id}`} className="table-code" data-testid={`link-delivery-${d.id}`}>{d.code}<span>Pedido {d.orderNumber || '—'}</span></Link>{d.priority === 'urgent' && <span className="priority-tag">URGENTE</span>}</td>
-              <td><div className="font-semibold">{d.customerName}</div><div className="mt-1 flex max-w-[235px] items-center gap-1 truncate text-xs text-muted-foreground"><MapPin size={12}/>{d.destination}</div></td>
+              <td><div className="font-semibold">{d.customerName}</div><div className="mt-1 flex max-w-[235px] items-center gap-1 text-xs text-muted-foreground" title={d.destination}><MapPin size={12} className="shrink-0"/><span className="min-w-0 truncate">{d.destination}</span></div></td>
                <td><div className="text-sm font-medium">{d.storeName}</div><div className="mt-1 text-[11px] text-muted-foreground">Filial de origem</div></td>
               <td><StatusBadge status={d.status}/></td>
-              <td>{d.courierName ? <div className="flex items-center gap-2"><span className="avatar">{d.courierInitials || d.courierName.slice(0,2).toUpperCase()}</span><div><div className="text-xs font-semibold">{d.courierName}</div><div className="text-[10px] text-muted-foreground">{timeAgo(d.lastLocationAt)}</div></div></div> : <span className="text-xs text-muted-foreground">Não atribuído</span>}</td>
+              <td>{d.courierName ? <div className="flex items-center gap-2"><span className="avatar">{d.courierInitials || d.courierName.slice(0,2).toUpperCase()}</span><div><div className="text-xs font-semibold">{d.courierName}</div><div className="text-[10px] text-muted-foreground">{timeAgo(lastKnownLocationAt(d, couriers.data))}</div></div></div> : <span className="text-xs text-muted-foreground">Não atribuído</span>}</td>
               <td className="text-xs text-muted-foreground">{fmtTime(d.updatedAt || d.createdAt)}</td>
-              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{canCancel && !['COMPLETED','CANCELLED'].includes(d.status) && <button className="button-small button-red-outline" type="button" onClick={() => { setCancelFeedback(null); setCancelTarget({ id: d.id, code: d.code }); }} aria-label={`Cancelar pedido ${d.code}`} title="Cancelar pedido" data-testid={`button-cancel-${d.id}`}><X size={14}/>Cancelar pedido</button>}{canDelete && <button className="button-small button-red-outline" type="button" onClick={() => { setDeleteFeedback(null); setDeleteTarget({ id: d.id, code: d.code }); }} aria-label={`Excluir definitivamente ${d.code}`} title="Excluir definitivamente" data-testid={`button-delete-delivery-${d.id}`}><Trash2 size={14}/>Excluir definitivamente</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
+              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{canCancel && !['COMPLETED','CANCELLED'].includes(d.status) && <button className="button-small button-red-outline" type="button" onClick={() => { setCancelFeedback(null); setCancelTarget({ id: d.id, code: d.code }); }} aria-label={`Cancelar pedido ${d.code}`} title="Cancelar pedido" data-testid={`button-cancel-${d.id}`}><X size={14}/>Cancelar</button>}{canDelete && <button className="button-small button-red-outline" type="button" onClick={() => { setDeleteFeedback(null); setDeleteTarget({ id: d.id, code: d.code }); }} aria-label={`Excluir definitivamente ${d.code}`} title="Excluir definitivamente" data-testid={`button-delete-delivery-${d.id}`}><Trash2 size={14}/>Excluir definitivamente</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
             </tr>)}</tbody>
           </table></div>}
     </section>
@@ -1088,8 +915,9 @@ function DeliveryDetail() {
     if (!data) return;
     dispatch.mutate({ deliveryId: id, data: { mode: 'single', courierId } }, { onSuccess: refresh, onError: () => setActionError('Não foi possível enviar a oferta.') });
   };
+  const locationAt = data ? lastKnownLocationAt(data, couriers.data) : null;
   return <div className="soft-enter">
-    <Link href="/" className="back-link"><ArrowLeft size={15}/>Voltar para a fila</Link>
+    <Link href="/entregas" className="back-link"><ArrowLeft size={15}/>Voltar para a fila</Link>
     {isLoading ? <div className="mt-5 panel"><Skeleton rows={7}/></div> : isError || !data ? <div className="mt-5 panel"><EmptyState title="Entrega não encontrada" detail="O registro pode ter sido removido ou estar temporariamente indisponível." action={<button className="button-secondary" onClick={() => void refetch()}><RefreshCw size={14}/>Tentar novamente</button>}/></div> :
       <>
         <div className="mt-5 flex flex-col justify-between gap-4 md:flex-row md:items-start">
@@ -1125,19 +953,19 @@ function DeliveryDetail() {
             </section>
             <section className="panel p-5">
               <div className="mb-4"><div className="eyebrow">LOCALIZAÇÃO DO ENTREGADOR</div><h2 className="mt-1 font-bold">Último registro disponível</h2></div>
-              <div className="location-panel"><div className="location-symbol"><MapPin size={19}/></div><div><div className="font-semibold">{data.courierName || 'Entregador ainda não atribuído'}</div><p className="mt-1 text-xs text-muted-foreground">{data.lastLocationAt ? `Registro informado ${timeAgo(data.lastLocationAt)} · ${fmtTime(data.lastLocationAt)}` : 'Localização indisponível no momento.'}</p></div><div className="location-stamp">GPS<br/>N/D</div></div>
+              <div className="location-panel"><div className="location-symbol"><MapPin size={19}/></div><div><div className="font-semibold">{data.courierName || 'Entregador ainda não atribuído'}</div><p className="mt-1 text-xs text-muted-foreground">{locationAt ? `${timeAgo(locationAt)} · ${fmtTime(locationAt)}` : 'Localização indisponível no momento.'}</p></div><div className="location-stamp">GPS<br/>{locationAt ? 'OK' : 'N/D'}</div></div>
               <p className="mt-3 text-[11px] text-muted-foreground">O painel não dispõe de mapa ou coordenadas GPS. A informação acima é somente o horário do último registro recebido.</p>
             </section>
           </div>
           <aside className="space-y-4">
             <section className="panel p-5">
               <div className="mb-4"><div className="eyebrow">ENTREGADOR</div><h2 className="mt-1 font-bold">Atribuição atual</h2></div>
-              {data.courierName ? <div className="flex items-center gap-3 rounded-lg bg-[#f7f6f4] p-3"><span className="avatar avatar-large">{data.courierInitials || data.courierName.slice(0,2).toUpperCase()}</span><div className="min-w-0 flex-1"><div className="font-semibold">{data.courierName}</div><div className="mt-1 text-xs text-muted-foreground">Última localização: {timeAgo(data.lastLocationAt)}</div></div><Badge tone="blue">Atribuído</Badge></div> : <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center"><Bike size={22} className="mx-auto text-muted-foreground"/><p className="mt-2 text-sm font-semibold">Aguardando entregador</p><p className="mt-1 text-xs text-muted-foreground">Despache para iniciar o atendimento.</p></div>}
+              {data.courierName ? <div className="flex items-center gap-3 rounded-lg bg-[#f7f6f4] p-3"><span className="avatar avatar-large">{data.courierInitials || data.courierName.slice(0,2).toUpperCase()}</span><div className="min-w-0 flex-1"><div className="font-semibold">{data.courierName}</div><div className="mt-1 text-xs text-muted-foreground">Última localização: {timeAgo(locationAt)}</div></div><Badge tone="blue">Atribuído</Badge></div> : <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center"><Bike size={22} className="mx-auto text-muted-foreground"/><p className="mt-2 text-sm font-semibold">Aguardando entregador</p><p className="mt-1 text-xs text-muted-foreground">Despache para iniciar o atendimento.</p></div>}
               {['REQUESTED','AWAITING_COURIER'].includes(data.status) && <div className="mt-4"><label className="eyebrow" htmlFor="quick-courier">OFERTA INDIVIDUAL</label><div className="mt-2 flex gap-2"><select id="quick-courier" className="filter-select min-w-0 flex-1" defaultValue=""><option value="">Escolher motoboy</option>{(couriers.data ?? []).map(c => <option key={c.id} value={c.id} disabled={c.status === 'BUSY'}>{c.name} · {c.status === 'AVAILABLE' ? 'Disponível' : c.status === 'OFFLINE' ? 'Offline' : 'Em atendimento'}</option>)}</select><button className="button-secondary" onClick={e => { const select = e.currentTarget.previousElementSibling as HTMLSelectElement; if (select.value) singleDispatch(select.value); else setActionError('Selecione um motoboy que não esteja em atendimento.'); }} disabled={dispatch.isPending}>Enviar</button></div></div>}
             </section>
             <section className="panel p-5">
               <div className="mb-5 flex items-center gap-2"><History size={16} className="text-primary"/><div><div className="eyebrow">AUDITORIA</div><h2 className="mt-0.5 font-bold">Histórico de eventos</h2></div></div>
-              {data.events?.length ? <div className="timeline">{[...data.events].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map((event, i) => <div className="timeline-item" key={event.id}><span className={`timeline-pin ${i === data.events.length - 1 ? 'timeline-current' : ''}`}/><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-semibold">{event.label}</div><div className="mt-1 text-xs text-muted-foreground">{event.actor || 'Sistema'}{event.kind ? ` · ${event.kind}` : ''}</div></div><time className="shrink-0 text-[10px] text-muted-foreground">{fmtTime(event.timestamp)}</time></div></div>)}</div> : <div className="rounded-lg bg-[#f7f6f4] p-4 text-sm text-muted-foreground">Ainda não há eventos registrados para esta entrega.</div>}
+              {data.events?.length ? <div className="timeline">{[...data.events].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map((event, i) => <div className="timeline-item" key={event.id}><span className={`timeline-pin ${i === data.events.length - 1 ? 'timeline-current' : ''}`}/><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-semibold">{event.label}</div><div className="mt-1 text-xs text-muted-foreground">{event.actor || 'Sistema'}</div></div><time className="shrink-0 text-[10px] text-muted-foreground">{fmtTime(event.timestamp)}</time></div></div>)}</div> : <div className="rounded-lg bg-[#f7f6f4] p-4 text-sm text-muted-foreground">Ainda não há eventos registrados para esta entrega.</div>}
             </section>
           </aside>
         </div>
@@ -1158,7 +986,7 @@ function ProfileLoading() {
 }
 
 function PendingApproval({ profile }: { profile: AppUser }) {
-  const { signOut } = useClerk();
+  const { signOut } = useAuth();
   return <main className="grid min-h-[100dvh] place-items-center bg-[#f4f3f1] p-5">
     <section className="panel w-full max-w-md p-7 text-center">
       <div className="brand-mark mx-auto">MM</div>
@@ -1166,7 +994,7 @@ function PendingApproval({ profile }: { profile: AppUser }) {
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Sua conta foi criada, mas ainda não recebeu um perfil de acesso. Um administrador precisa aprovar e vincular sua conta.</p>
       <p className="mt-4 rounded-lg bg-[#f7f6f4] px-3 py-2 text-xs text-muted-foreground">{profile.email}</p>
       <Link className="button-secondary mt-5" href="/account"><KeyRound size={15}/> Configurar senha</Link>
-      <button className="button-secondary mt-5" onClick={() => void signOut({ redirectUrl: basePath || '/' })}>Sair da conta</button>
+      <button className="button-secondary mt-5" onClick={() => void signOut()}>Sair da conta</button>
     </section>
   </main>;
 }
@@ -1182,7 +1010,7 @@ function ProfileError({ retry }: { retry: () => void }) {
 }
 
 function useSignedInProfile() {
-  const auth = useUser();
+  const auth = useAuth();
   const profile = useGetMyProfile({
     query: {
       queryKey: getGetMyProfileQueryKey(),
@@ -1194,7 +1022,7 @@ function useSignedInProfile() {
 }
 
 function AccountRoute() {
-  const auth = useUser();
+  const auth = useAuth();
   if (!auth.isLoaded) return <ProfileLoading />;
   if (!auth.isSignedIn) return <Redirect to="/" />;
   return <AccountSecurityPage />;
@@ -1216,10 +1044,10 @@ function UserPortalRoute() {
   if (profile.data.role === 'STORE_MANAGER' || profile.data.role === 'STORE_STAFF') {
     return <StorePortal profile={profile.data} />;
   }
-  return <RoutedErrorBoundary><AppShell profile={profile.data}><Dashboard canCancel={profile.data.role === 'ADMIN' || profile.data.role === 'CENTRAL'} canDelete={profile.data.role === 'ADMIN'} /></AppShell></RoutedErrorBoundary>;
+  return <RoutedErrorBoundary><AdminShell profile={profile.data}><AdminOverview /></AdminShell></RoutedErrorBoundary>;
 }
 
-function CentralRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
+function CentralRoute({ children, adminOnly = false }: { children: ReactNode | ((profile: AppUser) => ReactNode); adminOnly?: boolean }) {
   const { auth, profile } = useSignedInProfile();
   if (!auth.isLoaded || (auth.isSignedIn && profile.isLoading)) return <ProfileLoading />;
   if (!auth.isSignedIn) return <Redirect to="/" />;
@@ -1229,76 +1057,39 @@ function CentralRoute({ children, adminOnly = false }: { children: ReactNode; ad
   if (adminOnly && profile.data.role !== 'ADMIN') {
     return <main className="grid min-h-[100dvh] place-items-center bg-[#f4f3f1] p-5"><section className="panel p-6 text-center"><h1 className="font-bold">Acesso restrito</h1><p className="mt-2 text-sm text-muted-foreground">Somente administradores podem gerenciar perfis.</p><Link className="button-primary mt-4" href="/">Voltar ao painel</Link></section></main>;
   }
-  return <RoutedErrorBoundary><AppShell profile={profile.data}>{children}</AppShell></RoutedErrorBoundary>;
+  return <RoutedErrorBoundary><AdminShell profile={profile.data}>{typeof children === 'function' ? children(profile.data) : children}</AdminShell></RoutedErrorBoundary>;
 }
 
-function HomeRoute() {
-  return <Show when="signed-in"><Redirect to="/user-portal" /></Show>;
-}
-
-function ClerkRoutes() {
-  const [, setLocation] = useLocation();
-  const stripBase = (path: string) =>
-    basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
-
-  return <ClerkProvider
-    publishableKey={clerkPubKey}
-    proxyUrl={clerkProxyUrl}
-    appearance={isNativeApp ? nativeClerkAppearance : clerkAppearance}
-    signInUrl={`${basePath}/sign-in`}
-    signUpUrl={`${basePath}/sign-up`}
-    localization={{
-      ...ptBR,
-      signIn: {
-        ...ptBR.signIn,
-        start: { ...ptBR.signIn?.start, title: 'Bem-vindo de volta', subtitle: 'Entre para acompanhar as entregas.' },
-      },
-      signUp: {
-        ...ptBR.signUp,
-        start: { ...ptBR.signUp?.start, title: 'Solicite seu acesso', subtitle: 'Sua conta será liberada por um administrador.' },
-      },
-    }}
-    routerPush={(to) => setLocation(stripBase(to))}
-    routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
-  >
+function AppRoutes() {
+  return (
     <QueryClientProvider client={queryClient}>
-      <NativeApiAuthBridge />
-      <NativeConnectivityGuard />
-      <ClerkQueryClientCacheInvalidator />
-      <TooltipProvider>
-        <Switch>
-          <Route path="/" component={HomeRedirect}/>
-          <Route path="/user-portal" component={UserPortalRoute}/>
-          <Route path="/account" component={AccountRoute}/>
-          <Route path="/motoboy-pwa" component={CourierAccessPage}/>
-          <Route path="/deliveries/:deliveryId" component={() => <CentralRoute><DeliveryDetail/></CentralRoute>}/>
-          <Route path="/access" component={() => <CentralRoute adminOnly><AccessManagement/></CentralRoute>}/>
-          <Route path="/filiais" component={() => <CentralRoute adminOnly><StoreManagement/></CentralRoute>}/>
-          <Route path="/reports" component={() => <CentralRoute><Reports/></CentralRoute>}/>
-          <Route path="/sign-in/*?" component={SignInPage}/>
-          <Route path="/sign-up/*?" component={SignUpPage}/>
-          <Route component={NotFound}/>
-        </Switch>
-        <Toaster/>
-      </TooltipProvider>
+      <AuthProvider>
+        <NativeConnectivityGuard />
+        <PasswordRecoveryRedirect />
+        <TooltipProvider>
+          <Switch>
+            <Route path="/" component={HomeRedirect}/>
+            <Route path="/user-portal" component={UserPortalRoute}/>
+            <Route path="/account" component={AccountRoute}/>
+            <Route path="/motoboy-pwa" component={CourierAccessPage}/>
+            <Route path="/entregas" component={() => <CentralRoute>{(profile) => <Dashboard canCancel={profile.role === 'ADMIN' || profile.role === 'CENTRAL'} canDelete={profile.role === 'ADMIN'} />}</CentralRoute>}/>
+            <Route path="/mapa" component={() => <CentralRoute><LiveMapPage/></CentralRoute>}/>
+            <Route path="/motoboys" component={() => <CentralRoute><CouriersPage/></CentralRoute>}/>
+            <Route path="/deliveries/:deliveryId" component={() => <CentralRoute><DeliveryDetail/></CentralRoute>}/>
+            <Route path="/access" component={() => <CentralRoute adminOnly><AccessManagement/></CentralRoute>}/>
+            <Route path="/filiais" component={() => <CentralRoute adminOnly><StoreManagement/></CentralRoute>}/>
+            <Route path="/reports" component={() => <CentralRoute><Reports/></CentralRoute>}/>
+            <Route path="/sign-in/*?" component={SignInPage}/>
+            <Route path="/sign-up/*?" component={SignUpPage}/>
+            <Route path="/esqueci-senha" component={ForgotPasswordPage}/>
+            <Route path="/redefinir-senha" component={ResetPasswordPage}/>
+            <Route component={NotFound}/>
+          </Switch>
+          <Toaster/>
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
-  </ClerkProvider>;
-}
-
-function NativeApiAuthBridge() {
-  const { getToken } = useAuth();
-  const queryClient = useQueryClient();
-  const getTokenRef = useRef(getToken);
-  getTokenRef.current = getToken;
-
-  useEffect(() => {
-    if (!isNativeApp) return;
-    setAuthTokenGetter(() => getTokenRef.current());
-    void queryClient.invalidateQueries();
-    return () => setAuthTokenGetter(null);
-  }, [queryClient]);
-
-  return null;
+  );
 }
 
 function NativeConnectivityGuard() {
@@ -1341,6 +1132,6 @@ function NativeConnectivityGuard() {
 }
 
 function App() {
-  return <WouterRouter base={basePath}><ClerkRoutes/></WouterRouter>;
+  return <WouterRouter base={basePath}><AppRoutes/></WouterRouter>;
 }
 export default App;

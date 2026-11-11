@@ -1,13 +1,12 @@
 - [API client codegen](api-client-codegen.md) — Keep generated React Query hooks aligned with TanStack Query v5 and DOM iterable types.
 - [PWA do motoboy e repasses](courier-mobile-and-earnings.md) — PWA em iOS/Android, repasses e devolução após cancelamento em rota.
-- [Nome do motoboy](courier-name-authority.md) — Nome definido pelo administrador prevalece sobre o Clerk; se faltar, use o trecho do e-mail antes do @.
+- [Nome do motoboy](courier-name-authority.md) — Nome definido pelo administrador prevalece sobre o login (Supabase Auth); se faltar, use o trecho do e-mail antes do @.
 - [Senha da conta](account-password-management.md) — Contas que entram por código de e-mail também precisam conseguir criar e trocar senha dentro do webapp.
 - [Cache dos assets do PWA](pwa-asset-cache.md) — Versione o cache pelo build e nunca guarde HTML de fallback sob uma URL JavaScript com hash.
 - [Empacotamento Expo de produção](expo-production-builds.md) — Libere a porta Metro 8081 antes do build local; previews concorrentes podem fazer o Metro mudar de porta enquanto o script segue usando 8081.
 - [Bootstrap e papéis de acesso](role-bootstrap-and-account-removal.md) — A conta inicial de administrador não deve sobrescrever papéis atribuídos posteriormente; exclusões preservam histórico.
-- [Mapbox e rotas](mapbox-routing-access.md) — Optimization v2 Beta e geocodificação permanente estão habilitados; coordenadas persistidas exigem resultados permanentes.
-- [Estilo e tamanho dos mapas Mapbox](mapbox-style-choice.md) — Preserve `streets-v12`/`pt` e dê altura responsiva explícita ao elemento entregue ao Mapbox.
 - [Formato das chaves VAPID](web-push-vapid-keys.md) — Ao configurar Web Push, aceite a saída rotulada do gerador e extraia as linhas pública e privada sem expor os valores.
 - [Exclusão definitiva de entregas](delivery-hard-delete.md) — Proteja rotas agrupadas ativas e remova somente dados e arquivos vinculados à entrega excluída.
 - [Git protegido no workspace](protected-git-mutations.md) — Para commits solicitados, a proteção do shell pode exigir `DANGEROUSLY_ALLOW_GIT=1`; confira se há lock real antes de assumir bloqueio.
 - [Fidelidade visual do PWA](courier-pwa-visual-fidelity.md) — Use o design oficial do Figma e valide estados do motoboy em 390×844; não afirme fidelidade sem captura autenticada.
+- [Google Maps](google-maps.md) — Places, Geocoding, Routes e Route Optimization (conta de serviço); Map ID no painel; cache de coordenadas limitado a 30 dias pelos termos.

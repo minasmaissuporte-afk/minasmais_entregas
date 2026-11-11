@@ -14,11 +14,8 @@ const config: CapacitorConfig = {
     allowNavigation: [
       "minas-mais-entregas.replit.app",
       "*.minas-mais-entregas.replit.app",
-      "clerk.com",
-      "*.clerk.com",
-      "*.clerk.dev",
-      "*.clerk.accounts.dev",
-      "*.accounts.dev",
+      // Supabase Auth (login, códigos por e-mail e redefinição de senha).
+      "*.supabase.co",
     ],
     errorPath: "native-offline.html",
   },

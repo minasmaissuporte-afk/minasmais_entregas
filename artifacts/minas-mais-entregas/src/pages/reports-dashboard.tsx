@@ -56,8 +56,10 @@ const STATUS_LABELS: Record<string, string> = {
 const money = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const number = (value: number) => value.toLocaleString("pt-BR");
+// A API pode devolver só a data ("2026-11-10") ou um ISO completo ("2026-11-10T00:00:00.000Z");
+// usa sempre os 10 primeiros caracteres para não gerar "Invalid Date".
 const dateLabel = (value: string) =>
-  new Date(`${value}T12:00:00`).toLocaleDateString("pt-BR", {
+  new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR", {
     day: "2-digit",
     month: "short",
   });
@@ -98,7 +100,9 @@ function fillMissingDays(
   const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
   if (!Number.isFinite(days) || days < 1 || days > 366) return daily;
 
-  const byDate = new Map(daily.map((item) => [item.date.slice(0, 10), item]));
+  const byDate = new Map(
+    daily.map((item) => [String(item.date).slice(0, 10), { ...item, date: String(item.date).slice(0, 10) }]),
+  );
   return Array.from({ length: days }, (_, index) => {
     const date = new Date(start);
     date.setUTCDate(start.getUTCDate() + index);

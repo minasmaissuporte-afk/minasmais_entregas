@@ -824,7 +824,7 @@ export const DeleteStoreResponse = zod.void()
 
 
 /**
- * @summary Search Brazilian addresses through Mapbox
+ * @summary Search Brazilian addresses through Google Maps (Places API)
  */
 export const autocompleteAddressesQueryTextoMin = 3;
 
@@ -923,7 +923,7 @@ export const ListCouriersResponse = zod.array(ListCouriersResponseItem)
  */
 export const GetMyProfileResponse = zod.object({
   "id": zod.string(),
-  "clerkUserId": zod.string().nullable(),
+  "authUserId": zod.string().nullable(),
   "email": zod.string(),
   "name": zod.string(),
   "phone": zod.string().nullish(),
@@ -940,7 +940,7 @@ export const GetMyProfileResponse = zod.object({
  */
 export const ListAccessUsersResponseItem = zod.object({
   "id": zod.string(),
-  "clerkUserId": zod.string().nullable(),
+  "authUserId": zod.string().nullable(),
   "email": zod.string(),
   "name": zod.string(),
   "phone": zod.string().nullish(),
@@ -976,7 +976,7 @@ export const UpdateAccessUserBody = zod.object({
 
 export const UpdateAccessUserResponse = zod.object({
   "id": zod.string(),
-  "clerkUserId": zod.string().nullable(),
+  "authUserId": zod.string().nullable(),
   "email": zod.string(),
   "name": zod.string(),
   "phone": zod.string().nullish(),
@@ -989,7 +989,7 @@ export const UpdateAccessUserResponse = zod.object({
 
 
 /**
- * @summary Delete an application account and its Clerk login
+ * @summary Delete an application account and its login
  */
 export const DeleteAccessUserParams = zod.object({
   "userId": zod.coerce.string()

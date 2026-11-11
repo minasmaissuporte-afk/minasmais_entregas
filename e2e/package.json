@@ -1,0 +1,22 @@
+{
+  "name": "@workspace/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:ui": "playwright test --project=ui-desktop --project=ui-mobile",
+    "tour": "node -e \"process.env.E2E_TOUR='1';require('child_process').execSync('npx playwright test tests/ui/zz-tour.spec.ts --project=ui-desktop',{stdio:'inherit',env:process.env})\"",
+    "report": "playwright show-report",
+    "clean": "node --env-file=../.env --experimental-strip-types ./support/cleanup-cli.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1"
+  }
+}
