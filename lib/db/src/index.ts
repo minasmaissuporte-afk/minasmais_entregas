@@ -10,7 +10,12 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// Na Vercel cada função abre o próprio pool: poucas conexões por instância,
+// e o Transaction pooler do Supabase (porta 6543) segura o resto.
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.PG_POOL_MAX ?? 10),
+});
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
