@@ -2,15 +2,14 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { Link, useLocation } from "wouter";
 import {
   getGetDashboardSummaryQueryKey,
-  getListDeliveryCancellationsQueryKey,
   getListStoresQueryKey,
   useGetDashboardSummary,
-  useListDeliveryCancellations,
   useListStores,
   type AppUser,
 } from "@workspace/api-client-react";
 import {
   Bell,
+  BellOff,
   Bike,
   ChartColumn,
   ChevronDown,
@@ -27,6 +26,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   DropdownMenu,
@@ -94,12 +94,7 @@ export default function AdminShell({ profile, children }: { profile: AppUser; ch
     query: { queryKey: getGetDashboardSummaryQueryKey(), refetchInterval: 15_000, refetchOnWindowFocus: true },
   });
   const stores = useListStores({ query: { queryKey: getListStoresQueryKey() } });
-  const cancellations = useListDeliveryCancellations({
-    query: { queryKey: getListDeliveryCancellationsQueryKey(), refetchInterval: 15_000, refetchOnWindowFocus: true },
-  });
   const awaitingCount = summary.data?.awaitingCourier ?? 0;
-  const pendingOccurrences = cancellations.data?.length ?? 0;
-  const alertCount = pendingOccurrences + (summary.data?.delayed ?? 0);
   const activeStores = (stores.data ?? []).filter((store) => store.active).length;
   const connected = !summary.isError && !stores.isError;
 
@@ -221,14 +216,9 @@ export default function AdminShell({ profile, children }: { profile: AppUser; ch
       <div className={`flex min-h-[100dvh] flex-col transition-[padding] duration-200 ${isDesktop ? (collapsed ? "pl-[72px]" : "pl-[224px]") : ""}`}>
         <AdminHeader
           profile={profile}
-          alertCount={alertCount}
           onOpenMenu={!isDesktop ? () => setDrawerOpen(true) : undefined}
           onSearch={(term) => setLocation(term ? `/entregas?busca=${encodeURIComponent(term)}` : "/entregas")}
           onSignOut={() => void signOut()}
-          onAlerts={() => {
-            if (location === "/" || location === "/user-portal") document.getElementById("alertas")?.scrollIntoView({ behavior: "smooth", block: "start" });
-            else setLocation("/?alertas=1");
-          }}
         />
         <main className="mx-auto w-full max-w-[1376px] flex-1 px-4 pb-10 pt-6 sm:px-6 lg:px-7 lg:pt-7">{children}</main>
       </div>
@@ -236,20 +226,76 @@ export default function AdminShell({ profile, children }: { profile: AppUser; ch
   );
 }
 
+/**
+ * Sino do topo: só indica o estado das notificações deste navegador.
+ * - Ligadas: sino normal.
+ * - Desligadas: sino cortado; o clique ativa (o navegador pede a permissão).
+ */
+function NotificationBell() {
+  const push = usePushNotifications();
+  const [showMessage, setShowMessage] = useState(false);
+  const needsActivation = !push.checking && !push.enabled;
+
+  useEffect(() => {
+    if (!showMessage) return;
+    const timer = window.setTimeout(() => setShowMessage(false), 6000);
+    return () => window.clearTimeout(timer);
+  }, [showMessage]);
+
+  const onClick = async () => {
+    if (!needsActivation) return;
+    await push.activate();
+    setShowMessage(true);
+  };
+
+  const label = push.pending
+    ? "Ativando notificações…"
+    : needsActivation
+      ? push.blocked
+        ? "Notificações bloqueadas neste navegador"
+        : "Ativar notificações"
+      : "Notificações ativadas";
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className="adm-icon-button"
+        onClick={() => void onClick()}
+        disabled={push.pending}
+        aria-label={label}
+        title={label}
+        data-testid="button-notification-bell"
+      >
+        {needsActivation ? (
+          <BellOff size={21} strokeWidth={1.75} aria-hidden="true" />
+        ) : (
+          <Bell size={21} strokeWidth={1.75} aria-hidden="true" />
+        )}
+      </button>
+      {showMessage && push.message && (
+        <p
+          role="status"
+          className="absolute right-0 top-[calc(100%+8px)] z-30 w-64 rounded-[10px] border border-[var(--adm-border)] bg-white px-3 py-2 text-[12px] leading-snug text-[var(--adm-ink)] shadow-lg"
+          data-testid="notification-bell-status"
+        >
+          {push.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AdminHeader({
   profile,
-  alertCount,
   onOpenMenu,
   onSearch,
   onSignOut,
-  onAlerts,
 }: {
   profile: AppUser;
-  alertCount: number;
   onOpenMenu?: () => void;
   onSearch: (term: string) => void;
   onSignOut: () => void;
-  onAlerts: () => void;
 }) {
   const [term, setTerm] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -297,10 +343,7 @@ function AdminHeader({
         <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-[4px] border border-[var(--adm-border)] bg-white px-1.5 py-0.5 font-sans text-[10px] text-[var(--adm-muted)]">{isMac ? "⌘ K" : "Ctrl K"}</kbd>
       </form>
       <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0 lg:gap-[22px]">
-        <button type="button" className="adm-icon-button relative" onClick={onAlerts} aria-label={alertCount ? `Alertas da operação: ${alertCount}` : "Alertas da operação: nenhum"}>
-          <Bell size={21} strokeWidth={1.75} aria-hidden="true" />
-          {alertCount > 0 && <span className="absolute right-[7px] top-[6px] size-1.5 rounded-full bg-[var(--adm-primary)]" aria-hidden="true" />}
-        </button>
+        <NotificationBell />
         <span className="hidden h-8 w-px bg-[var(--adm-border)] sm:block" aria-hidden="true" />
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-3 rounded-[10px] py-1 pl-1 pr-2 text-left hover:bg-[var(--adm-surface-soft)]">

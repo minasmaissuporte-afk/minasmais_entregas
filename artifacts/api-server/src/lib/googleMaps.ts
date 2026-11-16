@@ -117,11 +117,12 @@ async function request(
 async function readJson(
   response: Response,
   service: string,
+  permissionHint = "A chave do Google Maps não tem permissão para",
 ): Promise<Record<string, unknown>> {
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       throw new MapsApiError(
-        `A chave do Google Maps não tem permissão para ${service}. Confira se a API está ativada no Google Cloud.`,
+        `${permissionHint} ${service}. Confira se a API está ativada no Google Cloud.`,
         503,
       );
     }
@@ -467,7 +468,11 @@ export async function optimizeShipments(input: {
     "Não foi possível enviar a rota para otimização no Google Maps.",
     25_000,
   );
-  const payload = await readJson(response, "otimizar as entregas");
+  const payload = await readJson(
+    response,
+    "otimizar as entregas",
+    `A conta de serviço do Google (projeto ${projectId}) não tem permissão para`,
+  );
 
   if (Array.isArray(payload.skippedShipments) && payload.skippedShipments.length) {
     throw new MapsApiError(
