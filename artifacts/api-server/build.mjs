@@ -11,11 +11,13 @@ globalThis.require = createRequire(import.meta.url);
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 
 async function buildAll() {
-  const distDir = path.resolve(artifactDir, "dist");
+  // A Vercel usa outra entrada e outra pasta (ver scripts/vercel-build.mjs na raiz).
+  const distDir = process.env.API_BUILD_OUTDIR ?? path.resolve(artifactDir, "dist");
+  const entry = process.env.API_BUILD_ENTRY ?? "src/index.ts";
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    entryPoints: [path.resolve(artifactDir, entry)],
     platform: "node",
     bundle: true,
     format: "esm",
