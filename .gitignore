@@ -65,3 +65,7 @@ keystore-base64.txt
 e2e/.auth/
 e2e/test-results/
 e2e/playwright-report/
+
+# Credenciais do Google Cloud baixadas (nunca commitar)
+*service-account*.json
+google-credentials*.json

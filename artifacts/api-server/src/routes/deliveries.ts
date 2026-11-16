@@ -54,7 +54,11 @@ import {
   type AppRole,
   type AppUserProfile,
 } from "../middlewares/accessControl";
-import { ObjectStorageService } from "../lib/objectStorage";
+import {
+  createEvidenceUploadUrl,
+  deleteEvidence,
+  downloadEvidence,
+} from "../lib/evidenceStorage";
 import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
 import {
   notifyAvailableCouriers,
@@ -1538,12 +1542,7 @@ router.delete(
             .where(eq(deliveryRoutesTable.id, route.id));
         }
 
-        const storage = new ObjectStorageService();
-        for (const objectPath of evidencePaths) {
-          await storage.deleteObjectEntity(
-            storage.normalizeObjectEntityPath(objectPath),
-          );
-        }
+        await deleteEvidence(evidencePaths);
 
         if (delivery.courierId) {
           const [courier] = await tx
@@ -1637,9 +1636,7 @@ router.post(
       return;
     }
     try {
-      const storage = new ObjectStorageService();
-      const uploadURL = await storage.getObjectEntityUploadURL();
-      const objectPath = storage.normalizeObjectEntityPath(uploadURL);
+      const { uploadURL, objectPath } = await createEvidenceUploadUrl();
       await db.insert(deliveryEvidenceUploadsTable).values({
         objectPath,
         deliveryId: delivery.id,
@@ -1681,17 +1678,12 @@ router.get(
       return;
     }
     try {
-      const file = await new ObjectStorageService().getObjectEntityFile(
-        delivery.evidencePath,
-      );
-      const [metadata] = await file.getMetadata();
-      res.setHeader(
-        "Content-Type",
-        String(metadata.contentType ?? "application/octet-stream"),
-      );
+      const { contentType, stream } = await downloadEvidence(delivery.evidencePath);
+      res.setHeader("Content-Type", contentType);
       res.setHeader("Cache-Control", "private, no-store");
       res.setHeader("X-Content-Type-Options", "nosniff");
-      file.createReadStream().pipe(res);
+      stream.on("error", () => res.destroy());
+      stream.pipe(res);
     } catch (error) {
       req.log.error({ err: error }, "Failed to read private delivery evidence");
       res.status(404).json({ error: "A foto de comprovação não está disponível." });
