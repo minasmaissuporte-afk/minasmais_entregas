@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Camera, Check, LoaderCircle } from "lucide-react";
 import { useRequestDeliveryEvidenceUploadUrl } from "@workspace/api-client-react";
 import SwipeToConfirm from "./swipe-to-confirm";
@@ -75,6 +75,15 @@ export default function EvidencePhotoAction({
   const submitting = stage !== "idle";
   const preview = file ? URL.createObjectURL(file) : "";
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+  // Depois de escolher a foto, o "deslizar para concluir" aparece abaixo da dobra (atrás da barra
+  // inferior). Rola até ele para o motoboy não precisar procurar.
+  const confirmRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!file) return;
+    const frame = window.requestAnimationFrame(() =>
+      confirmRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [file]);
 
   const submit = async () => {
     setError("");
@@ -154,7 +163,7 @@ export default function EvidencePhotoAction({
       )}
       {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       {file ? (
-        <>
+        <div ref={confirmRef} className="space-y-2 scroll-mb-28">
           <SwipeToConfirm
             disabled={disabled || submitting || requestUpload.isPending}
             onConfirm={() => void submit()}
@@ -173,7 +182,7 @@ export default function EvidencePhotoAction({
               )}
             </div>
           )}
-        </>
+        </div>
       ) : (
         <p className="rounded-md bg-[#f7f4f1] px-3 py-2 text-center text-xs text-muted-foreground">
           {disabled

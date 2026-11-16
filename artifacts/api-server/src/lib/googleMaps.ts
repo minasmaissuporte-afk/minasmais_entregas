@@ -181,17 +181,20 @@ export async function autocompleteAddresses(
   const payload = await readJson(response, "buscar endereços");
   const places = Array.isArray(payload.places) ? payload.places : [];
 
-  return places.flatMap((value) => {
+  const suggestions = places.flatMap((value) => {
     const place = asRecord(value);
     const location = asRecord(place?.location);
     const coordinate = validCoordinate(location?.latitude, location?.longitude);
-    const formatted =
+    const rawFormatted =
       typeof place?.formattedAddress === "string" ? place.formattedAddress.trim() : "";
-    if (!place || !coordinate || !formatted) return [];
+    if (!place || !coordinate || !rawFormatted) return [];
 
     const components = (
       Array.isArray(place.addressComponents) ? place.addressComponents : []
     ) as AddressComponent[];
+    // O Text Search devolve endereços de empresas ("sala 26", "loja 01/05", "15° andar").
+    // Esse complemento é da empresa, não do cliente: some da sugestão.
+    const formatted = withoutSubpremise(rawFormatted, component(components, "subpremise"));
     return [{
       formatted,
       street: component(components, "route"),
@@ -206,6 +209,75 @@ export async function autocompleteAddresses(
         component(components, "locality"),
       stateCode: component(components, "administrative_area_level_1", "shortText"),
       postcode: component(components, "postal_code"),
+      ...coordinate,
+    }];
+  });
+
+  // Sem resultado (o Text Search não entende CEP sozinho, por exemplo): tenta a Geocoding API.
+  if (!suggestions.length) return geocodeSuggestions(query);
+  const seen = new Set<string>();
+  return suggestions.filter((item) => {
+    const key = item.formatted.toLocaleLowerCase("pt-BR");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function withoutSubpremise(formatted: string, subpremise: string | null) {
+  if (!subpremise) return formatted;
+  return formatted
+    .split(" - ")
+    .filter((part) => part.trim().toLocaleLowerCase("pt-BR") !== subpremise.toLocaleLowerCase("pt-BR"))
+    .join(" - ");
+}
+
+const CEP_PATTERN = /^\s*(\d{5})-?(\d{3})\s*$/;
+
+type GeocodeComponent = { long_name?: string; short_name?: string; types?: string[] };
+function geocodeComponent(components: GeocodeComponent[], type: string, variant: "long_name" | "short_name" = "long_name") {
+  const value = components.find((item) => item.types?.includes(type))?.[variant];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/** Sugestões pela Geocoding API — usada para CEP e quando o Text Search não acha nada. */
+async function geocodeSuggestions(query: string): Promise<AddressSuggestion[]> {
+  const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+  const cep = query.match(CEP_PATTERN);
+  if (cep) {
+    url.searchParams.set("components", `country:BR|postal_code:${cep[1]}-${cep[2]}`);
+  } else {
+    url.searchParams.set("address", query);
+    url.searchParams.set("components", "country:BR");
+  }
+  url.searchParams.set("language", "pt-BR");
+  url.searchParams.set("region", "br");
+  url.searchParams.set("key", apiKey());
+  const response = await request(url, {}, "Não foi possível consultar o Google Maps agora.");
+  const payload = await readJson(response, "buscar endereços");
+  if (payload.status !== "OK") return [];
+  const results = Array.isArray(payload.results) ? payload.results : [];
+  return results.slice(0, 5).flatMap((value) => {
+    const result = asRecord(value);
+    const location = asRecord(asRecord(result?.geometry)?.location);
+    const coordinate = validCoordinate(location?.lat, location?.lng);
+    const formatted = typeof result?.formatted_address === "string" ? result.formatted_address.trim() : "";
+    if (!result || !coordinate || !formatted) return [];
+    const components = (Array.isArray(result.address_components) ? result.address_components : []) as GeocodeComponent[];
+    return [{
+      formatted,
+      street: geocodeComponent(components, "route"),
+      houseNumber: geocodeComponent(components, "street_number"),
+      suburb:
+        geocodeComponent(components, "sublocality_level_1") ??
+        geocodeComponent(components, "sublocality") ??
+        geocodeComponent(components, "neighborhood"),
+      district: geocodeComponent(components, "sublocality_level_2"),
+      city:
+        geocodeComponent(components, "administrative_area_level_2") ??
+        geocodeComponent(components, "locality"),
+      stateCode: geocodeComponent(components, "administrative_area_level_1", "short_name"),
+      postcode: geocodeComponent(components, "postal_code"),
       ...coordinate,
     }];
   });

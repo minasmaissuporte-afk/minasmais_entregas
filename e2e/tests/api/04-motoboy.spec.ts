@@ -229,17 +229,14 @@ test.describe("Motoboy: navegação, foto e ocorrência em entrega individual", 
     await expectError(await courier.post(url, { name: "foto.jpg", size: 0, contentType: "image/jpeg" }), 400);
   });
 
-  test("Foto de comprovação: URL de upload (precisa do armazenamento de objetos)", async () => {
+  test("Foto de comprovação: URL de upload assinada no Supabase Storage", async () => {
     const { courier, d } = await inTransitDelivery();
     const res = await courier.post(`/deliveries/${d.id}/evidence/upload-url`, { name: "foto.jpg", size: 2048, contentType: "image/jpeg" });
-    if (!process.env.PRIVATE_OBJECT_DIR) {
-      // Ambiente local: o armazenamento só existe no Replit (Fase 2 da migração). A API deve falhar de forma controlada.
-      expect(res.status(), await describe(res)).toBe(503);
-      test.info().annotations.push({ type: "limitação", description: "Armazenamento de fotos indisponível fora do Replit" });
-      return;
-    }
     expect(res.status(), await describe(res)).toBe(200);
-    expect((await json(res)).uploadURL).toMatch(/^https?:\/\//);
+    const body = await json(res);
+    expect(body.uploadURL).toMatch(/^https:\/\/.+\/storage\/v1\/object\/upload\/sign\//);
+    expect(body.objectPath).toMatch(/^\/objects\//);
+    // Fluxo completo da foto (envio, conclusão, visualização e exclusão): ver 07-fotos.spec.ts.
   });
 
   test("Foto inexistente: GET /evidence → 404", async () => {

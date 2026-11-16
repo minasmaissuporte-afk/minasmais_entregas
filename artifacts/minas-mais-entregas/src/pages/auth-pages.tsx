@@ -60,10 +60,38 @@ function SubmitButton({ busy, busyLabel, children }: { busy: boolean; busyLabel:
   );
 }
 
+/**
+ * Só mostra "Entrar com Google" quando o provedor está ativado no Supabase.
+ * Sem isso, o clique leva a uma página crua de erro ("Unsupported provider").
+ * A configuração pública do Auth informa quais provedores externos estão ligados.
+ */
+let googleEnabledPromise: Promise<boolean> | null = null;
+function isGoogleSignInEnabled() {
+  googleEnabledPromise ??= (async () => {
+    try {
+      const url = (import.meta.env.VITE_SUPABASE_URL as string).replace(/\/+$/, "");
+      const key = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY) as string;
+      const response = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: key } });
+      if (!response.ok) return false;
+      const settings = (await response.json()) as { external?: Record<string, boolean> };
+      return settings.external?.google === true;
+    } catch {
+      return false;
+    }
+  })();
+  return googleEnabledPromise;
+}
+
 function GoogleButton() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  if (isNativeApp) return null;
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void isGoogleSignInEnabled().then((value) => { if (active) setEnabled(value); });
+    return () => { active = false; };
+  }, []);
+  if (isNativeApp || !enabled) return null;
   const start = async () => {
     setError("");
     setBusy(true);

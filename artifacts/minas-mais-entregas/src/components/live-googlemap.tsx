@@ -448,17 +448,28 @@ export default function LiveGoogleMap({
     return () => {
       cancelled = true;
       authFailureListeners.delete(onAuthFailure);
+      // Se o Google Maps falhou (chave recusada, cota, rede), remover marcadores lança erro.
+      // Um erro aqui derrubaria a tela inteira do motoboy na troca de etapa: cada passo é protegido.
+      const safely = (action: () => void) => {
+        try {
+          action();
+        } catch (error) {
+          logMapError("Falha ao limpar o mapa", error);
+        }
+      };
       for (const entry of markerEntries.values()) {
-        entry.infoWindow.close();
-        entry.marker.map = null;
+        safely(() => entry.infoWindow.close());
+        safely(() => { entry.marker.map = null; });
       }
       markerEntries.clear();
-      routeLineRef.current?.setMap(null);
+      safely(() => routeLineRef.current?.setMap(null));
       routeLineRef.current = null;
-      if (userLocationMarkerRef.current) userLocationMarkerRef.current.map = null;
+      safely(() => { if (userLocationMarkerRef.current) userLocationMarkerRef.current.map = null; });
       userLocationMarkerRef.current = null;
       if (mapRef.current && librariesRef.current) {
-        librariesRef.current.core.event.clearInstanceListeners(mapRef.current);
+        const map = mapRef.current;
+        const core = librariesRef.current.core;
+        safely(() => core.event.clearInstanceListeners(map));
       }
       mapRef.current = null;
       syncMapDataRef.current = () => {};

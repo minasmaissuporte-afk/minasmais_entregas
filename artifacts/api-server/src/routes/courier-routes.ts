@@ -113,6 +113,24 @@ async function routeDeliveries(deliveryIds: string[]): Promise<DeliveryRow[]> {
     .where(inArray(deliveriesTable.id, deliveryIds));
 }
 
+type RouteStopRecord = typeof deliveryRouteStopsTable.$inferSelect;
+
+/**
+ * A retirada `first` e as retiradas PENDENTES logo em seguida no mesmo ponto (mesma loja).
+ * Para o motoboy é uma parada só: uma chegada e uma confirmação de saída para todos os pedidos.
+ */
+function samePlacePickupGroup(stops: RouteStopRecord[], first: RouteStopRecord): RouteStopRecord[] {
+  const group = [first];
+  for (const stop of stops.slice(stops.indexOf(first) + 1)) {
+    const samePlace =
+      Math.abs(stop.latitude - first.latitude) < 0.00002 &&
+      Math.abs(stop.longitude - first.longitude) < 0.00002;
+    if (stop.status !== "PENDING" || stop.kind !== "pickup" || !samePlace) break;
+    group.push(stop);
+  }
+  return group;
+}
+
 async function routeView(
   route: typeof deliveryRoutesTable.$inferSelect,
 ): Promise<CourierDeliveryRoute> {
@@ -1690,24 +1708,27 @@ router.post(
       if (!nextStop || nextStop.id !== params.data.stopId || nextStop.kind !== "pickup") {
         return { error: "wrong_stop" as const };
       }
-      const [arrival] = await tx
-        .select({ id: deliveryEventsTable.id })
-        .from(deliveryEventsTable)
-        .where(
-          and(
-            eq(deliveryEventsTable.deliveryId, nextStop.deliveryId),
-            eq(deliveryEventsTable.kind, "store_arrived"),
-          ),
-        )
-        .limit(1);
-      if (!arrival) {
-        await tx.insert(deliveryEventsTable).values({
-          id: randomUUID(),
-          deliveryId: nextStop.deliveryId,
-          kind: "store_arrived",
-          label: "Motoboy chegou à loja",
-          actor: "Motoboy",
-        });
+      // Uma chegada vale para todos os pedidos retirados em seguida na mesma loja.
+      for (const pickup of samePlacePickupGroup(stops, nextStop)) {
+        const [arrival] = await tx
+          .select({ id: deliveryEventsTable.id })
+          .from(deliveryEventsTable)
+          .where(
+            and(
+              eq(deliveryEventsTable.deliveryId, pickup.deliveryId),
+              eq(deliveryEventsTable.kind, "store_arrived"),
+            ),
+          )
+          .limit(1);
+        if (!arrival) {
+          await tx.insert(deliveryEventsTable).values({
+            id: randomUUID(),
+            deliveryId: pickup.deliveryId,
+            kind: "store_arrived",
+            label: "Motoboy chegou à loja",
+            actor: "Motoboy",
+          });
+        }
       }
       return { routeId: route.id };
     });
@@ -1799,84 +1820,92 @@ router.post(
         return { error: "wrong_stop_order" as const };
       }
 
-      const [delivery] = await tx
-        .select()
-        .from(deliveriesTable)
-        .where(eq(deliveriesTable.id, nextStop.deliveryId))
-        .for("update");
-      if (!delivery || delivery.courierId !== profile.courierId) {
-        return { error: "delivery_not_owned" as const };
-      }
-
+      // Retiradas seguidas na mesma loja são confirmadas juntas (uma única parada para o motoboy).
+      const targets = nextStop.kind === "pickup" ? samePlacePickupGroup(stops, nextStop) : [nextStop];
       const nextDeliveryStatus =
         nextStop.kind === "pickup" ? "IN_TRANSIT" : "COMPLETED";
       const expectedStatus =
         nextStop.kind === "pickup" ? "ACCEPTED" : "IN_TRANSIT";
-      if (delivery.status !== expectedStatus) {
-        return { error: "delivery_status_changed" as const };
-      }
-      if (nextStop.kind === "pickup") {
-        const [arrival] = await tx
-          .select({ id: deliveryEventsTable.id })
-          .from(deliveryEventsTable)
-          .where(
-            and(
-              eq(deliveryEventsTable.deliveryId, delivery.id),
-              eq(deliveryEventsTable.kind, "store_arrived"),
-            ),
-          )
-          .limit(1);
-        if (!arrival) return { error: "store_arrival_missing" as const };
-      } else if (!body.data.evidencePath) {
-        return { error: "evidence_missing" as const };
+      const targetDeliveries = [];
+      for (const target of targets) {
+        const [delivery] = await tx
+          .select()
+          .from(deliveriesTable)
+          .where(eq(deliveriesTable.id, target.deliveryId))
+          .for("update");
+        if (!delivery || delivery.courierId !== profile.courierId) {
+          return { error: "delivery_not_owned" as const };
+        }
+        if (delivery.status !== expectedStatus) {
+          return { error: "delivery_status_changed" as const };
+        }
+        if (target.kind === "pickup") {
+          const [arrival] = await tx
+            .select({ id: deliveryEventsTable.id })
+            .from(deliveryEventsTable)
+            .where(
+              and(
+                eq(deliveryEventsTable.deliveryId, delivery.id),
+                eq(deliveryEventsTable.kind, "store_arrived"),
+              ),
+            )
+            .limit(1);
+          if (!arrival) return { error: "store_arrival_missing" as const };
+        } else if (!body.data.evidencePath) {
+          return { error: "evidence_missing" as const };
+        }
+        targetDeliveries.push({ stop: target, delivery });
       }
 
       const now = new Date();
-      await tx
-        .update(deliveryRouteStopsTable)
-        .set({ status: "DONE", completedAt: now })
-        .where(eq(deliveryRouteStopsTable.id, nextStop.id));
-      await tx
-        .update(deliveriesTable)
-        .set({
-          status: nextDeliveryStatus,
-          ...(nextStop.kind === "delivery" && body.data.evidencePath
-            ? { evidencePath: body.data.evidencePath }
-            : {}),
-          updatedAt: now,
-        })
-        .where(eq(deliveriesTable.id, delivery.id));
-      if (nextStop.kind === "delivery" && body.data.evidencePath) {
+      for (const { stop, delivery } of targetDeliveries) {
         await tx
-          .delete(deliveryEvidenceUploadsTable)
-          .where(
-            and(
-              eq(
-                deliveryEvidenceUploadsTable.objectPath,
-                body.data.evidencePath,
+          .update(deliveryRouteStopsTable)
+          .set({ status: "DONE", completedAt: now })
+          .where(eq(deliveryRouteStopsTable.id, stop.id));
+        await tx
+          .update(deliveriesTable)
+          .set({
+            status: nextDeliveryStatus,
+            ...(stop.kind === "delivery" && body.data.evidencePath
+              ? { evidencePath: body.data.evidencePath }
+              : {}),
+            updatedAt: now,
+          })
+          .where(eq(deliveriesTable.id, delivery.id));
+        if (stop.kind === "delivery" && body.data.evidencePath) {
+          await tx
+            .delete(deliveryEvidenceUploadsTable)
+            .where(
+              and(
+                eq(
+                  deliveryEvidenceUploadsTable.objectPath,
+                  body.data.evidencePath,
+                ),
+                eq(deliveryEvidenceUploadsTable.deliveryId, delivery.id),
+                eq(
+                  deliveryEvidenceUploadsTable.courierId,
+                  profile.courierId!,
+                ),
               ),
-              eq(deliveryEvidenceUploadsTable.deliveryId, delivery.id),
-              eq(
-                deliveryEvidenceUploadsTable.courierId,
-                profile.courierId!,
-              ),
-            ),
-          );
+            );
+        }
+        await tx.insert(deliveryEventsTable).values({
+          id: randomUUID(),
+          deliveryId: delivery.id,
+          kind: nextDeliveryStatus.toLowerCase(),
+          label:
+            stop.kind === "pickup"
+              ? "Saída da loja confirmada na rota"
+              : "Entrega concluída com foto de comprovação",
+          actor: "Motoboy",
+          timestamp: now,
+        });
       }
-      await tx.insert(deliveryEventsTable).values({
-        id: randomUUID(),
-        deliveryId: delivery.id,
-        kind: nextDeliveryStatus.toLowerCase(),
-        label:
-          nextStop.kind === "pickup"
-            ? "Saída da loja confirmada na rota"
-            : "Entrega concluída com foto de comprovação",
-        actor: "Motoboy",
-        timestamp: now,
-      });
 
+      const targetIds = new Set(targets.map((target) => target.id));
       const routeComplete = stops.every(
-        (stop) => stop.id === nextStop.id || stop.status === "DONE",
+        (stop) => targetIds.has(stop.id) || stop.status === "DONE",
       );
       if (routeComplete) {
         await tx

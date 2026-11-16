@@ -163,21 +163,23 @@ test.describe("Rotas agrupadas: rota aceita (montada no banco)", () => {
     expect(active.map((r: any) => r.id)).toContain(routeId);
   });
 
-  test("Jornada: chegada obrigatória, coleta na ordem travada, entrega exige foto", async () => {
+  test("Jornada: retirada única na loja (uma chegada e uma saída para os 2 pedidos), entrega exige foto", async () => {
     const { central, courier, d1, d2, routeId, stops } = await acceptedRoute();
     const base = `/courier/routes/${routeId}/stops`;
-    // Fora de ordem (a 2ª coleta antes da 1ª)
+    // Fora de ordem (a 2ª retirada antes da 1ª)
     await expectError(await courier.post(`${base}/${stops[1].id}/arrive`), 409);
     await expectError(await courier.post(`${base}/${stops[1].id}/complete`, {}), 409, "sequência");
-    // Coleta sem chegada
+    // Saída sem chegada
     await expectError(await courier.post(`${base}/${stops[0].id}/complete`, {}), 409, "chegada");
-    for (const stop of stops.slice(0, 2)) {
-      const arrive = await courier.post(`${base}/${stop.id}/arrive`);
-      expect(arrive.status(), await describe(arrive)).toBe(200);
-      const done = await courier.post(`${base}/${stop.id}/complete`, {});
-      expect(done.status(), await describe(done)).toBe(200);
-      await expectStatus(central, stop.deliveryId, "IN_TRANSIT");
-    }
+    const arrive = await courier.post(`${base}/${stops[0].id}/arrive`);
+    expect(arrive.status(), await describe(arrive)).toBe(200);
+    const done = await courier.post(`${base}/${stops[0].id}/complete`, {});
+    expect(done.status(), await describe(done)).toBe(200);
+    // As duas retiradas na mesma loja foram confirmadas juntas.
+    await expectStatus(central, d1.id, "IN_TRANSIT");
+    await expectStatus(central, d2.id, "IN_TRANSIT");
+    const pickupStatus = await query("select status from delivery_route_stops where route_id=$1 and kind='pickup'", [routeId]);
+    expect(pickupStatus.map((s) => s.status)).toEqual(["DONE", "DONE"]);
     // Entrega: "chegada" é só para loja; concluir sem foto ou com foto falsa → 422
     await expectError(await courier.post(`${base}/${stops[2].id}/arrive`), 409);
     await expectError(await courier.post(`${base}/${stops[2].id}/complete`, {}), 422, "foto");
@@ -237,10 +239,8 @@ test.describe("Rotas agrupadas: rota aceita (montada no banco)", () => {
   test("Ocorrência comum numa entrega da rota recalcula as paradas (Google Maps) ou falha sem corromper a rota", async () => {
     const { central, courier, d1, d2, routeId, stops } = await acceptedRoute();
     const base = `/courier/routes/${routeId}/stops`;
-    for (const stop of stops.slice(0, 2)) {
-      await courier.post(`${base}/${stop.id}/arrive`);
-      await courier.post(`${base}/${stop.id}/complete`, {});
-    }
+    await courier.post(`${base}/${stops[0].id}/arrive`);
+    await courier.post(`${base}/${stops[0].id}/complete`, {});
     await courierOnline(courier);
     const res = await courier.post(`/courier/deliveries/${d1.id}/unable`, { reason: "Endereço não encontrado ou incorreto", ...BH_POSITION });
     if (res.status() >= 500) {

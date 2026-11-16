@@ -2544,3 +2544,24 @@ textarea { resize:vertical; }
 @media (prefers-reduced-motion: reduce) {
   .admin-ui *, .admin-ui *::before, .admin-ui *::after { transition: none !important; animation: none !important; }
 }
+
+/* ---- Motoboy: rapidez e leitura em movimento ---- */
+/* Durante uma entrega, o cabeçalho vira uma faixa curta: mais espaço para o cartão e os botões. */
+.courier-pwa .courier-header--compact .courier-greeting { display: none; }
+.courier-pwa .courier-header--compact .courier-online-card { min-height: 0; margin-top: 8px; padding-top: 8px; padding-bottom: 8px; }
+.courier-pwa .courier-header--compact .courier-online-card p { display: none; }
+.courier-pwa .courier-header--compact .courier-header-top { min-height: 0; }
+/* Textos que o motoboy confere na rua: no mínimo 13 px. */
+.courier-pwa .courier-delivery-code,
+.courier-pwa .courier-delivery-card-heading p,
+.courier-pwa .courier-active-delivery__status { font-size: 13px; }
+/* Distâncias da oferta (até a loja / loja → cliente). */
+.courier-pwa .courier-offer-distances { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; color: #3f4248; }
+.courier-pwa .courier-offer-distances b { color: #24272d; }
+/* Perto da loja: o botão de chegada pulsa e ganha um aviso. */
+.courier-pwa .courier-near-store { margin: 0; font-size: 13px; font-weight: 700; color: #1b6e46; }
+.courier-pwa .courier-action-attention { animation: courier-attention 1.4s ease-in-out infinite; box-shadow: 0 0 0 4px #e2021033; }
+@keyframes courier-attention { 50% { box-shadow: 0 0 0 9px #e2021014; } }
+@media (prefers-reduced-motion: reduce) { .courier-pwa .courier-action-attention { animation: none; } }
+/* Botão "Navegar" grande no cartão da entrega. */
+.courier-pwa .courier-navigate-button { margin-top: 12px; font-size: 15px; }

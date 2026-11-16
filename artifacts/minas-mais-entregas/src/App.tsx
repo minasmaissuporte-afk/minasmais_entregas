@@ -48,6 +48,7 @@ import StorePortal from '@/pages/store-portal';
 import StoreManagement from '@/pages/store-management';
 import Reports from '@/pages/reports';
 import EvidencePhotoAction from '@/components/evidence-photo-action';
+import EvidencePhotoViewer from '@/components/evidence-photo-viewer';
 import AccountSecurityPage from '@/pages/account-security';
 import CancellationAlertsPanel from '@/components/cancellation-alerts-panel';
 import { Capacitor } from '@capacitor/core';
@@ -948,7 +949,7 @@ function DeliveryDetail() {
                 <Info label="Saída da loja" value={fmtTime(data.events.find(event => /depart|sa[ií]d|in_transit/i.test(`${event.kind} ${event.label}`))?.timestamp)} />
                 <Info label="Entrega concluída" value={fmtTime(data.events.find(event => /complet|conclu[ií]d/i.test(`${event.kind} ${event.label}`))?.timestamp)} />
               </div>
-              {data.evidenceAvailable && <a className="button-secondary mt-4 min-h-10" href={`${basePath}/api/deliveries/${data.id}/evidence`} target="_blank" rel="noreferrer" data-testid={`link-evidence-${data.id}`}><PackageCheck size={15}/>Abrir foto de comprovação</a>}
+              {data.evidenceAvailable && <EvidencePhotoViewer apiBase={isNativeApp ? nativeApiBaseUrl : basePath} deliveryId={data.id} />}
               {data.notes && <div className="mt-4 rounded-lg bg-[#f7f6f4] p-3"><div className="eyebrow">OBSERVAÇÕES</div><p className="mt-1 text-sm leading-relaxed">{data.notes}</p></div>}
             </section>
             <section className="panel p-5">
