@@ -3,7 +3,10 @@ import {
   useAutocompleteAddresses,
   type AddressSuggestion,
 } from "@workspace/api-client-react";
-import { MapPin, Search } from "lucide-react";
+import { keepPreviousData } from "@tanstack/react-query";
+import { Loader2, MapPin, Search } from "lucide-react";
+
+const MIN_SEARCH_LENGTH = 3;
 
 type AddressAutocompleteProps = {
   id: string;
@@ -41,11 +44,11 @@ export default function AddressAutocomplete({
   useEffect(() => setInput(value), [value]);
 
   useEffect(() => {
-    if (!focused || selected || input.trim().length < 3) {
+    if (!focused || selected || input.trim().length < MIN_SEARCH_LENGTH) {
       setDebounced("");
       return;
     }
-    const timeout = window.setTimeout(() => setDebounced(input.trim()), 400);
+    const timeout = window.setTimeout(() => setDebounced(input.trim()), 300);
     return () => window.clearTimeout(timeout);
   }, [focused, input, selected]);
 
@@ -53,17 +56,22 @@ export default function AddressAutocomplete({
     { texto: debounced },
     {
       query: {
-        enabled: debounced.length >= 3,
+        enabled: debounced.length >= MIN_SEARCH_LENGTH,
         retry: false,
         staleTime: 60_000,
+        // Mantém as sugestões anteriores na tela enquanto a nova busca chega,
+        // em vez de a lista piscar vazia a cada letra.
+        placeholderData: keepPreviousData,
       },
     },
   );
-  const showList = focused && !selected && !dismissed && input.trim().length >= 3;
-  const waitingForDebounce = showList && input.trim() !== debounced;
-  const suggestions = showList && !waitingForDebounce && !search.isLoading && !search.isError
-    ? search.data ?? []
-    : [];
+  const typed = input.trim();
+  const showList = focused && !selected && !dismissed && typed.length > 0;
+  const canSearch = typed.length >= MIN_SEARCH_LENGTH;
+  const waitingForDebounce = showList && canSearch && typed !== debounced;
+  const searching = showList && canSearch && (waitingForDebounce || search.isFetching);
+  const previous = search.data ?? [];
+  const suggestions = showList && canSearch && !search.isError ? previous : [];
   const listId = `${id}-suggestions`;
   const optionId = (index: number) => `${id}-option-${index}`;
 
@@ -133,11 +141,20 @@ export default function AddressAutocomplete({
           onChange={(event) => handleChange(event.target.value)}
           onKeyDown={handleKeyDown}
         />
-        <Search
-          aria-hidden="true"
-          size={15}
-          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-        />
+        {searching ? (
+          <Loader2
+            aria-hidden="true"
+            size={15}
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-primary"
+            data-testid={dataTestId ? `${dataTestId}-searching` : undefined}
+          />
+        ) : (
+          <Search
+            aria-hidden="true"
+            size={15}
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+        )}
       </div>
 
       {showList && (
@@ -147,8 +164,13 @@ export default function AddressAutocomplete({
           aria-label="Sugestões de endereço"
           className="absolute z-[1000] mt-1 max-h-64 w-full overflow-auto rounded-xl border border-border bg-white p-1 shadow-xl"
         >
-          {waitingForDebounce || search.isLoading ? (
+          {!canSearch ? (
             <p className="px-3 py-2.5 text-xs text-muted-foreground" role="status">
+              Continue digitando: a busca começa na 3ª letra (rua, número, bairro ou CEP).
+            </p>
+          ) : searching && !suggestions.length ? (
+            <p className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground" role="status">
+              <Loader2 size={13} className="animate-spin" aria-hidden="true" />
               Buscando endereços…
             </p>
           ) : search.isError ? (

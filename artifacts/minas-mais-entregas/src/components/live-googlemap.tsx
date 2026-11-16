@@ -177,11 +177,18 @@ function fitMapToCoordinates(
   const bottomPadding = fitBehindBottomPanel
     ? Math.max(60, Math.round(map.getDiv().clientHeight * 0.32))
     : 60;
+  // Em mapas pequenos (ex.: prévia de 116 px), margens fixas de 60 px somam mais que a
+  // altura do mapa e o Google afasta até mostrar o estado inteiro. Cada margem fica
+  // limitada a uma fração do tamanho real, sobrando sempre área para os pontos.
+  const { clientWidth, clientHeight } = map.getDiv();
+  const clamp = (value: number, size: number, share: number) =>
+    size > 0 ? Math.min(value, Math.floor(size * share)) : value;
+  const bottomShare = fitBehindBottomPanel && !fitPadding?.bottom ? 0.4 : 0.2;
   const padding = {
-    top: fitPadding?.top ?? 60,
-    right: fitPadding?.right ?? 60,
-    bottom: fitPadding?.bottom ?? (fitPadding ? 60 : bottomPadding),
-    left: fitPadding?.left ?? 60,
+    top: clamp(fitPadding?.top ?? 60, clientHeight, 0.2),
+    right: clamp(fitPadding?.right ?? 60, clientWidth, 0.2),
+    bottom: clamp(fitPadding?.bottom ?? (fitPadding ? 60 : bottomPadding), clientHeight, bottomShare),
+    left: clamp(fitPadding?.left ?? 60, clientWidth, 0.2),
   };
   map.fitBounds(bounds, padding);
   // fitBounds não tem limite de zoom: evita aproximar demais quando os pontos estão próximos.
