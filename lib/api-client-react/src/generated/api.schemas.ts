@@ -100,6 +100,40 @@ export interface DeliveryInput {
   deliveryAmount?: number;
 }
 
+export type DeliveryUpdateInputPriority = typeof DeliveryUpdateInputPriority[keyof typeof DeliveryUpdateInputPriority];
+
+
+export const DeliveryUpdateInputPriority = {
+  normal: 'normal',
+  urgent: 'urgent',
+} as const;
+
+export interface DeliveryUpdateInput {
+  /** @minLength 2 */
+  customerName?: string;
+  /** @nullable */
+  customerPhone?: string | null;
+  /** @minLength 5 */
+  destination?: string;
+  /**
+     * @minimum -90
+     * @maximum 90
+     * @nullable
+     */
+  customerLatitude?: number | null;
+  /**
+     * @minimum -180
+     * @maximum 180
+     * @nullable
+     */
+  customerLongitude?: number | null;
+  /** @minLength 1 */
+  orderNumber?: string;
+  /** @nullable */
+  notes?: string | null;
+  priority?: DeliveryUpdateInputPriority;
+}
+
 export type DispatchInputMode = typeof DispatchInputMode[keyof typeof DispatchInputMode];
 
 

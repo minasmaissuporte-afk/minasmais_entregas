@@ -24,13 +24,15 @@ import {
   useListDeliveries,
   useListStores,
   useListActiveRoutes,
+  useUpdateDelivery,
   useUpdateDeliveryStatus,
   type AppUser,
+  type Delivery,
 } from '@workspace/api-client-react';
 import {
   ArrowLeft, ArrowRight, Bike, Clock3, FilePlus2, Filter,
   History, MapPin, PackageCheck, Phone, Plus, Search, ShieldCheck,
-  Truck, UserRound, X, AlertTriangle, RefreshCw, KeyRound, Trash2,
+  Truck, UserRound, X, AlertTriangle, RefreshCw, KeyRound, Trash2, Pencil,
 } from 'lucide-react';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -231,6 +233,107 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         </div>
         <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6"><button type="button" className="button-secondary" onClick={requestClose} disabled={create.isPending}>Cancelar</button><button type="submit" className="button-primary" disabled={create.isPending || storesQuery.isLoading || !storesQuery.data?.some(s => s.active)}><Plus size={16}/>{create.isPending ? 'Registrando…' : 'Registrar pedido'}</button></div>
+      </form>
+    </section>
+    </div>,
+    document.body,
+  );
+}
+
+/** Situações em que a entrega já terminou: não aparece mais a opção de editar. */
+const CLOSED_DELIVERY_STATUSES = ['COMPLETED', 'CANCELLED', 'NOT_DELIVERED', 'PRODUCT_RETURNED'];
+
+function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery; onClose: () => void; onSaved: () => void }) {
+  const save = useUpdateDelivery();
+  const [error, setError] = useState('');
+  // O endereço entra no cálculo da rota: só muda enquanto nenhum motoboy pegou a entrega.
+  const addressEditable = delivery.status === 'REQUESTED' && !delivery.courierId;
+  const initial = {
+    customerName: delivery.customerName,
+    customerPhone: delivery.customerPhone ?? '',
+    destination: delivery.destination,
+    orderNumber: delivery.orderNumber ?? '',
+    notes: delivery.notes ?? '',
+    priority: delivery.priority,
+  };
+  const [form, setForm] = useState(initial);
+  const [coordinates, setCoordinates] = useState<{ latitude: number | null; longitude: number | null }>({ latitude: delivery.customerLatitude, longitude: delivery.customerLongitude });
+  const destinationChanged = form.destination.trim() !== delivery.destination;
+  const hasChanges = (Object.keys(initial) as (keyof typeof initial)[]).some(key => form[key].trim() !== String(initial[key]).trim());
+  const update = (key: keyof typeof initial, value: string) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+    if (key === 'destination') setCoordinates({ latitude: null, longitude: null });
+  };
+  const requestClose = () => {
+    if (save.isPending) return;
+    if (hasChanges && !window.confirm('As alterações serão descartadas. Deseja fechar?')) return;
+    onClose();
+  };
+  useModalBehavior(requestClose);
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    if (!hasChanges) return onClose();
+    save.mutate({
+      deliveryId: delivery.id,
+      data: {
+        customerName: form.customerName,
+        customerPhone: form.customerPhone.trim() || null,
+        orderNumber: form.orderNumber,
+        notes: form.notes.trim() || null,
+        priority: form.priority as 'normal' | 'urgent',
+        ...(addressEditable && destinationChanged
+          ? { destination: form.destination, customerLatitude: coordinates.latitude, customerLongitude: coordinates.longitude }
+          : {}),
+      },
+    }, {
+      onSuccess: () => { onSaved(); onClose(); },
+      onError: (mutationError) => {
+        const apiError = mutationError as Error & { data?: { error?: string } };
+        setError(apiError.data?.error ?? 'Não foi possível salvar. Confira os dados e tente novamente.');
+      },
+    });
+  };
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) requestClose(); }}>
+    <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="edit-delivery-title" data-modal-active="true">
+      <div className="modal-header flex items-start justify-between gap-3 border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div className="min-w-0"><div className="eyebrow">{delivery.code}</div><h2 id="edit-delivery-title" className="mt-1 text-xl font-bold tracking-tight">Editar entrega</h2><p className="mt-1 text-sm text-muted-foreground">As alterações ficam registradas no histórico.</p></div><button type="button" className="icon-button modal-close-button" onClick={requestClose} aria-label="Fechar" disabled={save.isPending}><X size={18}/></button></div>
+      <form onSubmit={submit} className="modal-form">
+        <div className="modal-fields space-y-4 px-5 py-4 sm:px-6 sm:py-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Nome do cliente"><input required minLength={2} value={form.customerName} onChange={e => update('customerName', e.target.value)} data-modal-initial-focus data-testid="input-edit-customer-name"/></Field>
+          <Field label="Telefone"><input type="tel" value={form.customerPhone} onChange={e => update('customerPhone', e.target.value)} placeholder="(31) 99999-0000" data-testid="input-edit-customer-phone"/></Field>
+        </div>
+        <Field label="Endereço de entrega">
+          {addressEditable ? (
+            <>
+              <AddressAutocomplete
+                id="input-edit-destination"
+                required
+                value={form.destination}
+                onChange={value => update('destination', value)}
+                onSelect={suggestion => setCoordinates({ latitude: suggestion.latitude, longitude: suggestion.longitude })}
+                placeholder="Digite rua, número, bairro ou CEP"
+                inputClassName="w-full"
+                dataTestId="input-edit-destination"
+              />
+              {destinationChanged && coordinates.latitude === null && <span className="mt-1.5 block text-xs text-amber-800">Escolha um endereço da lista para posicionar o pino no mapa do motoboy.</span>}
+            </>
+          ) : (
+            <>
+              <input value={form.destination} readOnly aria-readonly="true" className="w-full bg-[#f7f6f4]" data-testid="input-edit-destination-locked"/>
+              <span className="mt-1.5 block text-xs text-muted-foreground">A entrega já foi para um motoboy: o endereço não pode mais mudar. Se estiver errado, cancele e registre de novo.</span>
+            </>
+          )}
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Número do pedido"><input required value={form.orderNumber} onChange={e => update('orderNumber', e.target.value)} data-testid="input-edit-order-number"/></Field>
+          <Field label="Prioridade"><select value={form.priority} onChange={e => update('priority', e.target.value)} data-testid="select-edit-priority"><option value="normal">Normal</option><option value="urgent">Urgente</option></select></Field>
+        </div>
+        <Field label="Observações"><textarea rows={2} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Referências úteis para a entrega" data-testid="input-edit-notes"/></Field>
+        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}
+        </div>
+        <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6"><button type="button" className="button-secondary" onClick={requestClose} disabled={save.isPending}>Cancelar</button><button type="submit" className="button-primary" disabled={save.isPending || !hasChanges} data-testid="button-save-delivery">{save.isPending ? 'Salvando…' : 'Salvar alterações'}</button></div>
       </form>
     </section>
     </div>,
@@ -894,6 +997,7 @@ function DeliveryDetail() {
   const updateStatus = useUpdateDeliveryStatus();
   const dispatch = useDispatchDelivery();
   const [dispatchOpen, setDispatchOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [nextStatus, setNextStatus] = useState('');
   const [actionError, setActionError] = useState('');
   const refresh = () => {
@@ -917,13 +1021,29 @@ function DeliveryDetail() {
     dispatch.mutate({ deliveryId: id, data: { mode: 'single', courierId } }, { onSuccess: refresh, onError: () => setActionError('Não foi possível enviar a oferta.') });
   };
   const locationAt = data ? lastKnownLocationAt(data, couriers.data) : null;
+  const assignedCourier = data?.courierId ? couriers.data?.find(courier => courier.id === data.courierId) : undefined;
+  const detailMarkers = useMemo<MapMarker[]>(() => {
+    if (!data) return [];
+    const list: MapMarker[] = [];
+    if (data.storeLatitude != null && data.storeLongitude != null) {
+      list.push({ id: `store-${data.storeId}`, kind: 'store', latitude: data.storeLatitude, longitude: data.storeLongitude, title: data.storeName, detail: 'Retirada' });
+    }
+    if (data.customerLatitude != null && data.customerLongitude != null) {
+      list.push({ id: `customer-${data.id}`, kind: 'stop', label: 'E', latitude: data.customerLatitude, longitude: data.customerLongitude, title: data.customerName, detail: data.destination, completed: data.status === 'COMPLETED' });
+    }
+    // Posição do motoboy só enquanto ele está com a entrega.
+    if (assignedCourier?.currentLatitude != null && assignedCourier.currentLongitude != null && !CLOSED_DELIVERY_STATUSES.includes(data.status)) {
+      list.push({ id: `courier-${assignedCourier.id}`, kind: 'courier', latitude: assignedCourier.currentLatitude, longitude: assignedCourier.currentLongitude, title: assignedCourier.name, detail: timeAgo(locationAt) });
+    }
+    return list;
+  }, [data, assignedCourier, locationAt]);
   return <div className="soft-enter">
     <Link href="/entregas" className="back-link"><ArrowLeft size={15}/>Voltar para a fila</Link>
     {isLoading ? <div className="mt-5 panel"><Skeleton rows={7}/></div> : isError || !data ? <div className="mt-5 panel"><EmptyState title="Entrega não encontrada" detail="O registro pode ter sido removido ou estar temporariamente indisponível." action={<button className="button-secondary" onClick={() => void refetch()}><RefreshCw size={14}/>Tentar novamente</button>}/></div> :
       <>
         <div className="mt-5 flex flex-col justify-between gap-4 md:flex-row md:items-start">
           <div><div className="eyebrow">DETALHE DA SOLICITAÇÃO</div><div className="mt-1 flex flex-wrap items-center gap-3"><h1 className="text-[30px] font-bold tracking-[-.05em]">{data.code}</h1><StatusBadge status={data.status}/>{data.priority === 'urgent' && <span className="priority-tag">URGENTE</span>}</div><p className="mt-1 text-sm text-muted-foreground">Pedido {data.orderNumber || '—'} <span className="mx-1.5">·</span> Criado {fmtTime(data.createdAt)}</p></div>
-          <div className="flex flex-wrap gap-2">{['REQUESTED','AWAITING_COURIER'].includes(data.status) && <button className="button-primary" onClick={() => setDispatchOpen(true)}><Truck size={16}/>Despachar</button>}
+          <div className="flex flex-wrap gap-2">{!CLOSED_DELIVERY_STATUSES.includes(data.status) && <button className="button-secondary" onClick={() => setEditOpen(true)} data-testid="button-edit-delivery"><Pencil size={15}/>Editar</button>}{['REQUESTED','AWAITING_COURIER'].includes(data.status) && <button className="button-primary" onClick={() => setDispatchOpen(true)}><Truck size={16}/>Despachar</button>}
             <select className="filter-select" value={nextStatus} onChange={e => setNextStatus(e.target.value)} aria-label="Novo status"><option value="">Atualizar status</option>{(statusOptions[data.status] ?? []).map(s => <option key={s} value={s}>{statusNames[s]}</option>)}</select>
             {nextStatus !== "COMPLETED" && <button className="button-secondary" disabled={!nextStatus || updateStatus.isPending} onClick={applyStatus}>{updateStatus.isPending ? 'Salvando…' : 'Aplicar'}</button>}
           </div>
@@ -953,9 +1073,15 @@ function DeliveryDetail() {
               {data.notes && <div className="mt-4 rounded-lg bg-[#f7f6f4] p-3"><div className="eyebrow">OBSERVAÇÕES</div><p className="mt-1 text-sm leading-relaxed">{data.notes}</p></div>}
             </section>
             <section className="panel p-5">
-              <div className="mb-4"><div className="eyebrow">LOCALIZAÇÃO DO ENTREGADOR</div><h2 className="mt-1 font-bold">Último registro disponível</h2></div>
+              <div className="mb-4"><div className="eyebrow">MAPA E LOCALIZAÇÃO</div><h2 className="mt-1 font-bold">Loja, destino e entregador</h2></div>
+              {detailMarkers.length ? (
+                <div className="mb-4 overflow-hidden rounded-xl border border-border" data-testid="map-delivery-detail">
+                  <LiveMap markers={detailMarkers} ariaLabel={`Mapa da entrega ${data.code}: loja, destino e entregador`} size="compact" showCenterOnMe={false}/>
+                </div>
+              ) : (
+                <p className="mb-4 rounded-lg bg-[#f7f6f4] p-3 text-xs text-muted-foreground">Sem coordenadas para mostrar no mapa: o endereço foi digitado sem escolher uma sugestão da lista.</p>
+              )}
               <div className="location-panel"><div className="location-symbol"><MapPin size={19}/></div><div><div className="font-semibold">{data.courierName || 'Entregador ainda não atribuído'}</div><p className="mt-1 text-xs text-muted-foreground">{locationAt ? `${timeAgo(locationAt)} · ${fmtTime(locationAt)}` : 'Localização indisponível no momento.'}</p></div><div className="location-stamp">GPS<br/>{locationAt ? 'OK' : 'N/D'}</div></div>
-              <p className="mt-3 text-[11px] text-muted-foreground">O painel não dispõe de mapa ou coordenadas GPS. A informação acima é somente o horário do último registro recebido.</p>
             </section>
           </div>
           <aside className="space-y-4">
@@ -972,6 +1098,7 @@ function DeliveryDetail() {
         </div>
       </>}
     {dispatchOpen && <DispatchModal deliveryId={id} onClose={() => setDispatchOpen(false)}/>}
+    {editOpen && data && <EditDeliveryModal delivery={data} onClose={() => setEditOpen(false)} onSaved={refresh}/>}
   </div>;
 }
 function Info({ label, value, icon, wide }: { label: string; value: string; icon?: ReactNode; wide?: boolean }) {

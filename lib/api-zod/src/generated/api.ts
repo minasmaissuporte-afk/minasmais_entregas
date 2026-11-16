@@ -463,6 +463,79 @@ export const GetDeliveryResponse = zod.object({
 
 
 /**
+ * @summary Edit a delivery's customer data (address only while no courier has it)
+ */
+export const UpdateDeliveryParams = zod.object({
+  "deliveryId": zod.coerce.string()
+})
+
+export const updateDeliveryBodyCustomerNameMin = 2;
+
+export const updateDeliveryBodyDestinationMin = 5;
+
+export const updateDeliveryBodyCustomerLatitudeMin = -90;
+export const updateDeliveryBodyCustomerLatitudeMax = 90;
+
+export const updateDeliveryBodyCustomerLongitudeMin = -180;
+export const updateDeliveryBodyCustomerLongitudeMax = 180;
+
+
+
+
+export const UpdateDeliveryBody = zod.object({
+  "customerName": zod.string().min(updateDeliveryBodyCustomerNameMin).optional(),
+  "customerPhone": zod.string().nullish(),
+  "destination": zod.string().min(updateDeliveryBodyDestinationMin).optional(),
+  "customerLatitude": zod.number().min(updateDeliveryBodyCustomerLatitudeMin).max(updateDeliveryBodyCustomerLatitudeMax).nullish(),
+  "customerLongitude": zod.number().min(updateDeliveryBodyCustomerLongitudeMin).max(updateDeliveryBodyCustomerLongitudeMax).nullish(),
+  "orderNumber": zod.string().min(1).optional(),
+  "notes": zod.string().nullish(),
+  "priority": zod.enum(['normal', 'urgent']).optional()
+})
+
+export const updateDeliveryResponseDeliveryAmountMin = 0;
+
+
+
+export const UpdateDeliveryResponse = zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "customerPhone": zod.string().nullish(),
+  "destination": zod.string(),
+  "orderNumber": zod.string().optional(),
+  "notes": zod.string().nullish(),
+  "storeId": zod.string(),
+  "storeName": zod.string(),
+  "storeAddress": zod.string().optional(),
+  "storeCity": zod.string().optional(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
+  "courierId": zod.string().nullish(),
+  "courierName": zod.string().nullish(),
+  "courierInitials": zod.string().nullish(),
+  "status": zod.string(),
+  "priority": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional(),
+  "lastLocationAt": zod.coerce.date().nullish(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
+  "estimatedMinutes": zod.number().int().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "deliveryAmount": zod.number().min(updateDeliveryResponseDeliveryAmountMin),
+  "evidenceAvailable": zod.boolean(),
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "timestamp": zod.coerce.date(),
+  "kind": zod.string(),
+  "actor": zod.string().nullish()
+}))
+})
+
+
+/**
  * @summary Permanently delete a delivery and its related data
  */
 export const DeleteDeliveryParams = zod.object({
