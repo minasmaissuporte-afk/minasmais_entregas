@@ -384,7 +384,9 @@ export default function LiveGoogleMap({
           zoomControl: interactive,
           zoomControlOptions: { position: libraries.core.ControlPosition.RIGHT_TOP },
           clickableIcons: false,
-          keyboardShortcuts: interactive,
+          // Sem o botão "Atalhos do teclado" na barra inferior. A atribuição do Google
+          // ("Dados cartográficos", "Termos", "Informar erro no mapa") é obrigatória e fica.
+          keyboardShortcuts: false,
           gestureHandling: interactive ? "cooperative" : "none",
         });
         mapRef.current = map;
