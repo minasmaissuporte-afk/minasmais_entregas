@@ -2,20 +2,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetDeliveryAnalyticsQueryKey,
   getGetDashboardSummaryQueryKey,
-  getGetVapidPublicKeyQueryKey,
   getListDeliveryCancellationsQueryKey,
   getListDeliveryCancellationReasonsQueryKey,
   getListDeliveriesQueryKey,
   useActOnDeliveryCancellation,
-  useGetVapidPublicKey,
   useListDeliveryCancellations,
   useListDeliveryCancellationReasons,
-  useSavePushSubscription,
   useUpdateDeliveryCancellationReasons,
   type DeliveryCancellationReason,
 } from "@workspace/api-client-react";
 import { AlertTriangle, Bell, Check, Clock3, Plus, Settings2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import {
   Dialog,
   DialogContent,
@@ -25,101 +23,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-function urlBase64ToUint8Array(value: string) {
-  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
-  const bytes = Uint8Array.from(window.atob(padded), (character) => character.charCodeAt(0));
-  if (bytes.length !== 65 || bytes[0] !== 0x04) {
-    throw new Error("A chave pública de notificações é inválida.");
-  }
-  return bytes;
-}
-
 function timeLabel(value: Date) {
   return value.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
 function CentralPushButton() {
-  const key = useGetVapidPublicKey({
-    query: { queryKey: getGetVapidPublicKeyQueryKey(), retry: false },
-  });
-  const savePush = useSavePushSubscription();
-  const [enabled, setEnabled] = useState(false);
-  const [message, setMessage] = useState("");
-  const publicKey = key.data?.publicKey;
-
-  useEffect(() => {
-    let active = true;
-    if (!("serviceWorker" in navigator)) return;
-    void navigator.serviceWorker.ready
-      .then(async (registration) => {
-        const subscription = await registration.pushManager.getSubscription();
-        if (active) setEnabled(Boolean(subscription));
-      })
-      .catch(() => {
-        if (active) setMessage("O Service Worker ainda não está disponível neste navegador.");
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const activate = async () => {
-    setMessage("");
-    try {
-      if (!publicKey || !("serviceWorker" in navigator) || !("PushManager" in window)) {
-        throw new Error("Notificações indisponíveis ou chave VAPID não configurada.");
-      }
-      const applicationServerKey = urlBase64ToUint8Array(publicKey);
-      if (Notification.permission !== "granted") {
-        const permission = await Notification.requestPermission();
-        if (permission !== "granted") throw new Error("Permita notificações para ativar os avisos.");
-      }
-      const registration = await navigator.serviceWorker.ready;
-      let subscription = await registration.pushManager.getSubscription();
-      if (subscription) {
-        const current = subscription.options.applicationServerKey;
-        const bytes = current ? new Uint8Array(current) : null;
-        const matches = Boolean(
-          bytes &&
-            bytes.length === applicationServerKey.length &&
-            bytes.every((byte, index) => byte === applicationServerKey[index]),
-        );
-        if (!matches) {
-          await subscription.unsubscribe();
-          subscription = null;
-        }
-      }
-      subscription ??= await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: applicationServerKey.buffer as ArrayBuffer,
-      });
-      const json = subscription.toJSON();
-      if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) {
-        throw new Error("O navegador não retornou uma inscrição válida.");
-      }
-      await savePush.mutateAsync({
-        data: { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
-      });
-      setEnabled(true);
-      setMessage("Notificações ativadas neste navegador.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Não foi possível ativar notificações.");
-    }
-  };
-
+  const push = usePushNotifications();
   return (
     <div className="flex flex-col items-start gap-1 sm:items-end">
       <button
         type="button"
-        className={enabled ? "button-secondary min-h-12" : "button-primary min-h-12"}
-        onClick={() => void activate()}
-        disabled={savePush.isPending || key.isLoading || enabled}
+        className={push.enabled ? "button-secondary min-h-12" : "button-primary min-h-12"}
+        onClick={() => void push.activate()}
+        disabled={push.pending || push.checking || push.enabled}
       >
-        {enabled ? <Check size={15} /> : <Bell size={15} />}
-        {savePush.isPending ? "Ativando…" : enabled ? "Notificações ativadas" : "Ativar notificações"}
+        {push.enabled ? <Check size={15} /> : <Bell size={15} />}
+        {push.pending ? "Ativando…" : push.enabled ? "Notificações ativadas" : "Ativar notificações"}
       </button>
-      {message && <span role="status" className="max-w-xs text-xs text-muted-foreground">{message}</span>}
+      {push.message && <span role="status" className="max-w-xs text-xs text-muted-foreground">{push.message}</span>}
     </div>
   );
 }
