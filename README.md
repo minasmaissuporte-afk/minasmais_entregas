@@ -86,6 +86,8 @@ Requisitos: **Node.js 24**, **pnpm 10** e **PostgreSQL** (16 ou mais recente).
 | `pnpm dev:web` | Sobe o painel com recarga automática (porta 5173) |
 | `pnpm db:push` | Aplica o schema do Drizzle no banco (só desenvolvimento) |
 | `pnpm db:start` / `db:stop` / `db:status` | Liga, desliga ou mostra o banco local do projeto |
+| `pnpm check:storage` | Testa o envio, a leitura e a exclusão de fotos no Supabase Storage |
+| `pnpm check:google` | Testa as APIs do Google Maps com as chaves do `.env` |
 | `pnpm run typecheck` | Verifica os tipos de todo o monorepo |
 | `pnpm run build` | Typecheck e build da API e do painel |
 | `pnpm --filter @workspace/api-spec run codegen` | Gera de novo os schemas Zod e os hooks a partir do `openapi.yaml` |
@@ -130,6 +132,12 @@ Requisitos: **Node.js 24**, **pnpm 10** e **PostgreSQL** (16 ou mais recente).
 
 **Observação de termos de uso:** o Google só permite guardar coordenadas da Geocoding e da Places por até 30 dias. Hoje o sistema grava coordenadas nas entregas e filiais; isso precisa ser revisto antes de ir para produção.
 
+### Fotos de comprovante (Supabase Storage)
+
+As fotos ficam no bucket **privado** `delivery-evidence`, criado automaticamente pela API no primeiro envio (limite de 8 MB; JPEG, PNG ou WebP). O app envia a foto direto para o Supabase por uma URL assinada, e a central vê a foto pela API. Para testar a integração: `pnpm check:storage`.
+
+Na virada, copie as fotos do Replit para o bucket mantendo a chave: `/objects/uploads/<id>` no banco corresponde ao arquivo `uploads/<id>` no bucket.
+
 ### Notificações
 
 - **Web Push:** use as mesmas `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY` da versão anterior. Chaves novas invalidam as inscrições de todos os aparelhos.
@@ -146,7 +154,8 @@ O app é o painel web empacotado com o Capacitor (`artifacts/minas-mais-entregas
 - [x] Fase 1: roda localmente no Windows (sem plugins do Replit, `.env` na raiz, proxy `/api` no Vite)
 - [x] Login trocado do Clerk (gerenciado pelo Replit) para o Supabase Auth
 - [x] Mapas trocados do Mapbox para o Google Maps
-- [ ] Fase 2: trocar o Object Storage do Replit (as fotos de comprovante só funcionam lá) e remover a URL `replit.app` fixa no código
+- [x] Fotos de comprovante trocadas do Object Storage do Replit para o Supabase Storage (bucket privado `delivery-evidence`)
+- [ ] Fase 2: remover a URL `replit.app` fixa no código (app Android)
 - [ ] Fase 3: infraestrutura própria (hospedagem, Postgres, armazenamento, domínio)
 - [ ] Fase 4: virada (dump do banco, cópia das fotos, DNS)
 - [ ] Fase 5: novo APK Android e desligamento do Replit

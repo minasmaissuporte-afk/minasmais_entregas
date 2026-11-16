@@ -10,6 +10,8 @@
     "db:start": "node scripts/local-db.cjs start",
     "db:stop": "node scripts/local-db.cjs stop",
     "db:status": "node scripts/local-db.cjs status",
+    "check:storage": "pnpm --filter @workspace/scripts exec tsx ../artifacts/api-server/scripts/check-evidence-storage.ts",
+    "check:google":"pnpm --filter @workspace/scripts exec tsx ../artifacts/api-server/scripts/check-google-maps.ts",
     "build": "pnpm run typecheck && pnpm -r --filter \"!@workspace/minas-mais-motoboy\" --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

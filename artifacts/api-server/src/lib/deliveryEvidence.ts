@@ -3,7 +3,11 @@ import {
   db,
   deliveryEvidenceUploadsTable,
 } from "@workspace/db";
-import { ObjectStorageService } from "./objectStorage";
+import {
+  EVIDENCE_CONTENT_TYPES,
+  EVIDENCE_MAX_BYTES,
+  getEvidenceMetadata,
+} from "./evidenceStorage";
 
 export async function verifyEvidenceUpload(
   deliveryId: string,
@@ -23,14 +27,12 @@ export async function verifyEvidenceUpload(
     .limit(1);
   if (!upload) return false;
   try {
-    const file = await new ObjectStorageService().getObjectEntityFile(objectPath);
-    const [metadata] = await file.getMetadata();
-    return (
-      ["image/jpeg", "image/png", "image/webp"].includes(
-        String(metadata.contentType ?? ""),
-      ) &&
-      Number(metadata.size ?? 0) > 0 &&
-      Number(metadata.size ?? 0) <= 8 * 1024 * 1024
+    const metadata = await getEvidenceMetadata(objectPath);
+    return Boolean(
+      metadata &&
+        (EVIDENCE_CONTENT_TYPES as readonly string[]).includes(metadata.contentType) &&
+        metadata.size > 0 &&
+        metadata.size <= EVIDENCE_MAX_BYTES,
     );
   } catch {
     return false;
