@@ -37,6 +37,29 @@ const NO_SERVICE_WORKER_MESSAGE = import.meta.env.DEV
   ? "Em modo de desenvolvimento as notificações ficam desligadas. Teste na versão de produção (build) ou no sistema publicado."
   : "O serviço de notificações ainda está carregando. Atualize a página e tente de novo.";
 
+/**
+ * Os erros do próprio navegador (DOMException) vêm em inglês, por exemplo
+ * "Registration failed - permission denied". Traduz para algo que a pessoa consiga resolver.
+ */
+function describePushError(error: unknown) {
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    switch (error.name) {
+      case "NotAllowedError":
+        return "O navegador não deixou ativar as notificações. Libere em: cadeado ao lado do endereço → Notificações → Permitir, e tente de novo.";
+      case "AbortError":
+        return "O navegador não conseguiu se registrar no serviço de notificações. Confira se as notificações estão liberadas para o navegador nas configurações do computador ou celular, use o Chrome ou o Edge (fora da janela anônima) e tente de novo.";
+      case "InvalidStateError":
+        return "O serviço de notificações ainda está carregando. Atualize a página e tente de novo.";
+      case "NetworkError":
+        return "Sem conexão com o serviço de notificações. Verifique a internet e tente de novo.";
+      default:
+        return "Não foi possível ativar as notificações neste navegador. Atualize a página e tente de novo.";
+    }
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return "Não foi possível ativar as notificações.";
+}
+
 function browserSupportsPush() {
   return (
     typeof window !== "undefined" &&
@@ -133,7 +156,7 @@ export function usePushNotifications() {
       window.dispatchEvent(new Event(PUSH_CHANGED_EVENT));
       return true;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Não foi possível ativar notificações.");
+      setMessage(describePushError(error));
       return false;
     }
   }, [publicKey, savePush, supported]);
