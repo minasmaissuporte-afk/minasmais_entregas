@@ -32,6 +32,7 @@ import LiveMap, { type MapCoordinate, type MapMarker } from "@/components/live-m
 import EvidencePhotoAction from "@/components/evidence-photo-action";
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
 import { triggerCourierLightHaptic } from "@/lib/courier-haptics";
+import { groupRouteStops } from "@/lib/route-stops";
 
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -78,8 +79,16 @@ function requestCurrentLocation() {
         speedMetersPerSecond: position.coords.speed,
         measuredAt: new Date(position.timestamp).toISOString(),
       }),
-      () => reject(new Error("GPS bloqueado. Permita Localização nas configurações do navegador e tente novamente.")),
-      { enableHighAccuracy: true, timeout: 15_000 },
+      // Cada falha tem sua mensagem: só a permissão negada é "bloqueio".
+      (error) => reject(new Error(
+        error.code === error.PERMISSION_DENIED
+          ? "GPS bloqueado. Permita Localização nas configurações do navegador e tente novamente."
+          : error.code === error.POSITION_UNAVAILABLE
+            ? "Não foi possível obter sua posição. Confira se a localização do aparelho está ligada e tente de novo."
+            : "O GPS está demorando para responder. Vá para um lugar aberto ou perto de uma janela e tente de novo.",
+      )),
+      // Aceita uma posição de até 30 s (o portal já acompanha o GPS) para não travar o aceite.
+      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 30_000 },
     );
   });
 }
@@ -857,10 +866,12 @@ function ActiveRouteCard({
   onComplete: (stopId: string, evidencePath?: string) => Promise<void>;
   error?: string;
 }) {
-  const completedStops = route.stops.filter((stop) => stop.status === "DONE").length;
-  const nextStop = route.stops.find((stop) => stop.status === "PENDING");
+  const displayStops = groupRouteStops(route.stops);
+  const completedStops = displayStops.filter((group) => group.done).length;
+  const nextGroup = displayStops.find((group) => !group.done);
+  const nextStop = nextGroup?.stop;
   const hasArrivedAtNextStore = Boolean(nextStop && nextStop.id === arrivedStoreStopId);
-  const progress = route.stops.length ? Math.round((completedStops / route.stops.length) * 100) : 0;
+  const progress = displayStops.length ? Math.round((completedStops / displayStops.length) * 100) : 0;
 
   return (
     <article className="overflow-hidden rounded-2xl bg-[#a91d2a] p-4 text-white shadow-sm sm:p-5">
@@ -878,7 +889,7 @@ function ActiveRouteCard({
       <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/90">
         {route.distanceKm != null && <span className="rounded-full bg-white/15 px-3 py-1">{route.distanceKm} km</span>}
         {route.estimatedMinutes != null && <span className="rounded-full bg-white/15 px-3 py-1"><Clock3 className="mr-1 inline" size={13} />{route.estimatedMinutes} min</span>}
-        <span className="rounded-full bg-white/15 px-3 py-1">{completedStops}/{route.stops.length} paradas</span>
+        <span className="rounded-full bg-white/15 px-3 py-1">{completedStops}/{displayStops.length} paradas</span>
       </div>
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/15">
         <div className="h-full rounded-full bg-white transition-all" style={{ width: `${progress}%` }} />
@@ -895,9 +906,9 @@ function ActiveRouteCard({
         <div className="mt-4 rounded-xl bg-white p-4 text-[#24272d]">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-xs font-semibold text-primary">{nextStop.sequence}. {nextStop.kind === "pickup" ? "Retirada na unidade" : "Entrega ao cliente"}</div>
-              <div className="mt-1 text-sm font-bold">{nextStop.code} · {nextStop.storeName}</div>
-              <div className="mt-1 text-xs text-muted-foreground">{nextStop.customerName}</div>
+              <div className="text-xs font-semibold text-primary">{nextGroup?.number}. {nextStop.kind === "pickup" ? "Retirada na unidade" : "Entrega ao cliente"}</div>
+              <div className="mt-1 text-sm font-bold">{nextStop.kind === "pickup" ? `${nextStop.storeName} · ${nextGroup?.codes.length === 1 ? "1 pedido" : `${nextGroup?.codes.length} pedidos`}` : `${nextStop.code} · ${nextStop.storeName}`}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{nextStop.kind === "pickup" ? nextGroup?.codes.join(", ") : nextStop.customerName}</div>
             </div>
             {nextStop.kind === "delivery" && <span className="shrink-0 text-sm font-bold">{money(nextStop.deliveryAmount)}</span>}
           </div>
@@ -966,13 +977,13 @@ function ActiveRouteCard({
       )}
 
       <ol className="mt-4 space-y-2" aria-label="Sequência fixa da rota">
-        {route.stops.map((stop) => (
+        {displayStops.map(({ stop, number, codes, done }) => (
           <li key={stop.id} className="flex items-start gap-3 rounded-lg bg-white/10 px-3 py-2">
             <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white text-xs font-bold text-primary">
-              {stop.status === "DONE" ? <Check size={13} /> : stop.sequence}
+              {done ? <Check size={13} /> : number}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-xs font-semibold">{stop.sequence}. {stop.kind === "pickup" ? "Retirada" : "Entrega"} · {stop.code}</span>
+              <span className="block text-xs font-semibold">{number}. {stop.kind === "pickup" ? "Retirada" : "Entrega"} · {codes.join(", ")}</span>
               <span className="mt-0.5 block truncate text-xs text-white/85">{stop.address}</span>
             </span>
           </li>

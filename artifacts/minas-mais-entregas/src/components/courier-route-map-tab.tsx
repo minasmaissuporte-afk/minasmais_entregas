@@ -12,6 +12,7 @@ import {
 import LiveMap, { type MapCoordinate, type MapMarker } from "@/components/live-map";
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
 import useCourierMapPanel from "@/hooks/use-courier-map-panel";
+import { groupRouteStops } from "@/lib/route-stops";
 
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -28,15 +29,16 @@ export default function CourierRouteMapTab({
   resizeVersion: number;
 }) {
   const markers: MapMarker[] = [
-    ...route.stops.map((stop) => ({
+    // Retiradas seguidas na mesma loja aparecem como um único pino (é uma parada só).
+    ...groupRouteStops(route.stops).map(({ stop, number, codes, done }) => ({
       id: stop.id,
       latitude: stop.latitude,
       longitude: stop.longitude,
-      title: `${stop.sequence}. ${stop.kind === "pickup" ? "Retirada" : "Entrega"} · ${stop.code}`,
+      title: `${number}. ${stop.kind === "pickup" ? "Retirada" : "Entrega"} · ${codes.join(", ")}`,
       detail: stop.address,
       kind: "stop" as const,
-      sequence: stop.sequence,
-      completed: stop.status === "DONE",
+      sequence: number,
+      completed: done,
     })),
     ...(currentPosition
       ? [{
@@ -52,15 +54,17 @@ export default function CourierRouteMapTab({
   const nextDelivery = nextStop
     ? route.deliveries.find((delivery) => delivery.id === nextStop.deliveryId)
     : null;
-  const panelDelivery = activeDelivery ?? nextDelivery;
+  // Na retirada, o painel mostra a LOJA (o mesmo destino do botão Google Maps/Waze), não o cliente.
+  const isPickup = nextStop?.kind === "pickup";
+  const panelDelivery = isPickup ? null : activeDelivery ?? nextDelivery;
   const nextStopName = nextStop
     ? nextStop.kind === "pickup"
       ? nextStop.storeName
       : nextStop.customerName
     : null;
-  const panelName = panelDelivery?.customerName ?? nextStopName;
-  const panelAddress = panelDelivery?.destination ?? nextStop?.address;
-  const phone = panelDelivery?.customerPhone ?? (nextStop?.kind === "delivery" ? nextDelivery?.customerPhone : null);
+  const panelName = isPickup ? nextStopName : panelDelivery?.customerName ?? nextStopName;
+  const panelAddress = isPickup ? nextStop?.address : panelDelivery?.destination ?? nextStop?.address;
+  const phone = isPickup ? null : panelDelivery?.customerPhone ?? (nextStop?.kind === "delivery" ? nextDelivery?.customerPhone : null);
   const amount = activeDelivery?.deliveryAmount ?? nextStop?.deliveryAmount ?? route.amountToReceive;
   const nextStopUrl = nextStop
     ? `https://www.google.com/maps/dir/?api=1&destination=${nextStop.latitude},${nextStop.longitude}&travelmode=driving`
