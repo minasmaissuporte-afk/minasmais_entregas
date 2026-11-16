@@ -54,6 +54,8 @@ export * from './deliveryRouteStopKind';
 export * from './deliveryRouteStopStatus';
 export * from './deliveryStatusInput';
 export * from './deliveryStatusInputStatus';
+export * from './deliveryUpdateInput';
+export * from './deliveryUpdateInputPriority';
 export * from './demoDataCleanupInput';
 export * from './demoDataCleanupInputConfirmation';
 export * from './demoDataCleanupSummary';

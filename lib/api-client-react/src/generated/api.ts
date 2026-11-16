@@ -53,6 +53,7 @@ import type {
   DeliveryEvidenceUploadUrl,
   DeliveryInput,
   DeliveryStatusInput,
+  DeliveryUpdateInput,
   DemoDataCleanupInput,
   DemoDataCleanupSummary,
   DispatchInput,
@@ -1739,6 +1740,95 @@ export function useGetDelivery<TData = Awaited<ReturnType<typeof getDelivery>>, 
 
 
 
+
+export const getUpdateDeliveryUrl = (deliveryId: string,) => {
+
+
+
+
+  return `/api/deliveries/${deliveryId}`
+}
+
+/**
+ * @summary Edit a delivery's customer data (address only while no courier has it)
+ */
+export const updateDelivery = async (deliveryId: string,
+    deliveryUpdateInput: DeliveryUpdateInput, options?: Parameters<typeof customFetch>[1]): Promise<Delivery> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Delivery>(getUpdateDeliveryUrl(deliveryId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(deliveryUpdateInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateDeliveryMutationKey = () => ['updateDelivery'] as const;
+
+export const getUpdateDeliveryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDelivery>>, TError,UpdateDeliveryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateDelivery>>, TError,UpdateDeliveryMutationVariables, TContext> => {
+
+const mutationKey = getUpdateDeliveryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateDelivery>>, UpdateDeliveryMutationVariables> = (props) => {
+          const {deliveryId,data} = props ?? {};
+
+          return  updateDelivery(deliveryId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateDeliveryMutationResult = NonNullable<Awaited<ReturnType<typeof updateDelivery>>>
+    export type UpdateDeliveryMutationBody = BodyType<DeliveryUpdateInput>
+    export type UpdateDeliveryMutationError = ErrorType<void>
+    export type UpdateDeliveryMutationVariables = {deliveryId: string;data: BodyType<DeliveryUpdateInput>}
+
+    /**
+ * @summary Edit a delivery's customer data (address only while no courier has it)
+ */
+export const useUpdateDelivery = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDelivery>>, TError,UpdateDeliveryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateDelivery>>,
+        TError,
+        UpdateDeliveryMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateDeliveryMutationOptions(options), queryClient);
+    }
 
 export const getDeleteDeliveryUrl = (deliveryId: string,) => {
 

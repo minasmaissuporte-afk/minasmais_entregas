@@ -34,6 +34,9 @@ import {
   UpdateDeliveryStatusBody,
   UpdateDeliveryStatusParams,
   UpdateDeliveryStatusResponse,
+  UpdateDeliveryBody,
+  UpdateDeliveryParams,
+  UpdateDeliveryResponse,
 } from "@workspace/api-zod";
 import {
   appUsersTable,
@@ -1423,6 +1426,100 @@ router.get(
     return;
   }
   res.json(GetDeliveryResponse.parse(delivery));
+  },
+);
+
+/** Situações em que a entrega já terminou e não pode mais ser editada. */
+const CLOSED_DELIVERY_STATUSES = new Set(["COMPLETED", "CANCELLED", "NOT_DELIVERED", "PRODUCT_RETURNED"]);
+
+router.patch(
+  "/deliveries/:deliveryId",
+  requireRole("ADMIN", "CENTRAL"),
+  async (req, res): Promise<void> => {
+    const params = UpdateDeliveryParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "Entrega inválida." });
+      return;
+    }
+    const body = UpdateDeliveryBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "Confira os dados: nome com 2 letras ou mais, endereço com 5 ou mais e número do pedido preenchido." });
+      return;
+    }
+    const input = body.data;
+    if ((input.customerLatitude == null) !== (input.customerLongitude == null) &&
+      (input.customerLatitude !== undefined || input.customerLongitude !== undefined)) {
+      res.status(400).json({ error: "Latitude e longitude do endereço precisam ser informadas juntas." });
+      return;
+    }
+
+    const [current] = await db
+      .select()
+      .from(deliveriesTable)
+      .where(eq(deliveriesTable.id, params.data.deliveryId))
+      .limit(1);
+    if (!current) {
+      res.status(404).json({ error: "Entrega não encontrada." });
+      return;
+    }
+    if (CLOSED_DELIVERY_STATUSES.has(current.status)) {
+      res.status(409).json({ error: "Esta entrega já foi encerrada e não pode mais ser editada." });
+      return;
+    }
+
+    const destination = input.destination?.trim();
+    const addressChanged =
+      (destination !== undefined && destination !== current.destination) ||
+      (input.customerLatitude !== undefined && input.customerLatitude !== current.customerLatitude) ||
+      (input.customerLongitude !== undefined && input.customerLongitude !== current.customerLongitude);
+    if (addressChanged) {
+      // O endereço entra no cálculo da rota: só muda enquanto nenhum motoboy pegou a entrega.
+      const [route] = await db
+        .select({ id: deliveryRoutesTable.id })
+        .from(deliveryRoutesTable)
+        .where(
+          and(
+            sql`${current.id} = ANY(${deliveryRoutesTable.deliveryIds})`,
+            inArray(deliveryRoutesTable.status, ["OFFERED", "ACCEPTED"]),
+          ),
+        )
+        .limit(1);
+      if (current.status !== "REQUESTED" || current.courierId || route) {
+        res.status(409).json({
+          error: "O endereço só pode ser alterado antes de a entrega ir para um motoboy. Cancele e registre de novo, se precisar.",
+        });
+        return;
+      }
+    }
+
+    const changes: Partial<typeof deliveriesTable.$inferInsert> = {};
+    if (input.customerName !== undefined) changes.customerName = input.customerName.trim();
+    if (input.customerPhone !== undefined) changes.customerPhone = input.customerPhone?.trim() || null;
+    if (input.orderNumber !== undefined) changes.orderNumber = input.orderNumber.trim();
+    if (input.notes !== undefined) changes.notes = input.notes?.trim() || null;
+    if (input.priority !== undefined) changes.priority = input.priority;
+    if (addressChanged) {
+      if (destination !== undefined) changes.destination = destination;
+      // Endereço novo sem coordenadas não pode manter as coordenadas do endereço antigo.
+      changes.customerLatitude = input.customerLatitude ?? null;
+      changes.customerLongitude = input.customerLongitude ?? null;
+    }
+
+    if (Object.keys(changes).length) {
+      await db
+        .update(deliveriesTable)
+        .set({ ...changes, updatedAt: new Date() })
+        .where(eq(deliveriesTable.id, current.id));
+      const profile = res.locals.appUser as AppUserProfile;
+      await addEvent(
+        current.id,
+        "EDITED",
+        addressChanged ? "Dados da entrega editados (endereço alterado)" : "Dados da entrega editados",
+        profile.role === "ADMIN" ? "Administração" : "Central de entregas",
+      );
+    }
+    const view = await deliveryView(current.id);
+    res.json(UpdateDeliveryResponse.parse(view));
   },
 );
 

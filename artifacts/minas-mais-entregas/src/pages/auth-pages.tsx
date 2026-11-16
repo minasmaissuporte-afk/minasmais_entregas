@@ -271,6 +271,15 @@ export function SignUpPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmationSentTo, setConfirmationSentTo] = useState("");
+  const [code, setCode] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = window.setTimeout(() => setCooldown((value) => value - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [cooldown]);
 
   if (signedIn) return <Redirect to="/user-portal" />;
 
@@ -292,16 +301,71 @@ export function SignUpPage() {
     setBusy(false);
     if (signUpError) return setError(authErrorMessage(signUpError, "Não foi possível criar a conta. Tente de novo."));
     if (data.session) setLocation("/user-portal");
-    else setConfirmationSentTo(normalizedEmail);
+    else {
+      setConfirmationSentTo(normalizedEmail);
+      setCode("");
+      setCooldown(60);
+    }
+  };
+
+  // Confirma o cadastro com o código de 6 dígitos do e-mail ("Confirm signup" no Supabase).
+  const verifyCode = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    setBusy(true);
+    const { error: verifyError } = await supabase.auth.verifyOtp({ email: confirmationSentTo, token: code.trim(), type: "signup" });
+    setBusy(false);
+    if (verifyError) setError(authErrorMessage(verifyError, "Código inválido ou expirado. Peça um novo código."));
+    else setLocation("/user-portal");
+  };
+
+  const resendCode = async () => {
+    setError("");
+    setNotice("");
+    setBusy(true);
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email: confirmationSentTo,
+      options: { emailRedirectTo: appUrl("/user-portal") },
+    });
+    setBusy(false);
+    if (resendError) return setError(authErrorMessage(resendError, "Não foi possível reenviar o código. Tente de novo."));
+    setCode("");
+    setCooldown(60);
+    setNotice("Enviamos um novo código. Use o mais recente.");
   };
 
   if (confirmationSentTo) {
     return (
       <AuthLayout title="Confirme seu e-mail" back={{ href: "/sign-in", label: "Voltar para entrar" }}>
-        <p className="flex gap-2 rounded-lg bg-[#f7f6f4] p-4 text-sm leading-relaxed text-[#3f4248]" role="status">
-          <MailCheck size={18} className="mt-0.5 shrink-0 text-[#a91d2a]" aria-hidden="true" />
-          <span>Enviamos um link de confirmação para <strong className="break-all">{confirmationSentTo}</strong>. Abra o e-mail neste aparelho para ativar a conta. Depois, um administrador libera o seu acesso.</span>
-        </p>
+        <form className="space-y-4" onSubmit={verifyCode}>
+          <p className="flex gap-2 rounded-lg bg-[#f7f6f4] p-4 text-sm leading-relaxed text-[#3f4248]" role="status">
+            <MailCheck size={18} className="mt-0.5 shrink-0 text-[#a91d2a]" aria-hidden="true" />
+            <span>Enviamos um código de 6 dígitos para <strong className="break-all">{confirmationSentTo}</strong>. Digite abaixo para ativar a conta. Confira também o spam. Depois, um administrador libera o seu acesso.</span>
+          </p>
+          <TextField
+            label="Código"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]{6}"
+            maxLength={6}
+            required
+            autoFocus
+            value={code}
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            data-testid="input-signup-code"
+          />
+          {notice && <p className="text-sm text-[#3f4248]" role="status">{notice}</p>}
+          <FormError message={error} />
+          <SubmitButton busy={busy} busyLabel="Conferindo…">Confirmar e entrar</SubmitButton>
+          <div className="flex flex-wrap justify-between gap-2 text-sm">
+            <button type="button" className="min-h-10 font-semibold text-[#a91d2a] disabled:text-muted-foreground" disabled={cooldown > 0 || busy} onClick={() => void resendCode()}>
+              {cooldown > 0 ? `Reenviar código em ${cooldown}s` : "Reenviar código"}
+            </button>
+            <button type="button" className="min-h-10 font-semibold text-[#5f646b]" onClick={() => { setConfirmationSentTo(""); setError(""); setNotice(""); }}>Trocar e-mail</button>
+          </div>
+        </form>
       </AuthLayout>
     );
   }

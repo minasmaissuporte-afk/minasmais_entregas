@@ -311,6 +311,35 @@ paths:
                 $ref: "#/components/schemas/Delivery"
         "404":
           description: Delivery not found
+    patch:
+      operationId: updateDelivery
+      tags: [deliveries]
+      summary: Edit a delivery's customer data (address only while no courier has it)
+      parameters:
+        - in: path
+          name: deliveryId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryUpdateInput"
+      responses:
+        "200":
+          description: Delivery updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+        "403":
+          description: Only the Central or administrators may edit deliveries
+        "404":
+          description: Delivery not found
+        "409":
+          description: Delivery is closed, or the address can no longer change
     delete:
       operationId: deleteDelivery
       tags: [deliveries]
@@ -979,6 +1008,17 @@ components:
         storeId: { type: string }
         priority: { type: string, enum: [normal, urgent] }
         deliveryAmount: { type: number, minimum: 0, description: Deprecated; server uses the selected branch's configured fee }
+    DeliveryUpdateInput:
+      type: object
+      properties:
+        customerName: { type: string, minLength: 2 }
+        customerPhone: { type: ["string", "null"] }
+        destination: { type: string, minLength: 5 }
+        customerLatitude: { type: ["number", "null"], minimum: -90, maximum: 90 }
+        customerLongitude: { type: ["number", "null"], minimum: -180, maximum: 180 }
+        orderNumber: { type: string, minLength: 1 }
+        notes: { type: ["string", "null"] }
+        priority: { type: string, enum: [normal, urgent] }
     DispatchInput:
       type: object
       required: [mode]
