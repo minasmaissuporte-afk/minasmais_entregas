@@ -28,7 +28,7 @@ import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
-import { Bell, BellOff, Check, WifiOff, CheckCircle2, Clock3, Hand, History, House, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, PackageCheck, Phone, Route as RouteIcon, TrendingUp, Wallet } from "lucide-react";
+import { Bell, BellOff, Check, WifiOff, CheckCircle2, Clock3, Hand, History, House, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, Navigation, PackageCheck, Phone, Route as RouteIcon, TrendingUp, Wallet } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
@@ -58,24 +58,28 @@ const periodNames: Record<Period, string> = {
   week: "Esta semana",
   month: "Este mês",
 };
+const OFFER_POLL_MS = 5000;
+const ACTIVE_DELIVERY_STATUSES = ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"];
+// Aceitar já significa "indo para a loja": o próximo toque é a chegada (ACCEPTED → AT_STORE é
+// permitido pela API), sem o passo extra "Iniciar ida à loja".
 const nextCourierStatus: Record<string, string> = {
   OFFERED: "ACCEPTED",
-  ACCEPTED: "TO_STORE",
+  ACCEPTED: "AT_STORE",
   TO_STORE: "AT_STORE",
   AT_STORE: "IN_TRANSIT",
   IN_TRANSIT: "COMPLETED",
 };
 const nextStatusLabel: Record<string, string> = {
   OFFERED: "Aceitar entrega",
-  ACCEPTED: "Iniciar ida à loja",
-  TO_STORE: "Confirmar chegada à loja",
-  AT_STORE: "Confirmar saída para entrega",
+  ACCEPTED: "Cheguei na loja",
+  TO_STORE: "Cheguei na loja",
+  AT_STORE: "Peguei o pedido, sair para entrega",
   IN_TRANSIT: "Confirmar entrega concluída",
 };
 const statusLabel: Record<string, string> = {
   OFFERED: "Oferta enviada",
   AWAITING_COURIER: "Aguardando motoboy",
-  ACCEPTED: "Aceita",
+  ACCEPTED: "A caminho da unidade",
   TO_STORE: "A caminho da unidade",
   AT_STORE: "Na unidade",
   IN_TRANSIT: "Em entrega",
@@ -83,6 +87,30 @@ const statusLabel: Record<string, string> = {
   RETURNING_TO_STORE: "Retornando à filial",
   NOT_DELIVERED: "Não entregue",
 };
+// --- Distâncias e navegação para o motoboy (sem chamar API: estimativa rápida no aparelho) ---
+type Point = { latitude: number; longitude: number };
+function coordinate(latitude?: number | null, longitude?: number | null): Point | null {
+  return latitude != null && longitude != null ? { latitude, longitude } : null;
+}
+function straightLineKm(a: Point, b: Point) {
+  const rad = Math.PI / 180;
+  const dLat = (b.latitude - a.latitude) * rad;
+  const dLng = (b.longitude - a.longitude) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.latitude * rad) * Math.cos(b.latitude * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+/** Distância aproximada pelas ruas (linha reta × 1,35, fator típico de malha urbana). */
+const approximateRoadKm = (a: Point, b: Point) => straightLineKm(a, b) * 1.35;
+/** Minutos de moto na cidade (~22 km/h de média, mínimo de 3 min). */
+const estimateMinutes = (km: number) => Math.max(3, Math.round((km / 22) * 60));
+const formatKm = (km: number) =>
+  km < 1 ? `${Math.round(km * 1000 / 50) * 50} m` : `${km.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km`;
+/** Abre o Google Maps (ou o app de mapas do celular) já com o destino, em modo direção. */
+function navigationUrl(point: Point | null, address?: string | null) {
+  const destination = point ? `${point.latitude},${point.longitude}` : encodeURIComponent(address ?? "");
+  return `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`;
+}
+
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const initialGpsStatus: CourierGpsStatus = {
@@ -244,14 +272,25 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     { period: "month" },
     { query: { queryKey: getGetCourierEarningsQueryKey({ period: "month" }), refetchInterval: 15000 } },
   );
+  // Online e sem entrega: procura ofertas a cada 5 s (a oferta chega mais rápido mesmo sem push).
+  // Com entrega em andamento, a cada 15 s basta.
   const deliveries = useListDeliveries(
     {},
-    { query: { queryKey: getListDeliveriesQueryKey(), refetchInterval: 15000 } },
+    {
+      query: {
+        queryKey: getListDeliveriesQueryKey(),
+        refetchInterval: (query) =>
+          isOnline && !(query.state.data ?? []).some((delivery) => ACTIVE_DELIVERY_STATUSES.includes(delivery.status))
+            ? OFFER_POLL_MS
+            : 15000,
+      },
+    },
   );
   const routes = useListCourierRoutes({
     query: {
       queryKey: getListCourierRoutesQueryKey(),
-      refetchInterval: 15000,
+      refetchInterval: (query) =>
+        isOnline && !(query.state.data ?? []).some((route) => route.status === "ACCEPTED") ? OFFER_POLL_MS : 15000,
       refetchOnWindowFocus: true,
     },
   });
@@ -642,7 +681,9 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     }
     if (pendingOffers > previousOfferCount.current) {
       void triggerCourierLightHaptic().catch(() => undefined);
-      if (isNativeApp) playNativeOfferTone();
+      // Também no navegador/PWA: vibra e toca o aviso (o motoboy já tocou na tela ao ficar online).
+      if (!isNativeApp && typeof navigator.vibrate === "function") navigator.vibrate([250, 120, 250]);
+      playNativeOfferTone();
     }
     previousOfferCount.current = pendingOffers;
   }, [pendingOffers, routes.isLoading, deliveries.isLoading, routes.isError, deliveries.isError]);
@@ -747,6 +788,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       onUpdate={updateDelivery}
       onDecline={declineIndividualDelivery}
       onShowMap={() => changeActiveTab("map")}
+      currentPosition={currentPosition}
       // Errors are shown inside the card, next to the button that failed.
       error={[actionError, declineError].find((item) => item?.deliveryId === delivery.id)?.text}
     />
@@ -761,7 +803,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
         </div>
       )}
       {activeTab !== "map" && (
-        <header className="courier-header px-4 pb-3 pt-[max(10px,env(safe-area-inset-top))] text-white">
+        <header className={`courier-header px-4 pb-3 pt-[max(10px,env(safe-area-inset-top))] text-white ${hasActiveWork || pendingOffers > 0 ? "courier-header--compact" : ""}`}>
           <div className="courier-header-inner mx-auto max-w-2xl">
             <div className="courier-header-top">
               <div className="courier-official-brand" aria-label="Minas Mais Entregas">
@@ -830,7 +872,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       <div className={activeTab === "map" ? "h-full w-full" : "courier-content-shell mx-auto w-full max-w-2xl px-3 sm:px-5"}>
         <Tabs value={activeTab} onValueChange={changeActiveTab}>
           <TabsContent value="deliveries" forceMount aria-hidden={activeTab !== "deliveries"} className={`courier-tab-panel courier-tab-panel--deliveries ${activeTab === "deliveries" ? "mt-0" : ""} ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`} data-transitioning={tabTransitioning ? "true" : "false"}>
-            {notificationsNeedAttention && (
+            {notificationsNeedAttention && !hasActiveWork && pendingOffers === 0 && (
               <section className="courier-device-notice" role="status" data-testid="alert-courier-device">
                 <BellOff size={15} aria-hidden="true" />
                 <span>Notificações desativadas neste aparelho.</span>
@@ -960,6 +1002,7 @@ function CourierIndividualDeliveryCard({
   onUpdate,
   onDecline,
   onShowMap,
+  currentPosition,
   error,
 }: {
   delivery: Delivery;
@@ -971,9 +1014,19 @@ function CourierIndividualDeliveryCard({
   onUpdate: (deliveryId: string, status: string, evidencePath?: string) => Promise<void>;
   onDecline: (deliveryId: string) => Promise<void>;
   onShowMap: () => void;
+  currentPosition?: MapCoordinate | null;
   error?: string;
 }) {
   const isReturning = delivery.status === "RETURNING_TO_STORE";
+  const store = coordinate(delivery.storeLatitude, delivery.storeLongitude);
+  const customer = coordinate(delivery.customerLatitude, delivery.customerLongitude);
+  const storeToCustomerKm = store && customer ? approximateRoadKm(store, customer) : null;
+  const meToStoreKm = store && currentPosition ? approximateRoadKm(currentPosition, store) : null;
+  const goingToStore = delivery.status === "ACCEPTED" || delivery.status === "TO_STORE";
+  // Perto da filial (≈150 m em linha reta): o botão "Cheguei na loja" fica em destaque.
+  const nearStore = goingToStore && store && currentPosition ? straightLineKm(currentPosition, store) <= 0.15 : false;
+  const storeNavigationUrl = navigationUrl(store, delivery.storeAddress ?? delivery.storeName);
+  const customerNavigationUrl = navigationUrl(customer, delivery.destination);
   const phoneDigits = delivery.customerPhone?.replace(/\D/g, "");
   const whatsappNumber = phoneDigits
     ? phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`
@@ -1002,6 +1055,15 @@ function CourierIndividualDeliveryCard({
           </span>
           <strong>{money(delivery.deliveryAmount)}</strong>
         </div>
+        <a
+          className="button-primary courier-navigate-button min-h-12 w-full justify-center"
+          href={customerNavigationUrl}
+          target="_blank"
+          rel="noreferrer"
+          data-testid={`button-navigate-${delivery.id}`}
+        >
+          <Navigation size={17} aria-hidden="true" /> Navegar até o cliente
+        </a>
         <div className="courier-active-delivery__actions" aria-label="Contato e rota">
           {delivery.customerPhone && (
             <a className="courier-icon-action" href={`tel:${delivery.customerPhone}`} aria-label="Telefone do cliente" title="Telefone">
@@ -1079,6 +1141,12 @@ function CourierIndividualDeliveryCard({
         <p><MapPin size={15} aria-hidden="true" /><span><b>Destino:</b> {delivery.destination}</span></p>
       </div>
       {delivery.notes && <p className="mt-2 rounded-lg bg-[#f6f4f1] p-3 text-xs">Observações: {delivery.notes}</p>}
+      {delivery.status === "OFFERED" && (meToStoreKm != null || storeToCustomerKm != null) && (
+        <p className="courier-offer-distances" data-testid={`offer-distances-${delivery.id}`}>
+          {meToStoreKm != null && <span><b>Até a loja:</b> ≈ {formatKm(meToStoreKm)}</span>}
+          {storeToCustomerKm != null && <span><b>Loja → cliente:</b> ≈ {formatKm(storeToCustomerKm)} · ~{estimateMinutes(storeToCustomerKm)} min</span>}
+        </p>
+      )}
       {delivery.status === "OFFERED" && (delivery.estimatedMinutes != null || delivery.distanceKm != null || delivery.deliveryAmount != null) && (
         <div className="courier-offer-estimate" aria-label="Estimativa da entrega">
           <span>
@@ -1117,6 +1185,17 @@ function CourierIndividualDeliveryCard({
           </button>
         </div>
       )}
+      {!isReturning && goingToStore && (
+        <a
+          className="button-secondary courier-navigate-button mt-2 min-h-12 w-full justify-center"
+          href={storeNavigationUrl}
+          target="_blank"
+          rel="noreferrer"
+          data-testid={`button-navigate-${delivery.id}`}
+        >
+          <Navigation size={17} aria-hidden="true" /> Navegar até a loja
+        </a>
+      )}
       <div className="courier-delivery-footer mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
         <span className="courier-delivery-amount">{money(delivery.deliveryAmount)}</span>
         {delivery.status === "IN_TRANSIT" && nextStatus ? (
@@ -1130,9 +1209,12 @@ function CourierIndividualDeliveryCard({
           </div>
         ) : nextStatus ? (
           <div className="flex w-full flex-col gap-2">
+            {nearStore && (
+              <p className="courier-near-store" role="status">Você está na loja? Confirme a chegada.</p>
+            )}
             <button
               type="button"
-              className="button-primary min-h-12 w-full justify-center"
+              className={`button-primary min-h-12 w-full justify-center ${nearStore ? "courier-action-attention" : ""}`}
               disabled={busy}
               onClick={() => void onUpdate(delivery.id, nextStatus)}
               aria-busy={busy}
