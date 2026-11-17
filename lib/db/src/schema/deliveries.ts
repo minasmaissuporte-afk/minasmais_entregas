@@ -3,6 +3,7 @@ import {
   index,
   integer,
   jsonb,
+  pgSequence,
   pgTable,
   real,
   text,
@@ -11,6 +12,12 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+/**
+ * Número sequencial das entregas: MM-000001, MM-000002…
+ * Uma sequência do Postgres nunca repete o número, mesmo com pedidos simultâneos.
+ */
+export const deliveryCodeSequence = pgSequence("delivery_code_seq", { startWith: 1, increment: 1 });
 
 export const storesTable = pgTable("stores", {
   id: text("id").primaryKey(),

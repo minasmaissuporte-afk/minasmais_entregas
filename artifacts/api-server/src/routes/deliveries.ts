@@ -1509,7 +1509,9 @@ router.post(
   }
 
   const id = randomUUID();
-  const code = `MM-${randomUUID().slice(0, 6).toUpperCase()}`;
+  // Sequencial (MM-000001…): fácil de ditar ao telefone e nunca repete.
+  const sequenceResult = await db.execute<{ value: string }>(sql`select nextval('delivery_code_seq')::text as value`);
+  const code = `MM-${String(sequenceResult.rows[0]?.value ?? "").padStart(6, "0")}`;
   const [created] = await db
     .insert(deliveriesTable)
     .values({
