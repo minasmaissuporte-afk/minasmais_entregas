@@ -10,7 +10,7 @@ test.describe("Entregas: criação e validação", () => {
   test("Central cria entrega: código MM-XXXXXX, status REQUESTED, valor = tarifa da filial, evento inicial", async () => {
     const central = await Api.as("central");
     const delivery = await createDelivery(central, { storeId: stores.a.id, deliveryAmount: 999 });
-    expect(delivery.code).toMatch(/^MM-[0-9A-F]{6}$/);
+    expect(delivery.code).toMatch(/^MM-d{6,}$/);
     expect(delivery).toMatchObject({
       status: "REQUESTED",
       storeId: stores.a.id,
