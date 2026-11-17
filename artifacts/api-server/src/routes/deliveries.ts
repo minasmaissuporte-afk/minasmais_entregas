@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { deleteAuthUser, getAuthUser } from "../lib/supabaseAuth";
+import { deleteAuthUser, getAuthUser, inviteAuthUser, type InviteResult } from "../lib/supabaseAuth";
 import { and, desc, eq, gte, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
@@ -34,6 +34,8 @@ import {
   UpdateDeliveryStatusBody,
   UpdateDeliveryStatusParams,
   UpdateDeliveryStatusResponse,
+  InviteAccessUserBody,
+  InviteAccessUserResponse,
   UpdateDeliveryBody,
   UpdateDeliveryParams,
   UpdateDeliveryResponse,
@@ -480,6 +482,132 @@ router.get("/access/users", requireRole("ADMIN"), async (_req, res): Promise<voi
     ),
   );
 });
+
+/** Só aceita voltar para o próprio sistema (localhost em testes ou o domínio publicado). */
+function safeInviteRedirect(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    if (!local && url.protocol !== "https:") return null;
+    const supabaseSite = (process.env.APP_PUBLIC_URL ?? "").replace(/\/+$/, "");
+    if (!local && supabaseSite && url.origin !== new URL(supabaseSite).origin) return null;
+    return `${url.origin}/aceitar-convite`;
+  } catch {
+    return null;
+  }
+}
+
+router.post(
+  "/access/invites",
+  requireRole("ADMIN"),
+  async (req, res): Promise<void> => {
+    const body = InviteAccessUserBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "Confira o e-mail, o nome e o perfil do convite." });
+      return;
+    }
+    const email = body.data.email.trim().toLowerCase();
+    const name = body.data.name.trim();
+    const role = body.data.role as AppRole;
+    const phone = body.data.phone?.trim() || null;
+    const storeId = role === "STORE_MANAGER" || role === "COURIER" ? body.data.storeId ?? null : null;
+    const redirectTo = safeInviteRedirect(body.data.redirectTo);
+    if (!redirectTo) {
+      res.status(400).json({ error: "Endereço de retorno do convite inválido." });
+      return;
+    }
+    if (role === "STORE_MANAGER" && !storeId) {
+      res.status(400).json({ error: "Escolha a filial do gerente." });
+      return;
+    }
+    if (storeId) {
+      const [store] = await db
+        .select({ id: storesTable.id })
+        .from(storesTable)
+        .where(eq(storesTable.id, storeId))
+        .limit(1);
+      if (!store) {
+        res.status(400).json({ error: "Filial não encontrada." });
+        return;
+      }
+    }
+
+    const [existing] = await db
+      .select()
+      .from(appUsersTable)
+      .where(eq(appUsersTable.email, email))
+      .limit(1);
+    if (existing?.authUserId) {
+      res.status(409).json({
+        error: "Este e-mail já tem acesso ao sistema. Ajuste o perfil dele na lista abaixo.",
+      });
+      return;
+    }
+
+    // Primeiro o e-mail: se o Supabase não conseguir enviar, nada fica cadastrado pela metade.
+    let inviteResult: InviteResult;
+    try {
+      inviteResult = await inviteAuthUser(email, name, redirectTo);
+    } catch (error) {
+      const rateLimited = error instanceof Error && error.message === "rate_limited";
+      req.log.warn({ err: error }, "Supabase invite failed");
+      res.status(rateLimited ? 429 : 502).json({
+        error: rateLimited
+          ? "Muitos convites em pouco tempo. Aguarde alguns minutos e tente de novo."
+          : "Não foi possível enviar o e-mail de convite agora. Tente de novo em instantes.",
+      });
+      return;
+    }
+
+    const saved = await db.transaction(async (tx) => {
+      let courierId: string | null = existing?.courierId ?? null;
+      if (role === "COURIER") {
+        if (courierId) {
+          await tx
+            .update(couriersTable)
+            .set({ name, initials: getCourierInitials(name), phone })
+            .where(eq(couriersTable.id, courierId));
+        } else {
+          courierId = randomUUID();
+          await tx.insert(couriersTable).values({
+            id: courierId,
+            name,
+            initials: getCourierInitials(name),
+            phone,
+            status: "OFFLINE",
+          });
+        }
+      } else {
+        courierId = null;
+      }
+      const values = { name, role, storeId, courierId, updatedAt: new Date() };
+      if (existing) {
+        const [updated] = await tx
+          .update(appUsersTable)
+          .set(values)
+          .where(eq(appUsersTable.id, existing.id))
+          .returning();
+        return updated;
+      }
+      const [created] = await tx
+        .insert(appUsersTable)
+        .values({ id: randomUUID(), email, ...values })
+        .returning();
+      return created;
+    });
+    if (!saved) {
+      res.status(500).json({ error: "O convite foi enviado, mas não foi possível salvar o perfil. Tente de novo." });
+      return;
+    }
+    req.log.info({ role, alreadyRegistered: inviteResult === "already_registered" }, "Access invite created");
+    res.status(201).json(
+      InviteAccessUserResponse.parse({
+        ...saved,
+        phone: role === "COURIER" ? phone : null,
+      }),
+    );
+  },
+);
 
 router.patch(
   "/access/users/:userId",

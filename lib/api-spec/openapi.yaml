@@ -523,7 +523,7 @@ paths:
     get:
       operationId: autocompleteAddresses
       tags: [directory]
-      summary: Search Brazilian addresses through Google Maps (Places API)
+      summary: Suggest Brazilian streets/addresses (Places Autocomplete), biased to the stores' region
       parameters:
         - in: query
           name: texto
@@ -531,17 +531,61 @@ paths:
           schema:
             type: string
             minLength: 3
+        - in: query
+          name: sessao
+          required: false
+          schema:
+            type: string
+            maxLength: 64
       responses:
         "200":
-          description: Address suggestions
+          description: Address predictions (no coordinates yet; pick one and call /enderecos/detalhes)
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/AddressSuggestion"
+                  $ref: "#/components/schemas/AddressPrediction"
         "422":
           description: Search text is invalid
+        "502":
+          description: Geocoding provider could not complete the request
+        "503":
+          description: Geocoding is not configured
+  /enderecos/detalhes:
+    get:
+      operationId: getAddressDetails
+      tags: [directory]
+      summary: Full address and coordinates for a chosen prediction (optionally at a house number)
+      parameters:
+        - in: query
+          name: placeId
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+        - in: query
+          name: numero
+          required: false
+          schema:
+            type: string
+            maxLength: 20
+        - in: query
+          name: sessao
+          required: false
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        "200":
+          description: Address details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressSuggestion"
+        "422":
+          description: Invalid place
         "502":
           description: Geocoding provider could not complete the request
         "503":
@@ -615,6 +659,30 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AppUser"
+  /access/invites:
+    post:
+      operationId: inviteAccessUser
+      tags: [access]
+      summary: Pre-register an account with its role and e-mail an invite link to choose a password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessInviteInput"
+      responses:
+        "201":
+          description: Invite sent; the account is ready with this role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
+        "400":
+          description: Invalid invite data
+        "409":
+          description: This e-mail already has an active login
+        "502":
+          description: The invite e-mail could not be sent
   /access/users/{userId}:
     patch:
       operationId: updateAccessUser
@@ -1270,6 +1338,14 @@ components:
         routeContinues: { type: boolean }
         priority: { type: boolean }
         affectedDeliveries: { type: integer, minimum: 1 }
+    AddressPrediction:
+      type: object
+      required: [placeId, text, mainText, secondaryText]
+      properties:
+        placeId: { type: string }
+        text: { type: string }
+        mainText: { type: string }
+        secondaryText: { type: ["string", "null"] }
     AddressSuggestion:
       type: object
       required: [formatted, street, houseNumber, suburb, district, city, stateCode, postcode, latitude, longitude]
@@ -1351,6 +1427,16 @@ components:
           enum: [ADMIN, CENTRAL, STORE_MANAGER, STORE_STAFF, COURIER, PENDING]
         storeId: { type: ["string", "null"] }
         courierId: { type: ["string", "null"] }
+    AccessInviteInput:
+      type: object
+      required: [email, name, role, redirectTo]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        name: { type: string, minLength: 2, maxLength: 120 }
+        role: { type: string, enum: [ADMIN, STORE_MANAGER, COURIER] }
+        storeId: { type: ["string", "null"] }
+        phone: { type: ["string", "null"], maxLength: 30 }
+        redirectTo: { type: string, maxLength: 300, description: Page of the app that opens from the invite link }
     UserRoleInput:
       type: object
       required: [role]

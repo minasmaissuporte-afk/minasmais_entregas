@@ -7,7 +7,10 @@
  */
 
 export * from './acceptCourierRouteInput';
+export * from './accessInviteInput';
+export * from './accessInviteInputRole';
 export * from './activeOperationsRoute';
+export * from './addressPrediction';
 export * from './addressSuggestion';
 export * from './appUser';
 export * from './appUserRole';
@@ -61,6 +64,7 @@ export * from './demoDataCleanupInputConfirmation';
 export * from './demoDataCleanupSummary';
 export * from './dispatchInput';
 export * from './dispatchInputMode';
+export * from './getAddressDetailsParams';
 export * from './getCourierEarningsParams';
 export * from './getCourierEarningsPeriod';
 export * from './getDeliveryAnalyticsParams';

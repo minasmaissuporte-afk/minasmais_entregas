@@ -89,7 +89,6 @@ export default function CourierDeliveryNavigation({
           routeGeometry={data?.routeGeometry}
           ariaLabel={`Rota do motoboy até ${data?.targetLabel.toLowerCase() ?? delivery.customerName.toLowerCase()}`}
           size="full-screen"
-          interactive={false}
           routeColor="#E20210"
           fitBehindBottomPanel
           fitPadding={fitPadding}
@@ -142,7 +141,7 @@ export default function CourierDeliveryNavigation({
             ) : delivery.customerPhone && whatsappDigits ? (
               <div className="courier-route-map-screen__actions courier-route-map-screen__actions--secondary">
                 <a className="button-secondary min-h-12 flex-1 justify-center" href={`tel:${delivery.customerPhone}`} aria-label="Telefone do cliente" title="Telefone">
-                  <Phone size={18} />
+                  <Phone size={20} aria-hidden="true" /> <span>Ligar</span>
                 </a>
                 <a
                   className="button-secondary min-h-12 flex-1 justify-center"
@@ -152,7 +151,7 @@ export default function CourierDeliveryNavigation({
                   aria-label="WhatsApp do cliente"
                   title="WhatsApp"
                 >
-                  <MessageCircle size={18} />
+                  <MessageCircle size={20} aria-hidden="true" /> <span>WhatsApp</span>
                 </a>
               </div>
             ) : null}

@@ -61,12 +61,6 @@ export class MapsApiError extends Error {
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
-// Retângulo que cobre o território brasileiro: restringe a busca de endereços ao país.
-const BRAZIL_BOUNDS = {
-  low: { latitude: -33.9, longitude: -74.1 },
-  high: { latitude: 5.4, longitude: -34.7 },
-};
-
 function apiKey() {
   const key = process.env.GOOGLE_MAPS_API_KEY?.trim();
   if (!key) {
@@ -155,81 +149,240 @@ function component(
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+export type AddressPrediction = {
+  placeId: string;
+  text: string;
+  mainText: string;
+  secondaryText: string | null;
+};
+
+export type SearchBias = { center: Coordinate; radiusMeters: number; cities: string[] } | null;
+
+const normalize = (value: string) =>
+  value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/** Tipos de previsão que são endereço (rua, número, CEP, bairro), não empresas. */
+const ADDRESS_TYPES = new Set([
+  "geocode",
+  "route",
+  "street_address",
+  "premise",
+  "subpremise",
+  "postal_code",
+  "sublocality",
+  "neighborhood",
+]);
+
+/**
+ * Sugestões enquanto a pessoa digita (Places API New — Autocomplete).
+ * Rápido (~0,2 s) e devolve a rua sem número quando o número não foi digitado.
+ * As coordenadas vêm depois, em addressDetails, só para a sugestão escolhida.
+ * Obs.: o Text Search com locationRestriction retangular passou a responder 503
+ * depois de 10 s; o Autocomplete com locationBias não tem esse problema.
+ */
 export async function autocompleteAddresses(
   query: string,
-): Promise<AddressSuggestion[]> {
+  options: { bias?: SearchBias; sessionToken?: string } = {},
+): Promise<AddressPrediction[]> {
+  const body: Record<string, unknown> = {
+    input: query,
+    languageCode: "pt-BR",
+    regionCode: "BR",
+    includedRegionCodes: ["br"],
+  };
+  if (options.bias) {
+    body.locationBias = {
+      circle: { center: options.bias.center, radius: options.bias.radiusMeters },
+    };
+    body.origin = options.bias.center;
+  }
+  if (options.sessionToken) body.sessionToken = options.sessionToken;
+
   const response = await request(
-    "https://places.googleapis.com/v1/places:searchText",
+    "https://places.googleapis.com/v1/places:autocomplete",
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey(),
         "X-Goog-FieldMask":
-          "places.formattedAddress,places.location,places.addressComponents",
+          "suggestions.placePrediction.placeId,suggestions.placePrediction.text.text,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.types",
       },
-      body: JSON.stringify({
-        textQuery: query,
-        languageCode: "pt-BR",
-        regionCode: "BR",
-        pageSize: 5,
-        locationRestriction: { rectangle: BRAZIL_BOUNDS },
-      }),
+      body: JSON.stringify(body),
     },
     "Não foi possível consultar o Google Maps agora.",
+    8_000,
   );
   const payload = await readJson(response, "buscar endereços");
-  const places = Array.isArray(payload.places) ? payload.places : [];
-
-  const suggestions = places.flatMap((value) => {
-    const place = asRecord(value);
-    const location = asRecord(place?.location);
-    const coordinate = validCoordinate(location?.latitude, location?.longitude);
-    const rawFormatted =
-      typeof place?.formattedAddress === "string" ? place.formattedAddress.trim() : "";
-    if (!place || !coordinate || !rawFormatted) return [];
-
-    const components = (
-      Array.isArray(place.addressComponents) ? place.addressComponents : []
-    ) as AddressComponent[];
-    // O Text Search devolve endereços de empresas ("sala 26", "loja 01/05", "15° andar").
-    // Esse complemento é da empresa, não do cliente: some da sugestão.
-    const formatted = withoutSubpremise(rawFormatted, component(components, "subpremise"));
+  const suggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
+  const seen = new Set<string>();
+  const ranked: (AddressPrediction & { near: boolean })[] = suggestions.flatMap((value) => {
+    const prediction = asRecord(asRecord(value)?.placePrediction);
+    const placeId = typeof prediction?.placeId === "string" ? prediction.placeId : "";
+    const text = asRecord(prediction?.text)?.text;
+    if (!placeId || typeof text !== "string" || !text.trim()) return [];
+    const types = Array.isArray(prediction?.types) ? (prediction.types as string[]) : [];
+    if (types.length && !types.some((type) => ADDRESS_TYPES.has(type))) return [];
+    const structured = asRecord(prediction?.structuredFormat);
+    const mainText = asRecord(structured?.mainText)?.text;
+    const secondaryText = asRecord(structured?.secondaryText)?.text;
+    const cleanText = text.replace(/, Brasil$/, "").trim();
+    const key = cleanText.toLocaleLowerCase("pt-BR");
+    if (seen.has(key)) return [];
+    seen.add(key);
     return [{
-      formatted,
-      street: component(components, "route"),
-      houseNumber: component(components, "street_number"),
-      suburb:
-        component(components, "sublocality_level_1") ??
-        component(components, "sublocality") ??
-        component(components, "neighborhood"),
-      district: component(components, "sublocality_level_2"),
-      city:
-        component(components, "administrative_area_level_2") ??
-        component(components, "locality"),
-      stateCode: component(components, "administrative_area_level_1", "shortText"),
-      postcode: component(components, "postal_code"),
-      ...coordinate,
+      near: (options.bias?.cities ?? []).some((city) => normalize(cleanText).includes(normalize(city))),
+      placeId,
+      text: cleanText,
+      mainText: typeof mainText === "string" && mainText.trim() ? mainText.trim() : cleanText,
+      secondaryText:
+        typeof secondaryText === "string" && secondaryText.trim()
+          ? secondaryText.replace(/, Brasil$/, "").trim()
+          : null,
     }];
   });
+  // Endereços na cidade das filiais primeiro (o Google às vezes põe a capital na frente).
+  const predictions: AddressPrediction[] = [
+    ...ranked.filter((item) => item.near),
+    ...ranked.filter((item) => !item.near),
+  ].map(({ near: _near, ...item }) => item);
 
-  // Sem resultado (o Text Search não entende CEP sozinho, por exemplo): tenta a Geocoding API.
-  if (!suggestions.length) return geocodeSuggestions(query);
-  const seen = new Set<string>();
-  return suggestions.filter((item) => {
-    const key = item.formatted.toLocaleLowerCase("pt-BR");
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // O Autocomplete às vezes não entende CEP sozinho: tenta a Geocoding API.
+  if (!predictions.length) {
+    return (await geocodeSuggestions(query)).map((item) => ({
+      placeId: item.placeId,
+      text: item.formatted,
+      mainText: item.street ?? item.formatted,
+      secondaryText:
+        [item.suburb, item.city && item.stateCode ? `${item.city} - ${item.stateCode}` : item.city]
+          .filter(Boolean)
+          .join(", ") || null,
+    }));
+  }
+  return predictions.slice(0, 6);
 }
 
-function withoutSubpremise(formatted: string, subpremise: string | null) {
-  if (!subpremise) return formatted;
-  return formatted
-    .split(" - ")
-    .filter((part) => part.trim().toLocaleLowerCase("pt-BR") !== subpremise.toLocaleLowerCase("pt-BR"))
-    .join(" - ");
+function joinAddress(parts: {
+  street: string | null;
+  houseNumber: string | null;
+  suburb: string | null;
+  city: string | null;
+  stateCode: string | null;
+  postcode: string | null;
+}) {
+  const streetPart = [parts.street, parts.houseNumber].filter(Boolean).join(", ");
+  const cityPart = [parts.city, parts.stateCode].filter(Boolean).join(" - ");
+  return [[streetPart, parts.suburb].filter(Boolean).join(" - "), cityPart, parts.postcode]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/**
+ * Endereço completo e coordenadas da sugestão escolhida (Place Details).
+ * Com `houseNumber`, procura a posição exata do número na rua (Geocoding);
+ * se o Google não souber o número, mantém o ponto da rua.
+ */
+export async function addressDetails(
+  placeId: string,
+  options: { houseNumber?: string; sessionToken?: string } = {},
+): Promise<AddressSuggestion> {
+  const url = new URL(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`);
+  url.searchParams.set("languageCode", "pt-BR");
+  url.searchParams.set("regionCode", "BR");
+  if (options.sessionToken) url.searchParams.set("sessionToken", options.sessionToken);
+  const response = await request(
+    url,
+    {
+      headers: {
+        "X-Goog-Api-Key": apiKey(),
+        "X-Goog-FieldMask": "formattedAddress,location,addressComponents",
+      },
+    },
+    "Não foi possível consultar o Google Maps agora.",
+    8_000,
+  );
+  const place = await readJson(response, "carregar o endereço");
+  const location = asRecord(place.location);
+  const coordinate = validCoordinate(location?.latitude, location?.longitude);
+  if (!coordinate) throw new MapsApiError("O Google Maps não devolveu a posição deste endereço.");
+  const components = (
+    Array.isArray(place.addressComponents) ? place.addressComponents : []
+  ) as AddressComponent[];
+
+  const base = {
+    street: component(components, "route"),
+    houseNumber: component(components, "street_number"),
+    suburb:
+      component(components, "sublocality_level_1") ??
+      component(components, "sublocality") ??
+      component(components, "neighborhood"),
+    district: component(components, "sublocality_level_2"),
+    city:
+      component(components, "administrative_area_level_2") ??
+      component(components, "locality"),
+    stateCode: component(components, "administrative_area_level_1", "shortText"),
+    postcode: component(components, "postal_code"),
+  };
+  let result: AddressSuggestion = { ...base, formatted: joinAddress(base), ...coordinate };
+
+  const houseNumber = options.houseNumber?.trim();
+  if (houseNumber && base.street && houseNumber !== base.houseNumber) {
+    result = { ...result, houseNumber, formatted: joinAddress({ ...base, houseNumber }) };
+    // "s/n" não tem posição própria: fica o ponto da rua.
+    if (/^\d+[a-z]?$/i.test(houseNumber)) {
+      const precise = await geocodeHouseNumber({ ...base, houseNumber }).catch(() => null);
+      if (precise) {
+        result = {
+          ...result,
+          latitude: precise.latitude,
+          longitude: precise.longitude,
+          postcode: precise.postcode ?? result.postcode,
+          // Avenidas longas não têm bairro único: o número diz qual é.
+          suburb: result.suburb ?? precise.suburb,
+        };
+        result.formatted = joinAddress(result);
+      }
+    }
+  }
+  return result;
+}
+
+async function geocodeHouseNumber(parts: {
+  street: string | null;
+  houseNumber: string;
+  suburb: string | null;
+  city: string | null;
+  stateCode: string | null;
+}): Promise<(Coordinate & { postcode: string | null; suburb: string | null }) | null> {
+  const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+  url.searchParams.set(
+    "address",
+    `${parts.street}, ${parts.houseNumber} - ${parts.suburb ?? ""}, ${parts.city ?? ""} - ${parts.stateCode ?? ""}`,
+  );
+  url.searchParams.set("components", "country:BR");
+  url.searchParams.set("language", "pt-BR");
+  url.searchParams.set("region", "br");
+  url.searchParams.set("key", apiKey());
+  const response = await request(url, {}, "Não foi possível consultar o Google Maps agora.", 6_000);
+  const payload = await readJson(response, "localizar o número");
+  if (payload.status !== "OK") return null;
+  const first = asRecord(Array.isArray(payload.results) ? payload.results[0] : null);
+  const components = (
+    Array.isArray(first?.address_components) ? first.address_components : []
+  ) as GeocodeComponent[];
+  // Só aceita quando o Google achou este número nesta rua (e não o centro da cidade).
+  if (geocodeComponent(components, "street_number") !== parts.houseNumber) return null;
+  const location = asRecord(asRecord(first?.geometry)?.location);
+  const coordinate = validCoordinate(location?.lat, location?.lng);
+  if (!coordinate) return null;
+  return {
+    ...coordinate,
+    postcode: geocodeComponent(components, "postal_code"),
+    suburb:
+      geocodeComponent(components, "sublocality_level_1") ??
+      geocodeComponent(components, "sublocality") ??
+      geocodeComponent(components, "neighborhood"),
+  };
 }
 
 const CEP_PATTERN = /^\s*(\d{5})-?(\d{3})\s*$/;
@@ -240,8 +393,8 @@ function geocodeComponent(components: GeocodeComponent[], type: string, variant:
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-/** Sugestões pela Geocoding API — usada para CEP e quando o Text Search não acha nada. */
-async function geocodeSuggestions(query: string): Promise<AddressSuggestion[]> {
+/** Sugestões pela Geocoding API — usada para CEP e quando o Autocomplete não acha nada. */
+async function geocodeSuggestions(query: string): Promise<(AddressSuggestion & { placeId: string })[]> {
   const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
   const cep = query.match(CEP_PATTERN);
   if (cep) {
@@ -262,7 +415,8 @@ async function geocodeSuggestions(query: string): Promise<AddressSuggestion[]> {
     const location = asRecord(asRecord(result?.geometry)?.location);
     const coordinate = validCoordinate(location?.lat, location?.lng);
     const formatted = typeof result?.formatted_address === "string" ? result.formatted_address.trim() : "";
-    if (!result || !coordinate || !formatted) return [];
+    const placeId = typeof result?.place_id === "string" ? result.place_id : "";
+    if (!result || !coordinate || !formatted || !placeId) return [];
     const components = (Array.isArray(result.address_components) ? result.address_components : []) as GeocodeComponent[];
     return [{
       formatted,
@@ -278,6 +432,7 @@ async function geocodeSuggestions(query: string): Promise<AddressSuggestion[]> {
         geocodeComponent(components, "locality"),
       stateCode: geocodeComponent(components, "administrative_area_level_1", "short_name"),
       postcode: geocodeComponent(components, "postal_code"),
+      placeId,
       ...coordinate,
     }];
   });

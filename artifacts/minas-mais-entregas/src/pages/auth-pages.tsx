@@ -474,3 +474,90 @@ export function PasswordRecoveryRedirect() {
   if (passwordRecovery && location !== "/redefinir-senha") return <Redirect to="/redefinir-senha" />;
   return null;
 }
+
+/**
+ * Página do link de convite. O e-mail "Invite user" do Supabase traz
+ * `?token_hash=…&type=invite`: aqui o token vira sessão e a pessoa escolhe a senha.
+ * Funciona em qualquer aparelho (não depende do navegador que pediu o convite).
+ */
+export function AcceptInvitePage() {
+  const { isLoaded, isSignedIn, user } = useAuth();
+  const [, setLocation] = useLocation();
+  const [verifying, setVerifying] = useState(() => new URLSearchParams(window.location.search).has("token_hash"));
+  const [linkError, setLinkError] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenHash = params.get("token_hash");
+    if (!tokenHash) return;
+    const type = params.get("type") === "magiclink" ? "magiclink" : "invite";
+    let active = true;
+    void supabase.auth.verifyOtp({ token_hash: tokenHash, type }).then(({ error: verifyError }) => {
+      if (!active) return;
+      // Tira o token do endereço (não fica no histórico nem é reaproveitado).
+      window.history.replaceState(null, "", window.location.pathname);
+      if (verifyError) setLinkError(authErrorMessage(verifyError, "Este convite é inválido ou já expirou."));
+      setVerifying(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!isLoaded || verifying) {
+    return <AuthLayout title="Abrindo o convite…"><div className="skeleton h-12 w-full" /></AuthLayout>;
+  }
+  if (!isSignedIn) {
+    return (
+      <AuthLayout title="Convite inválido ou expirado" back={{ href: "/sign-in", label: "Ir para entrar" }}>
+        <p className="text-sm text-muted-foreground">
+          {linkError || "Este link já foi usado ou expirou."} Peça ao administrador para reenviar o convite.
+          Se você já criou a senha, é só entrar com o seu e-mail.
+        </p>
+        <Link href="/sign-in" className="button-primary mt-5 min-h-12 w-full justify-center text-sm">Entrar</Link>
+      </AuthLayout>
+    );
+  }
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    if (password.length < 8) return setError("A senha precisa ter pelo menos 8 caracteres.");
+    if (password !== confirmation) return setError("A confirmação não corresponde à senha.");
+    setBusy(true);
+    const { error: updateError } = await supabase.auth.updateUser({ password, data: { [HAS_PASSWORD_FLAG]: true } });
+    setBusy(false);
+    if (updateError) setError(authErrorMessage(updateError, "Não foi possível salvar a senha. Tente de novo."));
+    else setLocation("/user-portal");
+  };
+
+  return (
+    <AuthLayout title="Bem-vindo à Minas Mais" subtitle="Crie sua senha para entrar. Ela precisa ter pelo menos 8 caracteres.">
+      <form className="space-y-4" onSubmit={submit}>
+        {user?.email && (
+          <p className="rounded-lg bg-[#f7f6f4] px-3 py-2.5 text-sm text-[#3f4248]">
+            Conta: <strong className="break-all">{user.email}</strong>
+          </p>
+        )}
+        <TextField label="Senha" type="password" autoComplete="new-password" minLength={8} required autoFocus value={password} onChange={(event) => setPassword(event.target.value)} data-testid="input-invite-password" />
+        <TextField label="Confirmar senha" type="password" autoComplete="new-password" minLength={8} required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
+        <FormError message={error} />
+        <SubmitButton busy={busy} busyLabel="Salvando…"><KeyRound size={16} /> Criar senha e entrar</SubmitButton>
+      </form>
+    </AuthLayout>
+  );
+}
+
+/** Se o link do convite cair na página inicial (Site URL), leva para a página certa. */
+export function InviteLinkRedirect() {
+  const [location] = useLocation();
+  const params = new URLSearchParams(window.location.search);
+  if (location !== "/aceitar-convite" && params.has("token_hash") && params.get("type") === "invite") {
+    return <Redirect to={`/aceitar-convite${window.location.search}`} />;
+  }
+  return null;
+}

@@ -897,25 +897,54 @@ export const DeleteStoreResponse = zod.void()
 
 
 /**
- * @summary Search Brazilian addresses through Google Maps (Places API)
+ * @summary Suggest Brazilian streets/addresses (Places Autocomplete), biased to the stores' region
  */
 export const autocompleteAddressesQueryTextoMin = 3;
+
+export const autocompleteAddressesQuerySessaoMax = 64;
 
 
 
 export const AutocompleteAddressesQueryParams = zod.object({
-  "texto": zod.coerce.string().min(autocompleteAddressesQueryTextoMin)
+  "texto": zod.coerce.string().min(autocompleteAddressesQueryTextoMin),
+  "sessao": zod.coerce.string().max(autocompleteAddressesQuerySessaoMax).optional()
 })
 
-export const autocompleteAddressesResponseLatitudeMin = -90;
-export const autocompleteAddressesResponseLatitudeMax = 90;
-
-export const autocompleteAddressesResponseLongitudeMin = -180;
-export const autocompleteAddressesResponseLongitudeMax = 180;
-
-
-
 export const AutocompleteAddressesResponseItem = zod.object({
+  "placeId": zod.string(),
+  "text": zod.string(),
+  "mainText": zod.string(),
+  "secondaryText": zod.string().nullable()
+})
+export const AutocompleteAddressesResponse = zod.array(AutocompleteAddressesResponseItem)
+
+
+/**
+ * @summary Full address and coordinates for a chosen prediction (optionally at a house number)
+ */
+export const getAddressDetailsQueryPlaceIdMax = 512;
+
+export const getAddressDetailsQueryNumeroMax = 20;
+
+export const getAddressDetailsQuerySessaoMax = 64;
+
+
+
+export const GetAddressDetailsQueryParams = zod.object({
+  "placeId": zod.coerce.string().min(1).max(getAddressDetailsQueryPlaceIdMax),
+  "numero": zod.coerce.string().max(getAddressDetailsQueryNumeroMax).optional(),
+  "sessao": zod.coerce.string().max(getAddressDetailsQuerySessaoMax).optional()
+})
+
+export const getAddressDetailsResponseLatitudeMin = -90;
+export const getAddressDetailsResponseLatitudeMax = 90;
+
+export const getAddressDetailsResponseLongitudeMin = -180;
+export const getAddressDetailsResponseLongitudeMax = 180;
+
+
+
+export const GetAddressDetailsResponse = zod.object({
   "formatted": zod.string(),
   "street": zod.string().nullable(),
   "houseNumber": zod.string().nullable(),
@@ -924,10 +953,9 @@ export const AutocompleteAddressesResponseItem = zod.object({
   "city": zod.string().nullable(),
   "stateCode": zod.string().nullable(),
   "postcode": zod.string().nullable(),
-  "latitude": zod.number().min(autocompleteAddressesResponseLatitudeMin).max(autocompleteAddressesResponseLatitudeMax),
-  "longitude": zod.number().min(autocompleteAddressesResponseLongitudeMin).max(autocompleteAddressesResponseLongitudeMax)
+  "latitude": zod.number().min(getAddressDetailsResponseLatitudeMin).max(getAddressDetailsResponseLatitudeMax),
+  "longitude": zod.number().min(getAddressDetailsResponseLongitudeMin).max(getAddressDetailsResponseLongitudeMax)
 })
-export const AutocompleteAddressesResponse = zod.array(AutocompleteAddressesResponseItem)
 
 
 /**
@@ -1024,6 +1052,43 @@ export const ListAccessUsersResponseItem = zod.object({
   "courierId": zod.string().nullable()
 })
 export const ListAccessUsersResponse = zod.array(ListAccessUsersResponseItem)
+
+
+/**
+ * @summary Pre-register an account with its role and e-mail an invite link to choose a password
+ */
+export const inviteAccessUserBodyEmailMax = 254;
+
+export const inviteAccessUserBodyNameMin = 2;
+export const inviteAccessUserBodyNameMax = 120;
+
+export const inviteAccessUserBodyPhoneMax = 30;
+
+export const inviteAccessUserBodyRedirectToMax = 300;
+
+
+
+export const InviteAccessUserBody = zod.object({
+  "email": zod.string().email().max(inviteAccessUserBodyEmailMax),
+  "name": zod.string().min(inviteAccessUserBodyNameMin).max(inviteAccessUserBodyNameMax),
+  "role": zod.enum(['ADMIN', 'STORE_MANAGER', 'COURIER']),
+  "storeId": zod.string().nullish(),
+  "phone": zod.string().max(inviteAccessUserBodyPhoneMax).nullish(),
+  "redirectTo": zod.string().max(inviteAccessUserBodyRedirectToMax).describe('Page of the app that opens from the invite link')
+})
+
+export const InviteAccessUserResponse = zod.object({
+  "id": zod.string(),
+  "authUserId": zod.string().nullable(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "phone": zod.string().nullish(),
+  "storeName": zod.string().nullish(),
+  "courierStatus": zod.string().nullish(),
+  "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
+  "storeId": zod.string().nullable(),
+  "courierId": zod.string().nullable()
+})
 
 
 /**

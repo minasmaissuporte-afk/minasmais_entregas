@@ -97,7 +97,6 @@ export default function CourierRouteMapTab({
           routeGeometry={route.routeGeometry}
           ariaLabel="Mapa da rota ativa com a localização do motoboy"
           size="full-screen"
-          interactive={false}
           routeColor="#E20210"
           fitBehindBottomPanel
           fitPadding={fitPadding}
@@ -150,10 +149,10 @@ export default function CourierRouteMapTab({
         {phone && whatsappDigits && (
           <div className="courier-route-map-screen__actions courier-route-map-screen__actions--secondary">
             <a className="button-secondary min-h-12 flex-1 justify-center" href={`tel:${phone}`} aria-label="Telefone do cliente" title="Telefone">
-              <Phone size={18} />
+              <Phone size={20} aria-hidden="true" /> <span>Ligar</span>
             </a>
             <a className="button-secondary min-h-12 flex-1 justify-center" href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noreferrer" aria-label="WhatsApp do cliente" title="WhatsApp">
-              <MessageCircle size={18} />
+              <MessageCircle size={20} aria-hidden="true" /> <span>WhatsApp</span>
             </a>
           </div>
         )}

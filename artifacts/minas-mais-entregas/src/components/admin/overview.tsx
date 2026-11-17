@@ -20,7 +20,7 @@ import {
   Bike,
   Calendar,
   ChevronRight,
-  Download,
+  FilePlus2,
   Layers,
   Maximize2,
   RefreshCw,
@@ -119,7 +119,7 @@ function storeCityLabel(stores: Store[]) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 }
 
-export default function AdminOverview() {
+export default function AdminOverview({ onNewDelivery }: { onNewDelivery?: () => void }) {
   const [location] = useLocation();
   const [autoRefresh, setAutoRefresh] = useState(() => {
     try {
@@ -185,9 +185,16 @@ export default function AdminOverview() {
                 </select>
               </label>
             </div>
-            <Link href="/reports" className="adm-action adm-action--secondary !min-h-[34px] !rounded-[7px] !px-3 !text-[11px] !font-medium">
-              <Download size={16} aria-hidden="true" /> Exportar relatório
-            </Link>
+            {onNewDelivery && (
+              <button
+                type="button"
+                className="button-primary min-h-11 px-5 text-sm"
+                onClick={onNewDelivery}
+                data-testid="button-overview-new-delivery"
+              >
+                <FilePlus2 size={17} aria-hidden="true" /> Nova entrega
+              </button>
+            )}
           </div>
         </div>
 
