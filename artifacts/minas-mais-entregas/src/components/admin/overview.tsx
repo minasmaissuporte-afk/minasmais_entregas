@@ -23,6 +23,7 @@ import {
   FilePlus2,
   Layers,
   Maximize2,
+  Minimize2,
   RefreshCw,
   ShieldCheck,
   SignalLow,
@@ -301,7 +302,7 @@ export default function AdminOverview({ onNewDelivery }: { onNewDelivery?: () =>
   );
 }
 
-function LiveChip({ hasError, lastUpdatedAt }: { hasError: boolean; lastUpdatedAt: number | null }) {
+export function LiveChip({ hasError, lastUpdatedAt }: { hasError: boolean; lastUpdatedAt: number | null }) {
   if (hasError) {
     return (
       <span className="inline-flex h-[25px] items-center gap-2 rounded-full bg-[var(--adm-warning-bg)] px-3 text-[11px] font-medium text-[#6b4a00]" role="status">
@@ -324,16 +325,22 @@ export function OperationMap({
   filters = emptyFilters,
   now,
   tall = false,
+  hero = false,
   onClearFilters,
 }: {
   data: ReturnType<typeof useOperationsData>;
   filters?: OverviewFilters;
   now: number;
   tall?: boolean;
+  /** Mapa grande no topo da página de entregas. */
+  hero?: boolean;
   onClearFilters?: () => void;
 }) {
   const [layers, setLayers] = useState({ couriers: true, stores: true, route: true });
   const [layersOpen, setLayersOpen] = useState(false);
+  // Aumenta o mapa na própria página (a aba "Mapa em tempo real" saiu do menu).
+  const [expanded, setExpanded] = useState(false);
+  const isTall = tall || expanded;
   const deliveries = data.deliveries.data ?? [];
   const couriers = (data.couriers.data ?? []).filter((courier) => !filters.courierId || courier.id === filters.courierId);
   const stores = (data.stores.data ?? []).filter((store) => !filters.storeId || store.id === filters.storeId);
@@ -393,9 +400,16 @@ export function OperationMap({
           <div className="flex items-center gap-4">
             {city && <span className="hidden text-[12px] text-[var(--adm-muted)] sm:inline">{city}</span>}
             {!tall && (
-              <Link href="/mapa" className="adm-icon-button" aria-label="Abrir mapa em tela cheia" title="Abrir mapa em tempo real">
-                <Maximize2 size={18} aria-hidden="true" />
-              </Link>
+              <button
+                type="button"
+                className="adm-icon-button"
+                onClick={() => setExpanded((value) => !value)}
+                aria-pressed={expanded}
+                aria-label={expanded ? "Diminuir o mapa" : "Aumentar o mapa"}
+                title={expanded ? "Diminuir o mapa" : "Aumentar o mapa"}
+              >
+                {expanded ? <Minimize2 size={18} aria-hidden="true" /> : <Maximize2 size={18} aria-hidden="true" />}
+              </button>
             )}
           </div>
         }
@@ -423,7 +437,7 @@ export function OperationMap({
           action={<ActionButton variant="secondary" onClick={onClearFilters}>Limpar filtros</ActionButton>}
         />
       ) : (
-        <div className={`adm-map-frame relative border-t border-[var(--adm-border)] ${tall ? "adm-map-frame--tall" : ""}`}>
+        <div className={`adm-map-frame relative border-t border-[var(--adm-border)] ${isTall ? "adm-map-frame--tall" : hero ? "adm-map-frame--hero" : ""}`}>
           <LiveMap
             markers={markers}
             routeGeometry={routeGeometry}
@@ -484,7 +498,7 @@ export function OperationMap({
 
 /* -------------------------------------------------------------- Alertas */
 
-function OperationAlerts({
+export function OperationAlerts({
   deliveries,
   couriers,
   occurrences,
@@ -587,6 +601,7 @@ export function ActiveCouriers({
   isError,
   onRetry,
   full = false,
+  bar = false,
 }: {
   couriers: Courier[];
   deliveries: Delivery[];
@@ -595,6 +610,8 @@ export function ActiveCouriers({
   isError: boolean;
   onRetry: () => void;
   full?: boolean;
+  /** Faixa larga abaixo do mapa: os motoboys lado a lado. */
+  bar?: boolean;
 }) {
   const [tab, setTab] = useState<"busy" | "available" | "offline">("busy");
   const stats = courierMetrics(couriers, now);
@@ -605,7 +622,7 @@ export function ActiveCouriers({
     ["available", "Disponíveis", stats.available.length],
     ...(full ? [["offline", "Offline", stats.offline.length] as const] : []),
   ] as const;
-  const rows = full ? lists[tab] : lists[tab].slice(0, 4);
+  const rows = full ? lists[tab] : lists[tab].slice(0, bar ? 6 : 4);
 
   return (
     <Card aria-labelledby="couriers-title">
@@ -638,7 +655,7 @@ export function ActiveCouriers({
             <div className="mt-3"><ActionButton variant="secondary" onClick={onRetry}>Tentar novamente</ActionButton></div>
           </div>
         ) : rows.length ? (
-          <ul>
+          <ul className={bar ? "grid gap-2 py-2 sm:grid-cols-2 xl:grid-cols-3" : undefined}>
             {rows.map((courier, index) => {
               const current = courier.currentDeliveryCode ? deliveryByCode.get(courier.currentDeliveryCode) : undefined;
               const late = current ? isDelayed(current, now) : false;
@@ -652,7 +669,7 @@ export function ActiveCouriers({
                     : { tone: "success" as const, label: "Disponível" };
               const age = courierAgeMs(courier, now);
               return (
-                <li key={courier.id} className={`flex items-start gap-3 py-2 ${index > 0 ? "border-t border-[var(--adm-chip)]" : ""}`}>
+                <li key={courier.id} className={bar ? "flex items-start gap-3 rounded-[10px] border border-[var(--adm-border)] p-3" : `flex items-start gap-3 py-2 ${index > 0 ? "border-t border-[var(--adm-chip)]" : ""}`}>
                   <span className={`mt-0.5 grid size-[34px] shrink-0 place-items-center rounded-[9px] ${late ? "bg-[var(--adm-danger-bg)] text-[var(--adm-primary)]" : "bg-[var(--adm-chip)] text-[var(--adm-muted)]"}`} aria-hidden="true">
                     <Bike size={20} strokeWidth={1.75} />
                   </span>

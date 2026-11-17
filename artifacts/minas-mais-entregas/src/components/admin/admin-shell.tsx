@@ -16,7 +16,6 @@ import {
   KeyRound,
   LayoutGrid,
   LogOut,
-  Map as MapIcon,
   Menu,
   Package,
   PanelLeft,
@@ -102,9 +101,7 @@ export default function AdminShell({ profile, children }: { profile: AppUser; ch
 
   const isAdmin = profile.role === "ADMIN";
   const nav: NavItem[] = [
-    { href: "/", label: "Visão Geral", icon: LayoutGrid, match: (path) => path === "/" || path === "/user-portal" },
-    { href: "/entregas", label: "Entregas", icon: Package, match: (path) => path === "/entregas" || path.startsWith("/deliveries/"), count: awaitingCount },
-    { href: "/mapa", label: "Mapa em Tempo Real", icon: MapIcon, match: (path) => path === "/mapa" },
+    { href: "/", label: "Entregas", icon: Package, match: (path) => path === "/" || path === "/user-portal" || path === "/entregas" || path.startsWith("/deliveries/"), count: awaitingCount },
     { href: "/motoboys", label: "Motoboys", icon: Bike, match: (path) => path === "/motoboys" },
     ...(isAdmin ? [{ href: "/filiais", label: "Filiais", icon: Store, match: (path: string) => path === "/filiais" }] : []),
     { href: "/reports", label: "Relatórios", icon: ChartColumn, match: (path) => path === "/reports" },

@@ -53,14 +53,16 @@ import EvidencePhotoAction from '@/components/evidence-photo-action';
 import EvidencePhotoViewer from '@/components/evidence-photo-viewer';
 import AccountSecurityPage from '@/pages/account-security';
 import CancellationAlertsPanel from '@/components/cancellation-alerts-panel';
+import { ActiveCouriers, LiveChip, OperationAlerts, OperationMap, useOperationsData } from '@/components/admin/overview';
+import { Indicator } from '@/components/admin/admin-ui';
+import { courierMetrics, deliveryMetrics } from '@/lib/operations';
 import { Capacitor } from '@capacitor/core';
 import { Network } from '@capacitor/network';
 import NativeCourierSetupGate from '@/components/native-courier-setup';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { AcceptInvitePage, ForgotPasswordPage, InviteLinkRedirect, PasswordRecoveryRedirect, ResetPasswordPage, SignInPage, SignUpPage } from '@/pages/auth-pages';
 import AdminShell from '@/components/admin/admin-shell';
-import AdminOverview from '@/components/admin/overview';
-import { CouriersPage, LiveMapPage } from '@/components/admin/admin-pages';
+import { CouriersPage } from '@/components/admin/admin-pages';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -695,8 +697,6 @@ function DeleteDeliveryModal({
 
 function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: boolean }) {
   const [showCreate, setShowCreate] = useState(false);
-  const [selectedCourierId, setSelectedCourierId] = useState('');
-  const [selectedRouteId, setSelectedRouteId] = useState('');
   const [dispatchId, setDispatchId] = useState<string | null>(null);
   const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<string[]>([]);
   const [routeFeedback, setRouteFeedback] = useState<FeedbackMessage | null>(null);
@@ -712,19 +712,15 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; code: string } | null>(null);
   const qc = useQueryClient();
   const createDeliveryRoute = useCreateDeliveryRoute();
-  const summary = useGetDashboardSummary({ query: { refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
   const stores = useListStores({ query: { queryKey: getListStoresQueryKey() } });
-  const activeRoutes = useListActiveRoutes({ query: { queryKey: getListActiveRoutesQueryKey(), refetchInterval: 15000, refetchOnWindowFocus: true } });
-  const couriers = useListCouriers(undefined, { query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
   const params = useMemo(() => ({ ...(status ? { status } : {}), ...(search ? { search } : {}), ...(storeId ? { storeId } : {}) }), [status, search, storeId]);
   const deliveries = useListDeliveries(params, { query: { refetchInterval: 15000, refetchIntervalInBackground: false, refetchOnWindowFocus: true } });
   const [now, setNow] = useState(() => Date.now());
   const refreshDashboard = () => Promise.all([
-    summary.refetch(),
-    couriers.refetch(),
     deliveries.refetch(),
-    activeRoutes.refetch(),
+    opsRef.current?.refetchAll(),
   ]);
+  const opsRef = useRef<ReturnType<typeof useOperationsData> | null>(null);
   const refreshDashboardRef = useRef(refreshDashboard);
   refreshDashboardRef.current = refreshDashboard;
   useEffect(() => {
@@ -771,178 +767,101 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
       onError: error => setRouteFeedback({ kind: "error", text: error instanceof Error ? error.message : 'Não foi possível criar a rota. Atualize a fila e tente novamente.' }),
     });
   };
-  const counts = summary.data;
-  const ageSeconds = (timestamp: string | null | undefined) => {
-    if (!timestamp) return null;
-    const parsed = Date.parse(timestamp);
-    return Number.isFinite(parsed) ? Math.max(0, Math.floor((now - parsed) / 1000)) : null;
-  };
-  const formatAge = (age: number | null) =>
-    age == null ? "sem horário" : age < 60 ? `${age}s` : `${Math.floor(age / 60)} min`;
-  const allCouriers = couriers.data ?? [];
-  const effectiveSelectedCourierId = allCouriers.some(courier => courier.id === selectedCourierId)
-    ? selectedCourierId
-    : '';
-  const trackingCouriers = allCouriers.filter(
-    courier =>
-      (!effectiveSelectedCourierId || courier.id === effectiveSelectedCourierId) &&
-      courier.currentLatitude != null &&
-      courier.currentLongitude != null,
-  );
-  const latestLocationAge = trackingCouriers.reduce<number | null>((latest, courier) => {
-    const age = ageSeconds(courier.lastLocationAt);
-    return age != null && (latest == null || age < latest) ? age : latest;
-  }, null);
-  const hasLiveLocation = latestLocationAge != null && latestLocationAge <= 120;
-  const hasConnectionError = [summary, couriers, deliveries].some(query => query.isError);
-  const trackingMarkers: MapMarker[] = trackingCouriers.map(courier => {
-    const age = ageSeconds(courier.lastLocationAt);
-    const stale = age == null || age > 120;
-    return {
-      id: courier.id,
-      latitude: courier.currentLatitude!,
-      longitude: courier.currentLongitude!,
-      title: courier.name,
-      detail: stale
-        ? `Sinal perdido — última posição há ${formatAge(age)}`
-        : `${courier.currentDeliveryCode ? `Entrega ${courier.currentDeliveryCode} · ` : ''}Atualizado há ${formatAge(age)}`,
-      kind: 'courier',
-      label: courier.name.split(' ')[0],
-      stale,
-    };
-  });
-  const storeMarkers: MapMarker[] = (stores.data ?? [])
-    .filter(store => store.active && store.latitude != null && store.longitude != null)
-    .map(store => ({
-      id: store.id,
-      latitude: store.latitude!,
-      longitude: store.longitude!,
-      title: store.name,
-      detail: `${store.city}${store.stateCode ? ` · ${store.stateCode}` : ''}`,
-      kind: 'store',
-    }));
-  const activeRouteList = activeRoutes.data ?? [];
-  const selectedRoute = activeRouteList.find(route => route.id === selectedRouteId) ?? activeRouteList[0];
-  const mapMarkers = [...trackingMarkers, ...storeMarkers];
-  return <div className="soft-enter">
-    <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><p className="text-[10px] font-medium tracking-[0.7px] text-[var(--adm-muted)]">OPERAÇÃO / ENTREGAS</p><h1 className="mt-3 text-[24px] font-semibold leading-tight tracking-[-0.01em] sm:text-[28px]">Entregas</h1><p className="mt-2 text-[13px] text-muted-foreground">Fila completa: registro, despacho, rotas agrupadas, cancelamento e ocorrências.</p><p className="mt-2 text-[11px] text-muted-foreground">Atualização automática a cada 15 segundos.</p></div>
-      <div className="flex flex-wrap gap-2 self-start sm:self-auto">
-        {selectedDeliveryIds.length >= 2 && <button className="button-secondary h-10" onClick={offerGroupedRoute} disabled={createDeliveryRoute.isPending} data-testid="button-create-route"><Bike size={16}/>{createDeliveryRoute.isPending ? 'Criando rota…' : `Agrupar ${selectedDeliveryIds.length} entregas`}</button>}
-         {selectedDeliveryIds.length > 0 && <button className="button-quiet h-10" onClick={() => { setSelectedDeliveryIds([]); setRouteFeedback(null); }}>Limpar seleção ({selectedDeliveryIds.length})</button>}
-        <button className="button-secondary h-10" onClick={() => void refreshDashboard()} disabled={summary.isRefetching || couriers.isRefetching || deliveries.isRefetching} aria-label="Atualizar painel" data-testid="button-refresh-dashboard"><RefreshCw size={15} className={summary.isRefetching || couriers.isRefetching || deliveries.isRefetching ? 'animate-spin' : ''}/>Atualizar</button>
-        <button className="button-primary h-10" onClick={() => setShowCreate(true)} data-testid="button-new-delivery"><FilePlus2 size={16}/>Nova entrega</button>
+  // Visão do dia inteiro (sem os filtros da fila): números, mapa, alertas e motoboys.
+  const ops = useOperationsData();
+  opsRef.current = ops;
+  const allDeliveries = ops.deliveries.data ?? [];
+  const allCouriers = ops.couriers.data ?? [];
+  const today = useMemo(() => deliveryMetrics(allDeliveries, 'today', now), [allDeliveries, now]);
+  const courierStats = useMemo(() => courierMetrics(allCouriers, now), [allCouriers, now]);
+  const refreshing = deliveries.isRefetching || ops.isFetching;
+  const completedContext = today.completedChange == null
+    ? 'Sem base de comparação'
+    : `${today.completedChange >= 0 ? '↑' : '↓'} ${Math.abs(today.completedChange).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}% vs. ontem`;
+  const hasQueueFilters = Boolean(search || status || storeId);
+  const metricsLoading = ops.deliveries.isLoading;
+  return <div className="soft-enter flex flex-col gap-6">
+    {/* 1. Cabeçalho: o que é a tela e a ação principal */}
+    <section aria-labelledby="operation-title" className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p className="text-[10px] font-medium tracking-[0.7px] text-[var(--adm-muted)]">OPERAÇÃO</p>
+        <h1 id="operation-title" className="mt-3 text-[24px] font-semibold leading-tight tracking-[-0.01em] text-[var(--adm-ink)] sm:text-[28px]">Entregas</h1>
+        <p className="mt-2 max-w-xl text-[13px] text-[var(--adm-muted)]">O que precisa de ação, a fila completa e onde estão os motoboys, numa tela só.</p>
+        <div className="mt-3"><LiveChip hasError={ops.hasError || deliveries.isError} lastUpdatedAt={ops.lastUpdatedAt}/></div>
       </div>
-    </div>
-    <section className="metric-grid mb-6">
-       <Metric title="Pedidos em operação" value={counts?.requested} hint="solicitações ativas agora" icon={<PackageCheck size={17}/>} loading={summary.isLoading}/>
-      <Metric title="Aguardando entregador" value={counts?.awaitingCourier} hint={`${counts?.offered ?? '—'} ofertas enviadas`} icon={<Clock3 size={17}/>} accent loading={summary.isLoading}/>
-      <Metric title="Em rota" value={counts?.inTransit} hint={`${counts?.delayed ?? '—'} com atraso`} icon={<Truck size={17}/>} loading={summary.isLoading}/>
-      <Metric title="Entregadores" value={counts?.totalCouriers} hint={counts ? `${counts.availableCouriers} disponíveis · ${counts.busyCouriers} em atendimento · ${counts.offlineCouriers} offline` : 'cadastros no sistema'} icon={<Bike size={17}/>} loading={summary.isLoading}/>
-    </section>
-    {summary.isError && <div className="mb-5 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"><span>Não foi possível carregar o resumo operacional.</span><button className="inline-flex items-center gap-1 font-semibold" onClick={() => void summary.refetch()}><RefreshCw size={14}/>Tentar novamente</button></div>}
-    {hasConnectionError && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">Reconectando… os dados atuais permanecem visíveis e o painel tentará novamente automaticamente.</div>}
-    <div id="ocorrencias" className="scroll-mt-24"><CancellationAlertsPanel /></div>
-    <section className="mb-6 grid gap-4 lg:grid-cols-[1fr_300px]">
-      <div className="panel p-4 sm:p-5">
-        <div className="mb-4 flex items-center justify-between"><div><div className="eyebrow">TEMPO DE ATENDIMENTO</div><h2 className="mt-1 text-sm font-bold">Ritmo da operação</h2></div><span className="rounded-md bg-[#f5f4f2] px-2 py-1 text-[10px] font-medium text-muted-foreground">média registrada</span></div>
-        {summary.isLoading ? <div className="skeleton h-[76px] w-full"/> : <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="flex-1"><div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Aceite da oferta</span><strong className="mono text-xl">{counts?.averageAcceptanceMinutes ?? '—'}{counts && <small className="ml-1 text-[10px] font-normal text-muted-foreground">{counts.averageAcceptanceMinutes == null ? 'sem dados ainda' : 'min'}</small>}</strong></div>{counts?.averageAcceptanceMinutes != null && <div className="meter mt-2"><span style={{ width: `${Math.min(counts.averageAcceptanceMinutes * 4, 100)}%` }}/></div>}</div>
-          <div className="hidden h-10 w-px bg-border sm:block"/>
-          <div className="flex-1"><div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Conclusão total</span><strong className="mono text-xl">{counts?.averageTotalMinutes ?? '—'}{counts && <small className="ml-1 text-[10px] font-normal text-muted-foreground">{counts.averageTotalMinutes == null ? 'sem dados ainda' : 'min'}</small>}</strong></div>{counts?.averageTotalMinutes != null && <div className="meter mt-2"><span className="meter-gray" style={{ width: `${Math.min(counts.averageTotalMinutes * 1.5, 100)}%` }}/></div>}</div>
-        </div>}
+      <div className="flex flex-wrap gap-2">
+        <button className="button-secondary min-h-11" onClick={() => void refreshDashboard()} disabled={refreshing} aria-label="Atualizar painel" data-testid="button-refresh-dashboard"><RefreshCw size={15} className={refreshing ? 'animate-spin' : ''}/>Atualizar</button>
+        <button className="button-primary min-h-11 px-5 text-sm" onClick={() => setShowCreate(true)} data-testid="button-new-delivery"><FilePlus2 size={17}/>Nova entrega</button>
       </div>
-      <div className="panel flex items-center gap-4 p-4 sm:px-5"><div className="courier-pie"><Bike size={20}/></div><div className="min-w-0 flex-1"><div className="eyebrow">DISPONIBILIDADE</div><div className="mt-1 flex items-baseline gap-1"><strong className="mono text-2xl">{counts?.availableCouriers ?? '—'}</strong><span className="text-xs text-muted-foreground">disponíveis agora</span></div><div className="mt-1 text-[11px] text-muted-foreground">{counts ? `${counts.busyCouriers} em atendimento · ${counts.offlineCouriers} offline` : 'Carregando situação dos motoboys'}</div></div><ArrowRight size={16} className="text-muted-foreground"/></div>
     </section>
-    <section className="mb-6 grid gap-4 lg:grid-cols-[1.45fr_1fr]">
-      <div className="panel overflow-hidden">
-        <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <div><div className="eyebrow">ACOMPANHAMENTO</div><h2 className="mt-1 text-sm font-bold">Mapa de rastreamento</h2></div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <label className="sr-only" htmlFor="track-courier">Selecionar motoboy para acompanhar</label>
-            <select
-              id="track-courier"
-              className="filter-select w-full sm:w-auto"
-              value={effectiveSelectedCourierId}
-              onChange={event => setSelectedCourierId(event.target.value)}
-              aria-label="Selecionar motoboy para acompanhar"
-            >
-              <option value="">Todos os motoboys</option>
-              {allCouriers.map(courier => <option key={courier.id} value={courier.id}>{courier.name}</option>)}
-            </select>
-            {activeRouteList.length > 0 && <select className="filter-select w-full sm:w-auto" value={selectedRoute?.id ?? ''} onChange={event => setSelectedRouteId(event.target.value)} aria-label="Selecionar rota ativa">
-              {activeRouteList.map(route => <option key={route.id} value={route.id}>Rota · {route.courierFirstName}</option>)}
-            </select>}
-            <div className="flex items-center gap-2">
-              <span className={`online-indicator ${hasLiveLocation ? '' : 'online-indicator--offline'}`}><i className={hasLiveLocation ? 'animate-pulse' : ''}/>{hasLiveLocation ? 'Ao vivo' : 'Nenhum motoboy online'}</span>
-              <span className="text-[10px] text-muted-foreground">{latestLocationAge == null ? 'Aguardando GPS' : `GPS recebido há ${formatAge(latestLocationAge)}`}</span>
-            </div>
+
+    {/* 2. Números do dia */}
+    <section aria-label="Resumo de hoje" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
+      <Indicator label="Aguardando motoboy" value={today.pending} context={today.pending ? 'Despache na fila abaixo' : 'Nenhuma parada'} highlight={today.pending > 0} loading={metricsLoading}/>
+      <Indicator label="Em rota" value={today.inTransit} context={today.urgentAtRisk ? `${today.urgentAtRisk} urgente${today.urgentAtRisk > 1 ? 's' : ''} com risco de atraso` : 'A caminho do cliente'} contextTone={today.urgentAtRisk ? 'danger' : 'muted'} loading={metricsLoading}/>
+      <Indicator label="Concluídas hoje" value={today.completed} context={completedContext} contextTone={today.completedChange != null && today.completedChange >= 0 ? 'success' : 'muted'} loading={metricsLoading}/>
+      <Indicator label="Motoboys disponíveis" value={courierStats.available.length} context={`de ${courierStats.connected} conectados`} loading={ops.couriers.isLoading}/>
+      <Indicator label="Tempo médio" value={today.averageMinutes == null ? '—' : `${Math.round(today.averageMinutes)} min`} context={today.averageMinutes == null ? 'Sem entregas concluídas' : 'Do pedido à entrega'} loading={metricsLoading}/>
+    </section>
+
+    {ops.hasError && !ops.isLoading && (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[#f3d9a4] bg-[var(--adm-warning-bg)] px-4 py-3 text-[12px] text-[#6b4a00]" role="status">
+        <span>Não foi possível atualizar agora. Os últimos dados continuam na tela.</span>
+        <button type="button" className="inline-flex items-center gap-1.5 font-semibold" onClick={() => void refreshDashboard()}><RefreshCw size={13}/> Tentar novamente</button>
+      </div>
+    )}
+
+    {/* 3. Mapa ao vivo em destaque */}
+    <div className="min-w-0"><OperationMap data={ops} now={now} hero/></div>
+
+    {/* 4. Fila de entregas, logo abaixo do mapa: acompanha as duas coisas juntas */}
+    <section className="panel overflow-hidden" aria-labelledby="queue-title">
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:px-5">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <div className="eyebrow">FILA DE ENTREGAS</div>
+            <h2 id="queue-title" className="mt-1 text-lg font-bold tracking-tight">Todas as entregas <span className="ml-1 rounded-md bg-[#f3f1ef] px-2 py-0.5 align-middle text-xs font-semibold text-muted-foreground">{deliveries.data?.length ?? '—'}</span></h2>
+            <p className="mt-1 text-xs text-muted-foreground">Despache cada entrega ou marque de 2 a 10 novas para mandar como uma rota só.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {selectedDeliveryIds.length >= 2 && <button className="button-primary" onClick={offerGroupedRoute} disabled={createDeliveryRoute.isPending} data-testid="button-create-route"><Bike size={16}/>{createDeliveryRoute.isPending ? 'Criando rota…' : `Agrupar ${selectedDeliveryIds.length} em uma rota`}</button>}
+            {selectedDeliveryIds.length > 0 && <button className="button-quiet" onClick={() => { setSelectedDeliveryIds([]); setRouteFeedback(null); }}>Limpar seleção ({selectedDeliveryIds.length})</button>}
+            {hasQueueFilters && <button className="button-quiet" onClick={() => { setStatus(''); setStoreId(''); setSearch(''); setSearchText(''); }}><Filter size={14}/>Limpar filtros</button>}
           </div>
         </div>
-        {couriers.isLoading || stores.isLoading || activeRoutes.isLoading ? <div className="skeleton m-4 h-[400px] sm:h-[460px]"/> : mapMarkers.length || selectedRoute?.routeGeometry.length ? (
-          <>
-            <div className="flex flex-wrap gap-4 px-4 pt-3 text-[11px] text-muted-foreground sm:px-5">
-              <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#16804a] text-[10px] font-bold text-white">F</span>Filial</span>
-              <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#1769aa] text-[10px] font-bold text-white">M</span>Motoboy</span>
-              <span className="inline-flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded-full bg-gray-500 text-[10px] font-bold text-white">M</span>Sinal perdido</span>
-            </div>
-            {!trackingMarkers.length && !selectedRoute && <p className="mx-4 mt-3 rounded-lg border border-dashed border-[#dedbd7] bg-[#faf9f7] px-3 py-2 text-xs text-muted-foreground sm:mx-5">Sem GPS ou rota ativa no momento. O mapa está exibindo somente as filiais cadastradas.</p>}
-            {selectedRoute && !selectedRoute.routeGeometry.length && <p className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:mx-5">Rota ativa de {selectedRoute.courierFirstName}, mas a geometria ainda não está disponível.</p>}
-            {selectedRoute && <p className="px-4 pt-3 text-xs font-semibold text-[#a91d2a]">Rota ativa de {selectedRoute.courierFirstName} · {selectedRoute.routeGeometry.length} pontos</p>}
-            <LiveMap markers={mapMarkers} routeGeometry={selectedRoute?.routeGeometry} ariaLabel="Localização das filiais, motoboys e rota ativa" showCenterControls centerOnStoresOnly showCenterOnMe={false} controlsAboveAttribution/>
-          </>
-        ) : (
-          <div className="grid min-h-[210px] place-items-center bg-[#f3f2ef] p-6 text-center">
-            <div className="max-w-md">
-              <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white text-primary shadow-sm"><MapPin size={20}/></span>
-              <h3 className="mt-3 text-sm font-semibold">{effectiveSelectedCourierId ? `Aguardando GPS de ${allCouriers.find(courier => courier.id === effectiveSelectedCourierId)?.name ?? 'motoboy selecionado'}` : 'Sem GPS ou rota ativa'}</h3>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{activeRoutes.isError ? 'Não foi possível consultar as rotas ativas.' : 'Não há posições GPS com coordenadas nem geometria de rota disponíveis neste momento.'}</p>
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="panel overflow-hidden">
-        <div className="border-b border-border px-4 py-4 sm:px-5"><div className="eyebrow">SINAL DE LOCALIZAÇÃO</div><h2 className="mt-1 text-sm font-bold">Último registro recebido</h2></div>
-        {couriers.isLoading ? <Skeleton rows={3}/> : couriers.isError ? <p className="p-5 text-sm text-muted-foreground">Não foi possível consultar os registros de localização.</p> : !couriers.data?.length ? <EmptyState title="Sem entregadores cadastrados" detail="Os registros aparecerão aqui quando houver entregadores."/> :
-          <ul className="divide-y divide-border">{couriers.data.map(c => {
-            const age = ageSeconds(c.lastLocationAt);
-            const lostSignal = age == null || age > 120;
-            const hasCoordinates = c.currentLatitude != null && c.currentLongitude != null;
-            const statusLabel = lostSignal ? 'Sem sinal' : c.status === 'BUSY' ? 'Em atendimento' : 'Disponível';
-            return <li key={c.id} className="flex items-center gap-3 px-4 py-3 sm:px-5"><span className={`avatar ${lostSignal ? 'bg-gray-100 text-gray-500' : ''}`}>{c.initials}</span><div className="min-w-0 flex-1"><div className="truncate text-xs font-semibold">{c.name}</div><div className="mt-1 text-[10px] text-muted-foreground">{lostSignal && hasCoordinates ? `Sinal perdido — última posição há ${formatAge(age)}` : hasCoordinates ? `GPS recebido há ${formatAge(age)}` : 'Aguardando primeira posição GPS'}{c.currentDeliveryCode ? ` · ${c.currentDeliveryCode}` : ''}</div></div><Badge tone={lostSignal ? 'muted' : c.status === 'BUSY' ? 'blue' : 'green'}>{statusLabel}</Badge></li>;
-          })}</ul>}
-      </div>
-    </section>
-    <section className="panel overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:px-5">
-         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><div className="eyebrow">FILA DE ENTREGAS</div><h2 className="mt-1 text-lg font-bold tracking-tight">Solicitações de entrega <span className="ml-1 rounded-md bg-[#f3f1ef] px-2 py-0.5 align-middle text-xs font-semibold text-muted-foreground">{deliveries.data?.length ?? '—'}</span></h2></div><div className="flex gap-2"><button className="button-quiet" onClick={() => { setStatus(''); setStoreId(''); setSearch(''); setSearchText(''); }}><Filter size={14}/>Limpar filtros</button><button className="button-secondary" onClick={() => void deliveries.refetch()} aria-label="Atualizar lista"><RefreshCw size={14}/></button></div></div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <form onSubmit={runSearch} className="search-box flex-1"><Search size={15}/><input placeholder="Buscar código, cliente ou pedido" value={searchText} onChange={e => setSearchText(e.target.value)} aria-label="Buscar entregas" data-testid="input-search-deliveries"/><button type="submit" className="search-submit">Buscar</button></form>
           <select value={status} onChange={e => setStatus(e.target.value)} className="filter-select" aria-label="Filtrar por status" data-testid="filter-status"><option value="">Todos os status</option>{Object.entries(statusNames).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select>
-          <select value={storeId} onChange={e => setStoreId(e.target.value)} className="filter-select" aria-label="Filtrar por unidade" data-testid="filter-store"><option value="">Todas as unidades</option>{(stores.data ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+          <select value={storeId} onChange={e => setStoreId(e.target.value)} className="filter-select" aria-label="Filtrar por filial" data-testid="filter-store"><option value="">Todas as filiais</option>{(stores.data ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
         </div>
       </div>
-      {routeFeedback && <AutoDismissFeedback feedback={routeFeedback} onDismiss={() => setRouteFeedback(null)} className="mx-4 mb-3"/>}
-      {cancelFeedback && <AutoDismissFeedback feedback={cancelFeedback} onDismiss={() => setCancelFeedback(null)} className="mx-4 mb-3"/>}
-      {deleteFeedback && <AutoDismissFeedback feedback={deleteFeedback} onDismiss={() => setDeleteFeedback(null)} className="mx-4 mb-3"/>}
-      {selectedDeliveryIds.length > 0 && <p className="mx-4 mb-3 text-xs text-muted-foreground">Selecione de 2 a 10 solicitações novas. A melhor sequência será calculada quando o motoboy aceitar a rota.</p>}
-      {deliveries.isLoading ? <Skeleton rows={5}/> : deliveries.isError ? <div className="p-8 text-center"><AlertTriangle className="mx-auto mb-2 text-amber-600"/><p className="font-semibold">Falha ao carregar solicitações</p><p className="mb-3 mt-1 text-sm text-muted-foreground">A fila permanece disponível para nova tentativa.</p><button className="button-secondary mx-auto" onClick={() => void deliveries.refetch()}><RefreshCw size={14}/>Tentar novamente</button></div> :
-        !deliveries.data?.length ? <EmptyState title="Nenhuma solicitação nesta fila" detail={search || status || storeId ? 'Ajuste os filtros ou registre uma nova entrega.' : 'Quando uma solicitação chegar, ela aparecerá aqui para análise e despacho.'} action={<button className="button-primary" onClick={() => setShowCreate(true)}><Plus size={15}/>Registrar entrega</button>}/> :
+      {routeFeedback && <AutoDismissFeedback feedback={routeFeedback} onDismiss={() => setRouteFeedback(null)} className="mx-4 mt-3"/>}
+      {cancelFeedback && <AutoDismissFeedback feedback={cancelFeedback} onDismiss={() => setCancelFeedback(null)} className="mx-4 mt-3"/>}
+      {deleteFeedback && <AutoDismissFeedback feedback={deleteFeedback} onDismiss={() => setDeleteFeedback(null)} className="mx-4 mt-3"/>}
+      {deliveries.isLoading ? <Skeleton rows={5}/> : deliveries.isError ? <div className="p-8 text-center"><AlertTriangle className="mx-auto mb-2 text-amber-600"/><p className="font-semibold">Falha ao carregar as entregas</p><p className="mb-3 mt-1 text-sm text-muted-foreground">Tente de novo em instantes.</p><button className="button-secondary mx-auto" onClick={() => void deliveries.refetch()}><RefreshCw size={14}/>Tentar novamente</button></div> :
+        !deliveries.data?.length ? <EmptyState title={hasQueueFilters ? 'Nenhuma entrega com esses filtros' : 'Nenhuma entrega ainda'} detail={hasQueueFilters ? 'Ajuste a busca ou limpe os filtros.' : 'Quando uma entrega for registrada, ela aparece aqui para despacho.'} action={<button className="button-primary" onClick={() => setShowCreate(true)}><Plus size={15}/>Nova entrega</button>}/> :
           <div className="overflow-x-auto"><table className="delivery-table w-full min-w-[980px]">
-            <thead><tr><th>Rota</th><th>Solicitação</th><th>Cliente / destino</th><th>Unidade</th><th>Status</th><th>Entregador</th><th>Atualizada</th><th className="text-right">Ação</th></tr></thead>
+            <thead><tr><th><span className="sr-only">Selecionar para rota</span>Rota</th><th>Entrega</th><th>Cliente / destino</th><th>Filial</th><th>Status</th><th>Motoboy</th><th>Atualizada</th><th className="text-right">Ação</th></tr></thead>
             <tbody>{deliveries.data.map(d => <tr className="row-hover" key={d.id} data-testid={`row-delivery-${d.id}`}>
               <td>{d.status === 'REQUESTED' ? <input type="checkbox" aria-label={`Selecionar ${d.code} para uma rota`} checked={selectedDeliveryIds.includes(d.id)} disabled={!selectedDeliveryIds.includes(d.id) && selectedDeliveryIds.length >= 10} onChange={e => toggleRouteDelivery(d.id, e.target.checked)} className="h-4 w-4 accent-[#b91e2c]"/> : <span className="text-xs text-muted-foreground">—</span>}</td>
               <td><Link href={`/deliveries/${d.id}`} className="table-code" data-testid={`link-delivery-${d.id}`}>{d.code}<span>Pedido {d.orderNumber || '—'}</span></Link>{d.priority === 'urgent' && <span className="priority-tag">URGENTE</span>}</td>
               <td><div className="font-semibold">{d.customerName}</div><div className="mt-1 flex max-w-[235px] items-center gap-1 text-xs text-muted-foreground" title={d.destination}><MapPin size={12} className="shrink-0"/><span className="min-w-0 truncate">{d.destination}</span></div></td>
-               <td><div className="text-sm font-medium">{d.storeName}</div><div className="mt-1 text-[11px] text-muted-foreground">Filial de origem</div></td>
+              <td><div className="text-sm font-medium">{d.storeName}</div></td>
               <td><StatusBadge status={d.status}/></td>
-              <td>{d.courierName ? <div className="flex items-center gap-2"><span className="avatar">{d.courierInitials || d.courierName.slice(0,2).toUpperCase()}</span><div><div className="text-xs font-semibold">{d.courierName}</div><div className="text-[10px] text-muted-foreground">{timeAgo(lastKnownLocationAt(d, couriers.data))}</div></div></div> : <span className="text-xs text-muted-foreground">Não atribuído</span>}</td>
+              <td>{d.courierName ? <div className="flex items-center gap-2"><span className="avatar">{d.courierInitials || d.courierName.slice(0,2).toUpperCase()}</span><div><div className="text-xs font-semibold">{d.courierName}</div><div className="text-[10px] text-muted-foreground">{timeAgo(lastKnownLocationAt(d, allCouriers))}</div></div></div> : <span className="text-xs text-muted-foreground">Sem motoboy</span>}</td>
               <td className="text-xs text-muted-foreground">{fmtTime(d.updatedAt || d.createdAt)}</td>
-              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{canCancel && !['COMPLETED','CANCELLED'].includes(d.status) && <button className="button-small button-red-outline" type="button" onClick={() => { setCancelFeedback(null); setCancelTarget({ id: d.id, code: d.code }); }} aria-label={`Cancelar pedido ${d.code}`} title="Cancelar pedido" data-testid={`button-cancel-${d.id}`}><X size={14}/>Cancelar</button>}{canDelete && <button className="button-small button-red-outline" type="button" onClick={() => { setDeleteFeedback(null); setDeleteTarget({ id: d.id, code: d.code }); }} aria-label={`Excluir definitivamente ${d.code}`} title="Excluir definitivamente" data-testid={`button-delete-delivery-${d.id}`}><Trash2 size={14}/>Excluir definitivamente</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
+              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{canCancel && !['COMPLETED','CANCELLED'].includes(d.status) && <button className="button-small button-red-outline" type="button" onClick={() => { setCancelFeedback(null); setCancelTarget({ id: d.id, code: d.code }); }} aria-label={`Cancelar pedido ${d.code}`} title="Cancelar pedido" data-testid={`button-cancel-${d.id}`}><X size={14}/>Cancelar</button>}{canDelete && <button className="button-small button-red-outline" type="button" onClick={() => { setDeleteFeedback(null); setDeleteTarget({ id: d.id, code: d.code }); }} aria-label={`Excluir definitivamente ${d.code}`} title="Excluir definitivamente" data-testid={`button-delete-delivery-${d.id}`}><Trash2 size={14}/>Excluir</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
             </tr>)}</tbody>
           </table></div>}
     </section>
-     <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground"><span>Atualizações refletem os registros disponíveis no sistema.</span><span className="inline-flex items-center gap-1"><Clock3 size={12}/>GPS atualizado a cada 15 segundos enquanto o PWA está aberto</span></div>
+
+    {/* 5. Motoboys (rotas e entregas) e alertas */}
+    <ActiveCouriers couriers={allCouriers} deliveries={allDeliveries} now={now} isLoading={ops.couriers.isLoading} isError={ops.couriers.isError && !ops.couriers.data} onRetry={() => void ops.couriers.refetch()} bar/>
+    <div id="alertas" className="scroll-mt-24"><OperationAlerts deliveries={allDeliveries} couriers={allCouriers} occurrences={ops.cancellations.data?.length ?? 0} now={now} isLoading={ops.isLoading}/></div>
+
+    {/* 6. Ocorrências dos motoboys: só para administradores */}
+    {canDelete && <div id="ocorrencias" className="scroll-mt-24"><CancellationAlertsPanel /></div>}
+
     {showCreate && <DeliveryModal onClose={() => setShowCreate(false)}/>}
     {dispatchId && <DispatchModal deliveryId={dispatchId} onClose={() => setDispatchId(null)}/>}
     {cancelTarget && <CancelDeliveryModal
@@ -1145,14 +1064,6 @@ function AccountRoute() {
   return <AccountSecurityPage />;
 }
 
-function AdminOverviewWithNewDelivery() {
-  const [open, setOpen] = useState(false);
-  return <>
-    <AdminOverview onNewDelivery={() => setOpen(true)} />
-    {open && <DeliveryModal onClose={() => setOpen(false)} />}
-  </>;
-}
-
 function UserPortalRoute() {
   const { auth, profile } = useSignedInProfile();
   if (!auth.isLoaded || (auth.isSignedIn && profile.isLoading)) return <ProfileLoading />;
@@ -1169,7 +1080,8 @@ function UserPortalRoute() {
   if (profile.data.role === 'STORE_MANAGER' || profile.data.role === 'STORE_STAFF') {
     return <StorePortal profile={profile.data} NewDeliveryModal={DeliveryModal} />;
   }
-  return <RoutedErrorBoundary><AdminShell profile={profile.data}><AdminOverviewWithNewDelivery /></AdminShell></RoutedErrorBoundary>;
+  // Admin e Central: a página inicial é a operação de entregas (antes "Visão geral" + "Entregas").
+  return <RoutedErrorBoundary><AdminShell profile={profile.data}><Dashboard canCancel={profile.data.role === 'ADMIN' || profile.data.role === 'CENTRAL'} canDelete={profile.data.role === 'ADMIN'} /></AdminShell></RoutedErrorBoundary>;
 }
 
 function CentralRoute({ children, adminOnly = false }: { children: ReactNode | ((profile: AppUser) => ReactNode); adminOnly?: boolean }) {
@@ -1199,7 +1111,8 @@ function AppRoutes() {
             <Route path="/account" component={AccountRoute}/>
             <Route path="/motoboy-pwa" component={CourierAccessPage}/>
             <Route path="/entregas" component={() => <CentralRoute>{(profile) => <Dashboard canCancel={profile.role === 'ADMIN' || profile.role === 'CENTRAL'} canDelete={profile.role === 'ADMIN'} />}</CentralRoute>}/>
-            <Route path="/mapa" component={() => <CentralRoute><LiveMapPage/></CentralRoute>}/>
+            {/* A aba "Mapa em tempo real" saiu: o mapa está na página de entregas. */}
+            <Route path="/mapa">{() => <Redirect to="/" />}</Route>
             <Route path="/motoboys" component={() => <CentralRoute><CouriersPage/></CentralRoute>}/>
             <Route path="/deliveries/:deliveryId" component={() => <CentralRoute><DeliveryDetail/></CentralRoute>}/>
             <Route path="/access" component={() => <CentralRoute adminOnly><AccessManagement/></CentralRoute>}/>
