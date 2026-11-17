@@ -554,13 +554,13 @@ export default function CourierRoutesSection({
     }
   };
 
-  const handleCompleteStop = async (routeId: string, stopId: string, evidencePath?: string) => {
+  const handleCompleteStop = async (routeId: string, stopId: string, evidencePath?: string, prescriptionCollected?: boolean) => {
     setRouteError(null);
     setBusyRouteId(routeId);
     setBusyRouteAction("stop");
     try {
       const stop = routes.find((route) => route.id === routeId)?.stops.find((item) => item.id === stopId);
-      await completeStop.mutateAsync({ routeId, stopId, data: evidencePath ? { evidencePath } : {} });
+      await completeStop.mutateAsync({ routeId, stopId, data: { ...(evidencePath ? { evidencePath } : {}), ...(prescriptionCollected ? { prescriptionCollected: true } : {}) } });
       if (stop?.kind === "delivery") void triggerCourierLightHaptic();
       await refreshRouteData();
     } catch (error) {
@@ -684,7 +684,7 @@ export default function CourierRoutesSection({
                 error={routeError?.routeId === item.route.id ? routeError.text : undefined}
                 onShowMap={onShowMap}
                 onArrive={(stopId) => void handleStoreArrival(item.route.id, stopId)}
-                onComplete={(stopId, evidencePath) => handleCompleteStop(item.route.id, stopId, evidencePath)}
+                onComplete={(stopId, evidencePath, prescriptionCollected) => handleCompleteStop(item.route.id, stopId, evidencePath, prescriptionCollected)}
               />
             ) : (
               <CourierRouteOfferCard
@@ -863,7 +863,7 @@ function ActiveRouteCard({
   arrivedStoreStopId: string | null;
   onShowMap: () => void;
   onArrive: (stopId: string) => void;
-  onComplete: (stopId: string, evidencePath?: string) => Promise<void>;
+  onComplete: (stopId: string, evidencePath?: string, prescriptionCollected?: boolean) => Promise<void>;
   error?: string;
 }) {
   const displayStops = groupRouteStops(route.stops);
@@ -931,7 +931,8 @@ function ActiveRouteCard({
                   deliveryId={nextStop.deliveryId}
                   disabled={busy}
                   label="Enviar foto e concluir entrega"
-                  onComplete={(evidencePath) => onComplete(nextStop.id, evidencePath)}
+                  requiresPrescription={route.deliveries.find((item) => item.id === nextStop.deliveryId)?.requiresPrescription === true}
+                  onComplete={(evidencePath, options) => onComplete(nextStop.id, evidencePath, options.prescriptionCollected)}
                 />
                 <CourierUnableToDeliverAction
                   deliveryId={nextStop.deliveryId}

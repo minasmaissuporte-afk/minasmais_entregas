@@ -24,6 +24,15 @@ export interface Delivery {
   customerName: string;
   /** @nullable */
   customerPhone?: string | null;
+  /** O motoboy precisa recolher a receita do cliente */
+  requiresPrescription?: boolean;
+  /** @nullable */
+  prescriptionCollectedAt?: string | null;
+  /**
+     * Rota agrupada (oferecida ou aceita) em que a entrega está
+     * @nullable
+     */
+  routeId?: string | null;
   destination: string;
   orderNumber?: string;
   /** @nullable */
@@ -93,6 +102,7 @@ export interface DeliveryInput {
   notes?: string;
   storeId: string;
   priority: DeliveryInputPriority;
+  requiresPrescription?: boolean;
   /**
      * Deprecated; server uses the selected branch's configured fee
      * @minimum 0
@@ -132,6 +142,7 @@ export interface DeliveryUpdateInput {
   /** @nullable */
   notes?: string | null;
   priority?: DeliveryUpdateInputPriority;
+  requiresPrescription?: boolean;
 }
 
 export type DispatchInputMode = typeof DispatchInputMode[keyof typeof DispatchInputMode];
@@ -167,6 +178,8 @@ export interface DeliveryStatusInput {
   /** @maxLength 500 */
   note?: string;
   evidencePath?: string;
+  /** O motoboy confirma que recolheu a receita */
+  prescriptionCollected?: boolean;
 }
 
 export interface Store {
@@ -309,6 +322,7 @@ export interface DeliveryEvidenceUploadUrl {
 
 export interface CompleteCourierRouteStopInput {
   evidencePath?: string;
+  prescriptionCollected?: boolean;
 }
 
 export interface RouteCoordinate {
@@ -698,12 +712,30 @@ export interface CourierEarnings {
   amountToReceive: number;
 }
 
+export interface RemoveDeliveryFromRouteInput {
+  deliveryId: string;
+  /** true quando o cliente desistiu (a entrega é cancelada); senão volta para a fila */
+  cancel?: boolean;
+  /** @maxLength 300 */
+  reason?: string;
+}
+
+export interface RemoveDeliveryFromRouteResult {
+  routeStatus: string;
+  remainingDeliveries: number;
+}
+
 export interface CreateDeliveryRouteInput {
   /**
      * @minItems 2
      * @maxItems 10
      */
   deliveryIds: string[];
+  /**
+     * Motoboy escolhido. Sem ele, a rota é oferecida a todos os motoboys disponíveis.
+     * @nullable
+     */
+  courierId?: string | null;
 }
 
 export interface AcceptCourierRouteInput {
@@ -805,6 +837,7 @@ export interface RouteDeliverySummary {
   customerName: string;
   /** @nullable */
   customerPhone: string | null;
+  requiresPrescription?: boolean;
   destination: string;
   /** @nullable */
   notes: string | null;

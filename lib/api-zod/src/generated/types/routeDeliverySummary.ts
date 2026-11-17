@@ -12,6 +12,7 @@ export interface RouteDeliverySummary {
   customerName: string;
   /** @nullable */
   customerPhone: string | null;
+  requiresPrescription?: boolean;
   destination: string;
   /** @nullable */
   notes: string | null;

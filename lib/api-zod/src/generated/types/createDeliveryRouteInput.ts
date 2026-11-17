@@ -12,4 +12,9 @@ export interface CreateDeliveryRouteInput {
      * @maxItems 10
      */
   deliveryIds: string[];
+  /**
+     * Motoboy escolhido. Sem ele, a rota é oferecida a todos os motoboys disponíveis.
+     * @nullable
+     */
+  courierId?: string | null;
 }

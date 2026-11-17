@@ -733,7 +733,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       individualDeliveries.filter((delivery) => delivery.status === "RETURNING_TO_STORE"),
     [individualDeliveries],
   );
-  const updateDelivery = async (deliveryId: string, status: string, evidencePath?: string) => {
+  const updateDelivery = async (deliveryId: string, status: string, evidencePath?: string, prescriptionCollected?: boolean) => {
     setActionError(null);
     if (["ACCEPTED", "TO_STORE", "IN_TRANSIT"].includes(status) && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -758,6 +758,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
         data: {
           status: status as "ACCEPTED" | "TO_STORE" | "AT_STORE" | "IN_TRANSIT" | "COMPLETED" | "CANCELLED",
           ...(evidencePath ? { evidencePath } : {}),
+          ...(prescriptionCollected ? { prescriptionCollected: true } : {}),
         },
       });
       if (status === "ACCEPTED" || status === "COMPLETED") {
@@ -1011,7 +1012,7 @@ function CourierIndividualDeliveryCard({
   declining: boolean;
   nextStatus?: string;
   nextStatusLabel?: string;
-  onUpdate: (deliveryId: string, status: string, evidencePath?: string) => Promise<void>;
+  onUpdate: (deliveryId: string, status: string, evidencePath?: string, prescriptionCollected?: boolean) => Promise<void>;
   onDecline: (deliveryId: string) => Promise<void>;
   onShowMap: () => void;
   currentPosition?: MapCoordinate | null;
@@ -1085,7 +1086,8 @@ function CourierIndividualDeliveryCard({
             disabled={busy}
             label="Tirar foto da entrega"
             confirmationLabel="Deslize para confirmar"
-            onComplete={async (evidencePath) => onUpdate(delivery.id, nextStatus, evidencePath)}
+            requiresPrescription={delivery.requiresPrescription === true}
+            onComplete={async (evidencePath, options) => onUpdate(delivery.id, nextStatus, evidencePath, options.prescriptionCollected)}
           />}
         </div>
         <CourierUnableToDeliverAction deliveryId={delivery.id} disabled={busy} className="courier-active-delivery__unable" />
@@ -1203,7 +1205,8 @@ function CourierIndividualDeliveryCard({
             <EvidencePhotoAction
               deliveryId={delivery.id}
               disabled={busy}
-              onComplete={async (evidencePath) => onUpdate(delivery.id, nextStatus, evidencePath)}
+              requiresPrescription={delivery.requiresPrescription === true}
+              onComplete={async (evidencePath, options) => onUpdate(delivery.id, nextStatus, evidencePath, options.prescriptionCollected)}
             />
             {active && <CourierUnableToDeliverAction deliveryId={delivery.id} disabled={busy} />}
           </div>

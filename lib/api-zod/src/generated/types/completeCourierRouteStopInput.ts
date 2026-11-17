@@ -8,4 +8,5 @@
 
 export interface CompleteCourierRouteStopInput {
   evidencePath?: string;
+  prescriptionCollected?: boolean;
 }

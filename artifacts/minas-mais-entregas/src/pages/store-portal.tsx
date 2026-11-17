@@ -8,7 +8,7 @@ import {
   useUpdateDeliveryStatus,
   type AppUser,
 } from "@workspace/api-client-react";
-import { Check, FilePlus2, KeyRound, LogOut, PackageCheck } from "lucide-react";
+import { Bike, Check, FilePlus2, KeyRound, LogOut, PackageCheck, Truck, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import LiveMap, { type MapMarker } from "@/components/live-map";
 import { Link } from "wouter";
@@ -18,13 +18,35 @@ import { AutoDismissFeedback, type FeedbackMessage } from "@/components/auto-dis
 export default function StorePortal({
   profile,
   NewDeliveryModal,
+  DispatchModal,
+  GroupRouteModal,
+  RemoveFromRouteModal,
+  CancelDeliveryModal,
 }: {
   profile: AppUser;
   /** Formulário de nova entrega (o mesmo da Central). */
   NewDeliveryModal?: ComponentType<{ onClose: () => void }>;
+  /** Despachar uma entrega para um motoboy. */
+  DispatchModal?: ComponentType<{ deliveryId: string; onClose: () => void }>;
+  /** Montar rota com várias entregas, escolhendo o motoboy. */
+  GroupRouteModal?: ComponentType<{ deliveryIds: string[]; onClose: () => void; onCreated: (message: string) => void }>;
+  /** Tirar uma entrega da rota (volta para a fila ou é cancelada). */
+  RemoveFromRouteModal?: ComponentType<{ delivery: { id: string; code: string; routeId: string; status: string }; onClose: () => void; onDone: (message: string) => void }>;
+  /** Cancelar uma entrega que ainda não foi para um motoboy. */
+  CancelDeliveryModal?: ComponentType<{ deliveryId: string; code: string; onClose: () => void; onCancelled: () => void }>;
 }) {
   const { signOut } = useAuth();
   const [newDeliveryOpen, setNewDeliveryOpen] = useState(false);
+  const [dispatchId, setDispatchId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [routeFeedback, setRouteFeedback] = useState<FeedbackMessage | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; code: string; routeId: string; status: string } | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{ id: string; code: string } | null>(null);
+  const toggleSelected = (id: string, checked: boolean) =>
+    setSelectedIds((current) =>
+      checked ? (current.includes(id) || current.length >= 10 ? current : [...current, id]) : current.filter((item) => item !== id),
+    );
   const queryClient = useQueryClient();
   const [selectedCourierId, setSelectedCourierId] = useState("");
   const deliveries = useListDeliveries(
@@ -159,6 +181,32 @@ export default function StorePortal({
             </div>
           )}
         </section>
+        {GroupRouteModal && (
+          <div className="panel mb-3 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" aria-live="polite">
+            <p className="text-sm text-muted-foreground">
+              {selectedIds.length
+                ? `${selectedIds.length} entrega${selectedIds.length > 1 ? "s" : ""} marcada${selectedIds.length > 1 ? "s" : ""} para a mesma rota.`
+                : "Para mandar várias entregas com o mesmo motoboy, marque as entregas novas e monte a rota."}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {selectedIds.length > 0 && (
+                <button type="button" className="button-quiet min-h-11" onClick={() => setSelectedIds([])}>Limpar</button>
+              )}
+              <button
+                type="button"
+                className="button-primary min-h-11"
+                disabled={selectedIds.length < 2}
+                onClick={() => setGroupOpen(true)}
+                data-testid="button-store-create-route"
+              >
+                <Bike size={16} aria-hidden="true" /> Montar rota{selectedIds.length >= 2 ? ` com ${selectedIds.length}` : ""}
+              </button>
+            </div>
+          </div>
+        )}
+        {routeFeedback && (
+          <AutoDismissFeedback feedback={routeFeedback} onDismiss={() => setRouteFeedback(null)} className="mb-3" />
+        )}
         {deliveries.isLoading ? (
           <div className="panel p-5 text-sm text-muted-foreground">Carregando entregas…</div>
         ) : deliveries.isError ? (
@@ -171,14 +219,67 @@ export default function StorePortal({
             {deliveries.data.map((delivery) => (
               <article key={delivery.id} className="panel p-4 sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+                  {GroupRouteModal && delivery.status === "REQUESTED" && (
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-5 w-5 shrink-0 accent-[#b91e2c]"
+                      aria-label={`Marcar ${delivery.code} para a mesma rota`}
+                      checked={selectedIds.includes(delivery.id)}
+                      disabled={!selectedIds.includes(delivery.id) && selectedIds.length >= 10}
+                      onChange={(event) => toggleSelected(delivery.id, event.target.checked)}
+                      data-testid={`checkbox-store-route-${delivery.id}`}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
                     <div className="font-mono text-xs font-semibold text-[#a91d2a]">{delivery.code}</div>
                     <h2 className="mt-1 text-sm font-bold">{delivery.customerName}</h2>
                     <p className="mt-1 text-xs text-muted-foreground">{delivery.destination}</p>
                     <p className="mt-1 text-[11px] text-muted-foreground">Pedido {delivery.orderNumber}</p>
+                    {(delivery.requiresPrescription || delivery.routeId) && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {delivery.requiresPrescription && (
+                          <span className="rounded-md bg-[#eef4ff] px-2 py-0.5 text-[11px] font-semibold text-[#1d4f91]">
+                            {delivery.prescriptionCollectedAt ? "Receita recolhida" : "Com receita"}
+                          </span>
+                        )}
+                        {delivery.routeId && (
+                          <span className="rounded-md bg-[#f3f1ef] px-2 py-0.5 text-[11px] font-semibold text-[#4b4f56]">Em rota</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <StatusBadge status={delivery.status} />
                 </div>
+                {RemoveFromRouteModal && delivery.routeId && (
+                  <button
+                    type="button"
+                    className="button-secondary mt-4 min-h-11 w-full sm:w-auto"
+                    onClick={() => setRemoveTarget({ id: delivery.id, code: delivery.code, routeId: delivery.routeId!, status: delivery.status })}
+                    data-testid={`button-store-remove-route-${delivery.id}`}
+                  >
+                    <X size={15} aria-hidden="true" /> Tirar da rota
+                  </button>
+                )}
+                {CancelDeliveryModal && !delivery.routeId && ["REQUESTED", "AWAITING_COURIER"].includes(delivery.status) && (
+                  <button
+                    type="button"
+                    className="button-quiet mt-4 min-h-11 w-full sm:ml-2 sm:w-auto"
+                    onClick={() => setCancelTarget({ id: delivery.id, code: delivery.code })}
+                    data-testid={`button-store-cancel-${delivery.id}`}
+                  >
+                    <X size={15} aria-hidden="true" /> Cancelar entrega
+                  </button>
+                )}
+                {DispatchModal && !delivery.routeId && ["REQUESTED", "AWAITING_COURIER"].includes(delivery.status) && (
+                  <button
+                    type="button"
+                    className="button-secondary mt-4 min-h-11 w-full sm:w-auto"
+                    onClick={() => setDispatchId(delivery.id)}
+                    data-testid={`button-store-dispatch-${delivery.id}`}
+                  >
+                    <Truck size={15} aria-hidden="true" /> Despachar para um motoboy
+                  </button>
+                )}
                 {delivery.status === "AT_STORE" ? (
                   <button
                     className="button-primary mt-4 w-full sm:w-auto"
@@ -211,6 +312,34 @@ export default function StorePortal({
       </div>
       {NewDeliveryModal && newDeliveryOpen && (
         <NewDeliveryModal onClose={() => setNewDeliveryOpen(false)} />
+      )}
+      {DispatchModal && dispatchId && (
+        <DispatchModal deliveryId={dispatchId} onClose={() => setDispatchId(null)} />
+      )}
+      {RemoveFromRouteModal && removeTarget && (
+        <RemoveFromRouteModal
+          delivery={removeTarget}
+          onClose={() => setRemoveTarget(null)}
+          onDone={(text) => setRouteFeedback({ kind: "success", text })}
+        />
+      )}
+      {CancelDeliveryModal && cancelTarget && (
+        <CancelDeliveryModal
+          deliveryId={cancelTarget.id}
+          code={cancelTarget.code}
+          onClose={() => setCancelTarget(null)}
+          onCancelled={() => setRouteFeedback({ kind: "success", text: `Entrega ${cancelTarget.code} cancelada.` })}
+        />
+      )}
+      {GroupRouteModal && groupOpen && (
+        <GroupRouteModal
+          deliveryIds={selectedIds}
+          onClose={() => setGroupOpen(false)}
+          onCreated={(text) => {
+            setSelectedIds([]);
+            setRouteFeedback({ kind: "success", text });
+          }}
+        />
       )}
     </main>
   );

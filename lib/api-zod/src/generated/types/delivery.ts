@@ -13,6 +13,15 @@ export interface Delivery {
   customerName: string;
   /** @nullable */
   customerPhone?: string | null;
+  /** O motoboy precisa recolher a receita do cliente */
+  requiresPrescription?: boolean;
+  /** @nullable */
+  prescriptionCollectedAt?: Date | null;
+  /**
+     * Rota agrupada (oferecida ou aceita) em que a entrega está
+     * @nullable
+     */
+  routeId?: string | null;
   destination: string;
   orderNumber?: string;
   /** @nullable */

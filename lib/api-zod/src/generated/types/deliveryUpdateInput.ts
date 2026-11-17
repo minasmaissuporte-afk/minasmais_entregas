@@ -31,4 +31,5 @@ export interface DeliveryUpdateInput {
   /** @nullable */
   notes?: string | null;
   priority?: DeliveryUpdateInputPriority;
+  requiresPrescription?: boolean;
 }
