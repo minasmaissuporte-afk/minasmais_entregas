@@ -146,6 +146,9 @@ export default function CourierRouteMapTab({
             </a>
           </div>
         )}
+        {!isPickup && panelDelivery && !phone && (
+          <p className="courier-route-map-screen__no-phone">Cliente sem telefone nesta entrega.</p>
+        )}
         {phone && whatsappDigits && (
           <div className="courier-route-map-screen__actions courier-route-map-screen__actions--secondary">
             <a className="button-secondary min-h-12 flex-1 justify-center" href={`tel:${phone}`} aria-label="Telefone do cliente" title="Telefone">

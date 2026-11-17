@@ -2582,3 +2582,6 @@ textarea { resize:vertical; }
 }
 /* Zoom do Google visível acima do painel inferior. */
 .courier-pwa .courier-route-map-screen .gm-bundled-control { margin-top: max(12px, env(safe-area-inset-top)) !important; }
+/* O painel pode crescer um pouco: com o mapa móvel, os botões de contato não ficam escondidos na rolagem. */
+.courier-pwa .courier-route-map-screen__panel { max-height: 66%; }
+.courier-pwa .courier-route-map-screen__no-phone { margin: 0; color: #6b6f76; font-size: 13px; text-align: center; }

@@ -154,7 +154,9 @@ export default function CourierDeliveryNavigation({
                   <MessageCircle size={20} aria-hidden="true" /> <span>WhatsApp</span>
                 </a>
               </div>
-            ) : null}
+            ) : (
+              <p className="courier-route-map-screen__no-phone">Cliente sem telefone nesta entrega.</p>
+            )}
             {delivery.status !== "RETURNING_TO_STORE" && (
               <CourierUnableToDeliverAction
                 deliveryId={deliveryId}
