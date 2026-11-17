@@ -746,6 +746,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CourierEarnings"
+  /delivery-routes/{routeId}/ungroup:
+    post:
+      operationId: ungroupDeliveryRoute
+      tags: [routes]
+      summary: Undo a route offer that no courier accepted yet; its deliveries go back to the queue
+      parameters:
+        - in: path
+          name: routeId
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Route undone
+        "409":
+          description: The route was already accepted (remove deliveries one by one)
+  /delivery-routes/{routeId}/remove-delivery:
+    post:
+      operationId: removeDeliveryFromRoute
+      tags: [routes]
+      summary: Take one delivery out of a route (back to the queue or cancelled), redrawing the rest
+      parameters:
+        - in: path
+          name: routeId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RemoveDeliveryFromRouteInput"
+      responses:
+        "200":
+          description: Delivery removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemoveDeliveryFromRouteResult"
+        "409":
+          description: The courier already picked up this delivery, or the route changed
   /delivery-routes:
     post:
       operationId: createDeliveryRoute
@@ -1026,6 +1066,9 @@ components:
         code: { type: string }
         customerName: { type: string }
         customerPhone: { type: ["string", "null"] }
+        requiresPrescription: { type: boolean, description: O motoboy precisa recolher a receita do cliente }
+        prescriptionCollectedAt: { type: ["string", "null"], format: date-time }
+        routeId: { type: ["string", "null"], description: Rota agrupada (oferecida ou aceita) em que a entrega está }
         destination: { type: string }
         orderNumber: { type: string }
         notes: { type: ["string", "null"] }
@@ -1075,6 +1118,7 @@ components:
         notes: { type: string }
         storeId: { type: string }
         priority: { type: string, enum: [normal, urgent] }
+        requiresPrescription: { type: boolean }
         deliveryAmount: { type: number, minimum: 0, description: Deprecated; server uses the selected branch's configured fee }
     DeliveryUpdateInput:
       type: object
@@ -1087,6 +1131,7 @@ components:
         orderNumber: { type: string, minLength: 1 }
         notes: { type: ["string", "null"] }
         priority: { type: string, enum: [normal, urgent] }
+        requiresPrescription: { type: boolean }
     DispatchInput:
       type: object
       required: [mode]
@@ -1102,6 +1147,7 @@ components:
           enum: [ACCEPTED, TO_STORE, AT_STORE, IN_TRANSIT, COMPLETED, CANCELLED, AWAITING_COURIER, RETURNING_TO_STORE, NOT_DELIVERED]
         note: { type: string, maxLength: 500 }
         evidencePath: { type: string }
+        prescriptionCollected: { type: boolean, description: O motoboy confirma que recolheu a receita }
     Store:
       type: object
       required: [id, name, code, city, address, active, street, number, complement, neighborhood, stateCode, postalCode, phone, managerName, managerPhone, assistantManagerName, assistantManagerPhone, latitude, longitude, deliveryCount, deliveryFee]
@@ -1188,6 +1234,7 @@ components:
       type: object
       properties:
         evidencePath: { type: string }
+        prescriptionCollected: { type: boolean }
     ActiveOperationsRoute:
       type: object
       required: [id, courierId, courierFirstName, routeGeometry]
@@ -1455,6 +1502,19 @@ components:
         period: { type: string, enum: [day, week, month] }
         completedDeliveries: { type: integer }
         amountToReceive: { type: number }
+    RemoveDeliveryFromRouteInput:
+      type: object
+      required: [deliveryId]
+      properties:
+        deliveryId: { type: string }
+        cancel: { type: boolean, description: true quando o cliente desistiu (a entrega é cancelada); senão volta para a fila }
+        reason: { type: string, maxLength: 300 }
+    RemoveDeliveryFromRouteResult:
+      type: object
+      required: [routeStatus, remainingDeliveries]
+      properties:
+        routeStatus: { type: string }
+        remainingDeliveries: { type: integer }
     CreateDeliveryRouteInput:
       type: object
       required: [deliveryIds]
@@ -1465,6 +1525,9 @@ components:
           maxItems: 10
           uniqueItems: true
           items: { type: string }
+        courierId:
+          type: ["string", "null"]
+          description: Motoboy escolhido. Sem ele, a rota é oferecida a todos os motoboys disponíveis.
     AcceptCourierRouteInput:
       type: object
       required: [latitude, longitude]
@@ -1532,6 +1595,7 @@ components:
         code: { type: string }
         customerName: { type: string }
         customerPhone: { type: ["string", "null"] }
+        requiresPrescription: { type: boolean }
         destination: { type: string }
         notes: { type: ["string", "null"] }
         storeName: { type: string }

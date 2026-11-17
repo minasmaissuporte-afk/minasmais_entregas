@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   AcceptCourierRouteBody,
@@ -13,6 +13,8 @@ import {
   CreateCourierDeliveryCancellationResponse,
   CreateDeliveryRouteBody,
   CreateDeliveryRouteResponse,
+  RemoveDeliveryFromRouteBody,
+  RemoveDeliveryFromRouteResponse,
   DeclineCourierDeliveryParams,
   DeclineCourierRouteParams,
   GetCourierRoutePreviewParams,
@@ -56,7 +58,7 @@ import {
   type OptimizedVisit,
 } from "../lib/googleMaps";
 import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
-import { notifyAvailableCouriers, notifyCentralUsers } from "../lib/webPush";
+import { notifyAvailableCouriers, notifyCentralUsers, notifyCouriers } from "../lib/webPush";
 import { getCourierDisplayName, getCourierFirstName } from "../lib/courierName";
 
 const router: IRouter = Router();
@@ -166,6 +168,7 @@ async function routeView(
       code: delivery.code,
       customerName: delivery.customerName,
       customerPhone: delivery.customerPhone,
+      requiresPrescription: delivery.requiresPrescription,
       destination: delivery.destination,
       notes: delivery.notes,
       storeName: row.storeName,
@@ -397,7 +400,7 @@ async function optimizeRoute(
 
 router.post(
   "/delivery-routes",
-  requireRole("ADMIN", "CENTRAL"),
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     const body = CreateDeliveryRouteBody.safeParse(req.body);
     if (!body.success || new Set(body.data.deliveryIds).size !== body.data.deliveryIds.length) {
@@ -407,6 +410,32 @@ router.post(
 
     const profile = res.locals.appUser as AppUserProfile;
     const deliveryIds = body.data.deliveryIds;
+    const targetCourierId = body.data.courierId ?? null;
+    if (profile.role === "STORE_MANAGER" && !profile.storeId) {
+      res.status(403).json({ error: "Esta conta não está vinculada a uma filial." });
+      return;
+    }
+    let targetCourierName: string | null = null;
+    if (targetCourierId) {
+      const [target] = await db
+        .select({ id: couriersTable.id, name: couriersTable.name, status: couriersTable.status })
+        .from(couriersTable)
+        .where(eq(couriersTable.id, targetCourierId))
+        .limit(1);
+      if (!target) {
+        res.status(400).json({ error: "Motoboy não encontrado." });
+        return;
+      }
+      if (target.status !== "AVAILABLE") {
+        res.status(409).json({
+          error: target.status === "BUSY"
+            ? `${target.name} está em outra entrega agora. Escolha outro motoboy ou ofereça a todos.`
+            : `${target.name} está offline. Escolha um motoboy disponível ou ofereça a todos.`,
+        });
+        return;
+      }
+      targetCourierName = target.name;
+    }
     const result = await db.transaction(async (tx) => {
       const rows = [];
       for (const deliveryId of [...deliveryIds].sort()) {
@@ -416,6 +445,10 @@ router.post(
           .where(eq(deliveriesTable.id, deliveryId))
           .for("update");
         if (!delivery) return { error: "not_found" as const };
+        // Gerente só monta rota com entregas da própria filial.
+        if (profile.role === "STORE_MANAGER" && delivery.storeId !== profile.storeId) {
+          return { error: "not_found" as const };
+        }
         if (delivery.status !== "REQUESTED") {
           return { error: "not_requested" as const };
         }
@@ -427,6 +460,8 @@ router.post(
         id: routeId,
         deliveryIds,
         status: "OFFERED",
+        // Com motoboy escolhido, só ele vê e pode aceitar a oferta.
+        courierId: targetCourierId,
         createdBy: profile.id,
       });
       for (const delivery of rows) {
@@ -438,8 +473,10 @@ router.post(
           id: randomUUID(),
           deliveryId: delivery.id,
           kind: "offered",
-          label: "Entrega incluída em uma oferta de rota agrupada",
-          actor: "Central de entregas",
+          label: targetCourierName
+            ? `Entrega incluída em uma rota oferecida a ${targetCourierName}`
+            : "Entrega incluída em uma oferta de rota agrupada",
+          actor: profile.role === "STORE_MANAGER" ? "Gerente da filial" : "Central de entregas",
         });
       }
       return { routeId };
@@ -464,10 +501,17 @@ router.post(
       res.status(500).json({ error: "Não foi possível carregar a rota criada." });
       return;
     }
-    await notifyAvailableCouriers({
-      title: "Nova rota disponível",
-      body: `${route.deliveryIds.length} entregas aguardam aceite.`,
-    });
+    if (targetCourierId) {
+      await notifyCouriers([targetCourierId], {
+        title: "Rota para você",
+        body: `${route.deliveryIds.length} entregas aguardam o seu aceite.`,
+      });
+    } else {
+      await notifyAvailableCouriers({
+        title: "Nova rota disponível",
+        body: `${route.deliveryIds.length} entregas aguardam aceite.`,
+      });
+    }
     res.status(201).json(CreateDeliveryRouteResponse.parse(await routeView(route)));
   },
 );
@@ -510,6 +554,258 @@ router.get(
   },
 );
 
+/** Quem pode mexer numa rota: Central/admin, ou o gerente se todas as entregas forem da filial dele. */
+async function canManageRoute(profile: AppUserProfile, deliveryIds: string[]) {
+  if (profile.role === "ADMIN" || profile.role === "CENTRAL") return true;
+  if (profile.role !== "STORE_MANAGER" || !profile.storeId || !deliveryIds.length) return false;
+  const rows = await db
+    .select({ storeId: deliveriesTable.storeId })
+    .from(deliveriesTable)
+    .where(inArray(deliveriesTable.id, deliveryIds));
+  return rows.length === deliveryIds.length && rows.every((row) => row.storeId === profile.storeId);
+}
+
+function actorFor(profile: AppUserProfile) {
+  return profile.role === "STORE_MANAGER" ? "Gerente da filial" : "Central de entregas";
+}
+
+router.post(
+  "/delivery-routes/:routeId/ungroup",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  async (req, res): Promise<void> => {
+    const routeId = String(req.params.routeId ?? "");
+    const profile = res.locals.appUser as AppUserProfile;
+    const [route] = await db
+      .select()
+      .from(deliveryRoutesTable)
+      .where(eq(deliveryRoutesTable.id, routeId))
+      .limit(1);
+    if (!route || !(await canManageRoute(profile, route.deliveryIds))) {
+      res.status(404).json({ error: "Rota não encontrada." });
+      return;
+    }
+    if (route.status !== "OFFERED") {
+      res.status(409).json({
+        error: route.status === "ACCEPTED"
+          ? "O motoboy já aceitou esta rota. Tire as entregas uma a uma com \"Tirar da rota\"."
+          : "Esta rota não está mais ativa.",
+      });
+      return;
+    }
+    const done = await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ status: deliveryRoutesTable.status })
+        .from(deliveryRoutesTable)
+        .where(eq(deliveryRoutesTable.id, route.id))
+        .for("update");
+      if (locked?.status !== "OFFERED") return false;
+      await tx.update(deliveryRoutesTable).set({ status: "CANCELLED" }).where(eq(deliveryRoutesTable.id, route.id));
+      for (const deliveryId of route.deliveryIds) {
+        const [updated] = await tx
+          .update(deliveriesTable)
+          .set({ status: "REQUESTED", updatedAt: new Date() })
+          .where(and(eq(deliveriesTable.id, deliveryId), eq(deliveriesTable.status, "OFFERED")))
+          .returning({ id: deliveriesTable.id });
+        if (updated) {
+          await tx.insert(deliveryEventsTable).values({
+            id: randomUUID(),
+            deliveryId,
+            kind: "route_ungrouped",
+            label: "Rota desfeita: a entrega voltou para a fila",
+            actor: actorFor(profile),
+          });
+        }
+      }
+      return true;
+    });
+    if (!done) {
+      res.status(409).json({ error: "A rota mudou enquanto era desfeita. Atualize e tente de novo." });
+      return;
+    }
+    if (route.courierId) {
+      await notifyCouriers([route.courierId], { title: "Rota cancelada", body: "A rota que tinha sido oferecida a você foi desfeita." });
+    }
+    res.sendStatus(204);
+  },
+);
+
+router.post(
+  "/delivery-routes/:routeId/remove-delivery",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  async (req, res): Promise<void> => {
+    const routeId = String(req.params.routeId ?? "");
+    const body = RemoveDeliveryFromRouteBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "Escolha a entrega que vai sair da rota." });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    const { deliveryId } = body.data;
+    const cancel = body.data.cancel === true;
+    const reason = body.data.reason?.trim() || null;
+    const [route] = await db
+      .select()
+      .from(deliveryRoutesTable)
+      .where(eq(deliveryRoutesTable.id, routeId))
+      .limit(1);
+    if (!route || !route.deliveryIds.includes(deliveryId) || !(await canManageRoute(profile, [deliveryId]))) {
+      res.status(404).json({ error: "Esta entrega não está nesta rota." });
+      return;
+    }
+    if (!["OFFERED", "ACCEPTED"].includes(route.status)) {
+      res.status(409).json({ error: "Esta rota não está mais ativa." });
+      return;
+    }
+
+    const remainingIds = route.deliveryIds.filter((id) => id !== deliveryId);
+    // Rota já aceita: redesenha o caminho das paradas que sobraram (a ordem continua a mesma).
+    let geometry: { routeGeometry: { latitude: number; longitude: number }[] | null; distanceMeters: number | null; durationSeconds: number | null } | null = null;
+    let courierStart: { latitude: number; longitude: number } | null = null;
+    if (route.status === "ACCEPTED" && route.courierId) {
+      const [courierRow] = await db
+        .select({ latitude: couriersTable.currentLatitude, longitude: couriersTable.currentLongitude })
+        .from(couriersTable)
+        .where(eq(couriersTable.id, route.courierId))
+        .limit(1);
+      if (courierRow?.latitude != null && courierRow.longitude != null) {
+        courierStart = { latitude: courierRow.latitude, longitude: courierRow.longitude };
+      }
+      const pendingStops = (
+        await db
+          .select()
+          .from(deliveryRouteStopsTable)
+          .where(and(eq(deliveryRouteStopsTable.routeId, route.id), eq(deliveryRouteStopsTable.status, "PENDING")))
+          .orderBy(asc(deliveryRouteStopsTable.sequence))
+      ).filter((stop) => stop.deliveryId !== deliveryId);
+      const points = [
+        ...(courierStart ? [courierStart] : []),
+        ...pendingStops.map((stop) => ({ latitude: stop.latitude, longitude: stop.longitude })),
+      ];
+      if (points.length >= 2) {
+        try {
+          const directions = await computeDrivingRoute(points);
+          geometry = {
+            routeGeometry: directions.geometry,
+            distanceMeters: directions.distanceMeters,
+            durationSeconds: directions.durationSeconds,
+          };
+        } catch (error) {
+          req.log.warn({ err: error }, "Could not redraw the route after removing a delivery");
+        }
+      }
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(deliveryRoutesTable)
+        .where(eq(deliveryRoutesTable.id, route.id))
+        .for("update");
+      if (!locked || locked.status !== route.status || !locked.deliveryIds.includes(deliveryId)) {
+        return { error: "changed" as const };
+      }
+      const [delivery] = await tx
+        .select()
+        .from(deliveriesTable)
+        .where(eq(deliveriesTable.id, deliveryId))
+        .for("update");
+      if (!delivery) return { error: "changed" as const };
+      // Produto já está com o motoboy: precisa voltar para a loja (ocorrência no app do motoboy).
+      if (delivery.status === "IN_TRANSIT") return { error: "picked_up" as const };
+      if (["COMPLETED", "CANCELLED", "NOT_DELIVERED", "RETURNING_TO_STORE", "PRODUCT_RETURNED"].includes(delivery.status)) {
+        return { error: "closed" as const };
+      }
+
+      const now = new Date();
+      const routeStillHasWork = remainingIds.length > 0;
+      const nextRouteStatus = routeStillHasWork
+        ? locked.status
+        : locked.status === "ACCEPTED"
+          ? "COMPLETED"
+          : "CANCELLED";
+      await tx
+        .update(deliveryRoutesTable)
+        .set({
+          deliveryIds: remainingIds,
+          status: nextRouteStatus,
+          ...(locked.status === "ACCEPTED" && geometry ? geometry : {}),
+        })
+        .where(eq(deliveryRoutesTable.id, locked.id));
+      if (locked.status === "ACCEPTED") {
+        await tx
+          .update(deliveryRouteStopsTable)
+          .set({ status: "CANCELLED" })
+          .where(
+            and(
+              eq(deliveryRouteStopsTable.routeId, locked.id),
+              eq(deliveryRouteStopsTable.deliveryId, deliveryId),
+              eq(deliveryRouteStopsTable.status, "PENDING"),
+            ),
+          );
+      }
+      await tx
+        .update(deliveriesTable)
+        .set({ status: cancel ? "CANCELLED" : "REQUESTED", courierId: null, updatedAt: now })
+        .where(eq(deliveriesTable.id, deliveryId));
+      await tx.insert(deliveryEventsTable).values({
+        id: randomUUID(),
+        deliveryId,
+        kind: cancel ? "cancelled" : "route_removed",
+        label: cancel
+          ? `Retirada da rota e cancelada${reason ? `: ${reason}` : " (cliente desistiu)"}`
+          : "Retirada da rota: a entrega voltou para a fila",
+        actor: actorFor(profile),
+        timestamp: now,
+      });
+
+      if (locked.status === "ACCEPTED" && locked.courierId) {
+        if (routeStillHasWork) {
+          // Próxima parada pendente vira a entrega atual do motoboy.
+          const [nextStop] = await tx
+            .select({ deliveryId: deliveryRouteStopsTable.deliveryId })
+            .from(deliveryRouteStopsTable)
+            .where(and(eq(deliveryRouteStopsTable.routeId, locked.id), eq(deliveryRouteStopsTable.status, "PENDING")))
+            .orderBy(asc(deliveryRouteStopsTable.sequence))
+            .limit(1);
+          const [next] = nextStop
+            ? await tx.select({ code: deliveriesTable.code }).from(deliveriesTable).where(eq(deliveriesTable.id, nextStop.deliveryId)).limit(1)
+            : [];
+          await tx
+            .update(couriersTable)
+            .set({ currentDeliveryCode: next?.code ?? null })
+            .where(eq(couriersTable.id, locked.courierId));
+        } else {
+          await tx
+            .update(couriersTable)
+            .set({ status: "AVAILABLE", currentDeliveryCode: null })
+            .where(eq(couriersTable.id, locked.courierId));
+        }
+      }
+      return { routeStatus: nextRouteStatus, remaining: remainingIds.length, code: delivery.code };
+    });
+
+    if ("error" in result) {
+      res.status(409).json({
+        error: result.error === "picked_up"
+          ? "O motoboy já retirou esta entrega na loja. Peça para ele registrar \"Não consigo entregar\" e devolver o produto na filial."
+          : result.error === "closed"
+            ? "Esta entrega já foi encerrada."
+            : "A rota mudou agora há pouco. Atualize e tente de novo.",
+      });
+      return;
+    }
+    if (route.courierId) {
+      await notifyCouriers([route.courierId], {
+        title: "Rota alterada",
+        body: result.remaining
+          ? `A entrega ${result.code} saiu da sua rota. Siga para a próxima parada.`
+          : `A entrega ${result.code} saiu da sua rota. Não há mais paradas.`,
+      });
+    }
+    res.json(RemoveDeliveryFromRouteResponse.parse({ routeStatus: result.routeStatus, remainingDeliveries: result.remaining }));
+  },
+);
+
 router.get(
   "/courier/routes",
   requireRole("COURIER"),
@@ -535,12 +831,13 @@ router.get(
       .from(courierRouteOfferDeclinesTable)
       .where(eq(courierRouteOfferDeclinesTable.courierId, profile.courierId));
     const declinedRouteIds = declinedRows.map((row) => row.routeId);
+    const offeredToMe = and(
+      eq(deliveryRoutesTable.status, "OFFERED"),
+      or(isNull(deliveryRoutesTable.courierId), eq(deliveryRoutesTable.courierId, profile.courierId)),
+    );
     const availableOffers = declinedRouteIds.length
-      ? and(
-          eq(deliveryRoutesTable.status, "OFFERED"),
-          notInArray(deliveryRoutesTable.id, declinedRouteIds),
-        )
-      : eq(deliveryRoutesTable.status, "OFFERED");
+      ? and(offeredToMe, notInArray(deliveryRoutesTable.id, declinedRouteIds))
+      : offeredToMe;
 
     const routes = await db
       .select()
@@ -600,6 +897,7 @@ router.get(
         and(
           eq(deliveryRoutesTable.id, params.data.routeId),
           eq(deliveryRoutesTable.status, "OFFERED"),
+          or(isNull(deliveryRoutesTable.courierId), eq(deliveryRoutesTable.courierId, profile.courierId)),
         ),
       )
       .limit(1);
@@ -817,12 +1115,60 @@ router.post(
       .where(eq(couriersTable.id, profile.courierId))
       .limit(1);
     const [route] = await db
-      .select({ id: deliveryRoutesTable.id, status: deliveryRoutesTable.status })
+      .select({ id: deliveryRoutesTable.id, status: deliveryRoutesTable.status, courierId: deliveryRoutesTable.courierId, deliveryIds: deliveryRoutesTable.deliveryIds })
       .from(deliveryRoutesTable)
       .where(eq(deliveryRoutesTable.id, params.data.routeId))
       .limit(1);
-    if (courier?.status !== "AVAILABLE" || route?.status !== "OFFERED") {
+    if (courier?.status !== "AVAILABLE" || route?.status !== "OFFERED" || (route.courierId && route.courierId !== profile.courierId)) {
       res.status(409).json({ error: "Esta rota não está mais disponível para recusa." });
+      return;
+    }
+    if (route.courierId === profile.courierId) {
+      // A rota era só para este motoboy: as entregas voltam para a fila como novas.
+      const returned = await db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ status: deliveryRoutesTable.status })
+          .from(deliveryRoutesTable)
+          .where(eq(deliveryRoutesTable.id, route.id))
+          .for("update");
+        if (locked?.status !== "OFFERED") return false;
+        await tx
+          .update(deliveryRoutesTable)
+          .set({ status: "DECLINED" })
+          .where(eq(deliveryRoutesTable.id, route.id));
+        const [courierRow] = await tx
+          .select({ name: couriersTable.name })
+          .from(couriersTable)
+          .where(eq(couriersTable.id, profile.courierId!))
+          .limit(1);
+        for (const deliveryId of route.deliveryIds) {
+          const [updated] = await tx
+            .update(deliveriesTable)
+            .set({ status: "REQUESTED", updatedAt: new Date() })
+            .where(and(eq(deliveriesTable.id, deliveryId), eq(deliveriesTable.status, "OFFERED")))
+            .returning({ id: deliveriesTable.id });
+          if (updated) {
+            await tx.insert(deliveryEventsTable).values({
+              id: randomUUID(),
+              deliveryId,
+              kind: "route_declined",
+              label: `${courierRow?.name ?? "O motoboy"} recusou a rota; a entrega voltou para a fila`,
+              actor: courierRow?.name ?? null,
+            });
+          }
+        }
+        return true;
+      });
+      if (!returned) {
+        res.status(409).json({ error: "Esta rota não está mais disponível para recusa." });
+        return;
+      }
+      await notifyCentralUsers({
+        title: "Rota recusada",
+        body: `${route.deliveryIds.length} entregas voltaram para a fila. Escolha outro motoboy.`,
+        url: "/entregas",
+      });
+      res.sendStatus(204);
       return;
     }
     await db
@@ -1526,7 +1872,7 @@ router.post(
       .from(deliveryRoutesTable)
       .where(eq(deliveryRoutesTable.id, params.data.routeId))
       .limit(1);
-    if (!route || route.status !== "OFFERED") {
+    if (!route || route.status !== "OFFERED" || (route.courierId && route.courierId !== profile.courierId)) {
       res.status(409).json({ error: "Esta rota não está mais disponível." });
       return;
     }
@@ -1566,7 +1912,7 @@ router.post(
         .from(deliveryRoutesTable)
         .where(eq(deliveryRoutesTable.id, route.id))
         .for("update");
-      if (!lockedRoute || lockedRoute.status !== "OFFERED") {
+      if (!lockedRoute || lockedRoute.status !== "OFFERED" || (lockedRoute.courierId && lockedRoute.courierId !== profile.courierId)) {
         return { error: "route_taken" as const };
       }
       const [courier] = await tx
@@ -1853,6 +2199,8 @@ router.post(
           if (!arrival) return { error: "store_arrival_missing" as const };
         } else if (!body.data.evidencePath) {
           return { error: "evidence_missing" as const };
+        } else if (delivery.requiresPrescription && !body.data.prescriptionCollected) {
+          return { error: "prescription_required" as const };
         }
         targetDeliveries.push({ stop: target, delivery });
       }
@@ -1869,6 +2217,9 @@ router.post(
             status: nextDeliveryStatus,
             ...(stop.kind === "delivery" && body.data.evidencePath
               ? { evidencePath: body.data.evidencePath }
+              : {}),
+            ...(stop.kind === "delivery" && delivery.requiresPrescription
+              ? { prescriptionCollectedAt: now }
               : {}),
             updatedAt: now,
           })
@@ -1947,6 +2298,8 @@ router.post(
               ? "Registre a chegada à loja antes de confirmar a saída."
               : result.error === "evidence_missing"
                 ? "Envie a foto de comprovação antes de concluir a entrega."
+              : result.error === "prescription_required"
+                ? "Esta entrega tem receita: confirme que recolheu a receita do cliente antes de concluir."
             : result.error === "delivery_not_owned"
               ? "A entrega não está vinculada a esta rota."
               : "O status da entrega mudou. Atualize a rota antes de continuar.";

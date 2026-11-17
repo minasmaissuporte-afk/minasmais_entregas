@@ -93,6 +93,9 @@ export const deliveriesTable = pgTable(
     code: text("code").notNull().unique(),
     customerName: text("customer_name").notNull(),
     customerPhone: text("customer_phone"),
+    // Medicamento com receita: o motoboy precisa recolher a receita na entrega.
+    requiresPrescription: boolean("requires_prescription").notNull().default(false),
+    prescriptionCollectedAt: timestamp("prescription_collected_at", { withTimezone: true }),
     destination: text("destination").notNull(),
     customerLatitude: real("customer_latitude"),
     customerLongitude: real("customer_longitude"),

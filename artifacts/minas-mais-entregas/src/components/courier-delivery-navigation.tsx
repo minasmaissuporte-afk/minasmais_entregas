@@ -114,6 +114,9 @@ export default function CourierDeliveryNavigation({
                 <MapPin size={16} aria-hidden="true" />
                 <span>{data.targetAddress}</span>
               </p>
+              {delivery.requiresPrescription && delivery.status === "IN_TRANSIT" && (
+                <p className="courier-route-map-screen__prescription">Pegar a receita do cliente nesta entrega</p>
+              )}
             </div>
             <div className="courier-route-map-screen__summary" aria-label="Resumo da entrega">
               {data.distanceMeters != null && (

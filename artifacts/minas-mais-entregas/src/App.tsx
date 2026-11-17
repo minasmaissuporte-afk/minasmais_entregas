@@ -25,6 +25,8 @@ import {
   useListStores,
   useListActiveRoutes,
   useUpdateDelivery,
+  useRemoveDeliveryFromRoute,
+  useUngroupDeliveryRoute,
   useUpdateDeliveryStatus,
   type AppUser,
   type Delivery,
@@ -165,6 +167,7 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState('');
   const [customerCoordinates, setCustomerCoordinates] = useState<{ latitude: number | null; longitude: number | null }>({ latitude: null, longitude: null });
   const [form, setForm] = useState({ customerName: '', customerPhone: '', destination: '', orderNumber: '', notes: '', storeId: '', priority: 'normal' });
+  const [requiresPrescription, setRequiresPrescription] = useState(false);
   const selectedStore = (storesQuery.data ?? []).find(store => store.id === form.storeId);
   // Gerente (ou operação com uma filial só): a unidade já vem escolhida.
   const activeStores = (storesQuery.data ?? []).filter(store => store.active);
@@ -192,7 +195,7 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   useModalBehavior(requestClose);
   const submit = (e: FormEvent) => {
     e.preventDefault(); setError('');
-    create.mutate({ data: { ...form, customerLatitude: customerCoordinates.latitude, customerLongitude: customerCoordinates.longitude, priority: form.priority as 'normal' | 'urgent' } }, {
+    create.mutate({ data: { ...form, requiresPrescription, customerLatitude: customerCoordinates.latitude, customerLongitude: customerCoordinates.longitude, priority: form.priority as 'normal' | 'urgent' } }, {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
         void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
@@ -229,6 +232,7 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
         {storesQuery.isError && <p className="text-xs text-destructive">Não foi possível carregar as unidades. Reabra o formulário para tentar novamente.</p>}
         <Field label="Observações"><textarea rows={2} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Referências úteis para a entrega" data-testid="input-notes"/></Field>
         <Field label="Prioridade"><select value={form.priority} onChange={e => update('priority', e.target.value)} data-testid="select-priority"><option value="normal">Normal</option><option value="urgent">Urgente</option></select></Field>
+        <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-lg border border-border bg-[#faf9f7] px-3 py-3"><input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-[#b91e2c]" checked={requiresPrescription} onChange={e => setRequiresPrescription(e.target.checked)} data-testid="checkbox-requires-prescription"/><span><span className="block text-sm font-semibold text-[#2b2e33]">Medicamento com receita</span><span className="mt-0.5 block text-xs text-muted-foreground">O motoboy precisa pegar a receita com o cliente e confirmar no app antes de concluir.</span></span></label>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         </div>
         <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6"><button type="button" className="button-secondary" onClick={requestClose} disabled={create.isPending}>Cancelar</button><button type="submit" className="button-primary" disabled={create.isPending || storesQuery.isLoading || !storesQuery.data?.some(s => s.active)}><Plus size={16}/>{create.isPending ? 'Registrando…' : 'Registrar pedido'}</button></div>
@@ -258,7 +262,9 @@ function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery;
   const [form, setForm] = useState(initial);
   const [coordinates, setCoordinates] = useState<{ latitude: number | null; longitude: number | null }>({ latitude: delivery.customerLatitude, longitude: delivery.customerLongitude });
   const destinationChanged = form.destination.trim() !== delivery.destination;
-  const hasChanges = (Object.keys(initial) as (keyof typeof initial)[]).some(key => form[key].trim() !== String(initial[key]).trim());
+  const [requiresPrescription, setRequiresPrescription] = useState(delivery.requiresPrescription === true);
+  const hasChanges = (Object.keys(initial) as (keyof typeof initial)[]).some(key => form[key].trim() !== String(initial[key]).trim())
+    || requiresPrescription !== (delivery.requiresPrescription === true);
   const update = (key: keyof typeof initial, value: string) => {
     setForm(prev => ({ ...prev, [key]: value }));
   };
@@ -280,6 +286,7 @@ function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery;
         orderNumber: form.orderNumber,
         notes: form.notes.trim() || null,
         priority: form.priority as 'normal' | 'urgent',
+        requiresPrescription,
         ...(addressEditable && destinationChanged
           ? { destination: form.destination, customerLatitude: coordinates.latitude, customerLongitude: coordinates.longitude }
           : {}),
@@ -320,6 +327,9 @@ function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery;
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Número do pedido"><input required value={form.orderNumber} onChange={e => update('orderNumber', e.target.value)} data-testid="input-edit-order-number"/></Field>
           <Field label="Prioridade"><select value={form.priority} onChange={e => update('priority', e.target.value)} data-testid="select-edit-priority"><option value="normal">Normal</option><option value="urgent">Urgente</option></select></Field>
+        </div>
+        <div>
+          <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-lg border border-border bg-[#faf9f7] px-3 py-3"><input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-[#b91e2c]" checked={requiresPrescription} onChange={e => setRequiresPrescription(e.target.checked)} data-testid="checkbox-edit-requires-prescription"/><span><span className="block text-sm font-semibold text-[#2b2e33]">Medicamento com receita</span><span className="mt-0.5 block text-xs text-muted-foreground">O motoboy precisa pegar a receita com o cliente e confirmar no app antes de concluir.</span></span></label>
         </div>
         <Field label="Observações"><textarea rows={2} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Referências úteis para a entrega" data-testid="input-edit-notes"/></Field>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}
@@ -427,6 +437,145 @@ function DispatchModal({ deliveryId, onClose }: { deliveryId: string; onClose: (
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       </div>
       <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6"><button type="button" className="button-secondary" onClick={requestClose} disabled={dispatch.isPending}>Cancelar</button><button type="button" className="button-primary" disabled={dispatch.isPending || couriersQuery.isLoading || !selectableCouriers.some(courier => courier.id === courierId)} onClick={go}><Truck size={16}/>{dispatch.isPending ? 'Enviando…' : 'Enviar oferta'}</button></div>
+      </div>
+    </section>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * Montar rota com várias entregas (admin e gerente). Com motoboy escolhido, só ele
+ * recebe a oferta; sem escolha, vai para todos os disponíveis. O Google organiza a
+ * ordem das paradas quando o motoboy aceita.
+ */
+function GroupRouteModal({ deliveryIds, onClose, onCreated }: { deliveryIds: string[]; onClose: () => void; onCreated: (message: string) => void }) {
+  const qc = useQueryClient();
+  const couriersQuery = useListCouriers(undefined, { query: { queryKey: getListCouriersQueryKey() } });
+  const createRoute = useCreateDeliveryRoute();
+  const [courierId, setCourierId] = useState('');
+  const [error, setError] = useState('');
+  const couriers = couriersQuery.data ?? [];
+  const available = couriers.filter(courier => courier.status === 'AVAILABLE');
+  const requestClose = () => {
+    if (createRoute.isPending) return;
+    onClose();
+  };
+  useModalBehavior(requestClose);
+  const go = () => {
+    setError('');
+    createRoute.mutate({ data: { deliveryIds, courierId: courierId || null } }, {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
+        void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+        void qc.invalidateQueries({ queryKey: getListCouriersQueryKey() });
+        const name = couriers.find(courier => courier.id === courierId)?.name;
+        onCreated(name
+          ? `Rota com ${deliveryIds.length} entregas enviada para ${name}. Ao aceitar, o Google organiza a melhor ordem.`
+          : `Rota com ${deliveryIds.length} entregas oferecida a todos os motoboys disponíveis.`);
+        onClose();
+      },
+      onError: (mutationError) => {
+        const apiError = mutationError as Error & { data?: { error?: string } };
+        setError(apiError.data?.error ?? 'Não foi possível montar a rota. Atualize a lista e tente de novo.');
+      },
+    });
+  };
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) requestClose(); }}>
+    <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="group-route-title" data-modal-active="true">
+      <div className="modal-header flex items-start justify-between gap-3 border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div className="min-w-0"><div className="eyebrow">ROTA COM VÁRIAS ENTREGAS</div><h2 id="group-route-title" className="mt-1 text-xl font-bold">Montar rota com {deliveryIds.length} entregas</h2><p className="mt-1 text-sm text-muted-foreground">Um motoboy leva todas. Quando ele aceitar, o Google organiza a melhor ordem das paradas a partir de onde ele estiver.</p></div><button type="button" className="icon-button modal-close-button" onClick={requestClose} aria-label="Fechar" disabled={createRoute.isPending}><X size={18}/></button></div>
+      <div className="modal-form">
+      <div className="modal-fields modal-body space-y-4 px-5 py-4 sm:px-6 sm:py-5">
+        <Field label="Quem vai levar">
+          <select value={courierId} onChange={e => setCourierId(e.target.value)} data-modal-initial-focus data-testid="select-route-courier">
+            <option value="">Qualquer motoboy disponível (o primeiro que aceitar)</option>
+            {couriers.map(courier => <option key={courier.id} value={courier.id} disabled={courier.status !== 'AVAILABLE'}>{courier.name} · {courier.status === 'AVAILABLE' ? 'Disponível' : courier.status === 'OFFLINE' ? 'Offline' : 'Em entrega'}</option>)}
+          </select>
+        </Field>
+        {couriersQuery.isLoading && <Skeleton rows={2}/>}
+        {!couriersQuery.isLoading && available.length === 0 && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Nenhum motoboy disponível agora. A rota pode ser oferecida a todos e fica esperando alguém ficar online.</div>}
+        <p className="rounded-lg bg-[#f7f6f4] p-3 text-xs leading-relaxed text-muted-foreground">
+          {courierId
+            ? 'Só este motoboy recebe a oferta. Se ele recusar, as entregas voltam para a fila como novas e você é avisado.'
+            : 'Todos os motoboys disponíveis recebem a oferta; o primeiro que aceitar leva a rota.'}
+        </p>
+        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}
+      </div>
+      <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border sm:flex-row sm:justify-end"><button type="button" className="button-secondary" onClick={requestClose} disabled={createRoute.isPending}>Cancelar</button><button type="button" className="button-primary" disabled={createRoute.isPending} onClick={go} data-testid="button-confirm-route"><Bike size={16}/>{createRoute.isPending ? 'Enviando…' : courierId ? 'Enviar para o motoboy' : 'Oferecer a todos'}</button></div>
+      </div>
+    </section>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * Tirar uma entrega da rota agrupada: volta para a fila ou é cancelada (cliente
+ * desistiu). Se nenhum motoboy aceitou ainda, dá para desfazer a rota inteira.
+ */
+function RemoveFromRouteModal({ delivery, onClose, onDone }: { delivery: { id: string; code: string; routeId: string; status: string }; onClose: () => void; onDone: (message: string) => void }) {
+  const qc = useQueryClient();
+  const removeDelivery = useRemoveDeliveryFromRoute();
+  const ungroup = useUngroupDeliveryRoute();
+  const notAcceptedYet = delivery.status === 'OFFERED';
+  const [choice, setChoice] = useState<'queue' | 'cancel' | 'ungroup'>('queue');
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const pending = removeDelivery.isPending || ungroup.isPending;
+  const requestClose = () => { if (!pending) onClose(); };
+  useModalBehavior(requestClose);
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
+    void qc.invalidateQueries({ queryKey: getGetDeliveryQueryKey(delivery.id) });
+    void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+    void qc.invalidateQueries({ queryKey: getListCouriersQueryKey() });
+    void qc.invalidateQueries({ queryKey: getListActiveRoutesQueryKey() });
+  };
+  const fail = (mutationError: unknown) => {
+    const apiError = mutationError as Error & { data?: { error?: string } };
+    setError(apiError.data?.error ?? 'Não foi possível alterar a rota. Atualize a lista e tente de novo.');
+  };
+  const go = () => {
+    setError('');
+    if (choice === 'ungroup') {
+      ungroup.mutate({ routeId: delivery.routeId }, {
+        onSuccess: () => { refresh(); onDone('Rota desfeita. As entregas voltaram para a fila.'); onClose(); },
+        onError: fail,
+      });
+      return;
+    }
+    removeDelivery.mutate({ routeId: delivery.routeId, data: { deliveryId: delivery.id, cancel: choice === 'cancel', ...(reason.trim() ? { reason: reason.trim() } : {}) } }, {
+      onSuccess: (result) => {
+        refresh();
+        const rest = result.remainingDeliveries
+          ? ` A rota segue com ${result.remainingDeliveries} entrega${result.remainingDeliveries > 1 ? 's' : ''}.`
+          : ' A rota ficou vazia e foi encerrada.';
+        onDone(choice === 'cancel' ? `${delivery.code} saiu da rota e foi cancelada.${rest}` : `${delivery.code} saiu da rota e voltou para a fila.${rest}`);
+        onClose();
+      },
+      onError: fail,
+    });
+  };
+  const option = (value: typeof choice, title: string, detail: string) => (
+    <label className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 ${choice === value ? 'border-[#cb7c82] bg-[#fcf4f4]' : 'border-border'}`}>
+      <input type="radio" name="remove-route-choice" className="mt-1 h-4 w-4 accent-[#b91e2c]" checked={choice === value} onChange={() => setChoice(value)} />
+      <span><span className="block text-sm font-semibold text-[#2b2e33]">{title}</span><span className="mt-0.5 block text-xs text-muted-foreground">{detail}</span></span>
+    </label>
+  );
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) requestClose(); }}>
+    <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="remove-route-title" data-modal-active="true">
+      <div className="modal-header flex items-start justify-between gap-3 border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div className="min-w-0"><div className="eyebrow">{delivery.code}</div><h2 id="remove-route-title" className="mt-1 text-xl font-bold">Tirar da rota</h2><p className="mt-1 text-sm text-muted-foreground">{notAcceptedYet ? 'Nenhum motoboy aceitou esta rota ainda.' : 'O motoboy já está com esta rota: o caminho das outras paradas é refeito e ele recebe um aviso.'}</p></div><button type="button" className="icon-button modal-close-button" onClick={requestClose} aria-label="Fechar" disabled={pending}><X size={18}/></button></div>
+      <div className="modal-form">
+      <div className="modal-fields modal-body space-y-3 px-5 py-4 sm:px-6 sm:py-5" role="radiogroup" aria-label="O que fazer com a entrega">
+        {option('queue', 'Voltar para a fila', 'A entrega sai da rota e fica esperando um novo despacho.')}
+        {option('cancel', 'Cancelar a entrega', 'Use quando o cliente desistiu. O histórico fica guardado.')}
+        {choice === 'cancel' && <Field label="Motivo (opcional)"><input value={reason} onChange={e => setReason(e.target.value)} maxLength={300} placeholder="Ex.: cliente desistiu pelo telefone" /></Field>}
+        {notAcceptedYet && option('ungroup', 'Desfazer a rota inteira', 'Todas as entregas desta rota voltam para a fila.')}
+        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}
+      </div>
+      <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border sm:flex-row sm:justify-end"><button type="button" className="button-secondary" onClick={requestClose} disabled={pending}>Voltar</button><button type="button" className="button-primary" onClick={go} disabled={pending} data-testid="button-confirm-remove-route">{pending ? 'Salvando…' : choice === 'cancel' ? 'Tirar e cancelar' : choice === 'ungroup' ? 'Desfazer rota' : 'Tirar da rota'}</button></div>
       </div>
     </section>
     </div>,
@@ -755,17 +904,11 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
       return current.includes(id) ? current : [...current, id];
     });
   };
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; code: string; routeId: string; status: string } | null>(null);
   const offerGroupedRoute = () => {
     setRouteFeedback(null);
-    createDeliveryRoute.mutate({ data: { deliveryIds: selectedDeliveryIds } }, {
-      onSuccess: result => {
-        setSelectedDeliveryIds([]);
-        setRouteFeedback({ kind: "success", text: `Rota ${result.id.slice(0, 8)} criada com ${result.deliveryCount} entregas. O motoboy verá e otimizará a sequência ao aceitar.` });
-        void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
-        void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-      },
-      onError: error => setRouteFeedback({ kind: "error", text: error instanceof Error ? error.message : 'Não foi possível criar a rota. Atualize a fila e tente novamente.' }),
-    });
+    setGroupOpen(true);
   };
   // Visão do dia inteiro (sem os filtros da fila): números, mapa, alertas e motoboys.
   const ops = useOperationsData();
@@ -824,7 +967,7 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
             <p className="mt-1 text-xs text-muted-foreground">Despache cada entrega ou marque de 2 a 10 novas para mandar como uma rota só.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {selectedDeliveryIds.length >= 2 && <button className="button-primary" onClick={offerGroupedRoute} disabled={createDeliveryRoute.isPending} data-testid="button-create-route"><Bike size={16}/>{createDeliveryRoute.isPending ? 'Criando rota…' : `Agrupar ${selectedDeliveryIds.length} em uma rota`}</button>}
+            {selectedDeliveryIds.length >= 2 && <button className="button-primary" onClick={offerGroupedRoute} data-testid="button-create-route"><Bike size={16}/>{`Montar rota com ${selectedDeliveryIds.length}`}</button>}
             {selectedDeliveryIds.length > 0 && <button className="button-quiet" onClick={() => { setSelectedDeliveryIds([]); setRouteFeedback(null); }}>Limpar seleção ({selectedDeliveryIds.length})</button>}
             {hasQueueFilters && <button className="button-quiet" onClick={() => { setStatus(''); setStoreId(''); setSearch(''); setSearchText(''); }}><Filter size={14}/>Limpar filtros</button>}
           </div>
@@ -844,13 +987,13 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
             <thead><tr><th><span className="sr-only">Selecionar para rota</span>Rota</th><th>Entrega</th><th>Cliente / destino</th><th>Filial</th><th>Status</th><th>Motoboy</th><th>Atualizada</th><th className="text-right">Ação</th></tr></thead>
             <tbody>{deliveries.data.map(d => <tr className="row-hover" key={d.id} data-testid={`row-delivery-${d.id}`}>
               <td>{d.status === 'REQUESTED' ? <input type="checkbox" aria-label={`Selecionar ${d.code} para uma rota`} checked={selectedDeliveryIds.includes(d.id)} disabled={!selectedDeliveryIds.includes(d.id) && selectedDeliveryIds.length >= 10} onChange={e => toggleRouteDelivery(d.id, e.target.checked)} className="h-4 w-4 accent-[#b91e2c]"/> : <span className="text-xs text-muted-foreground">—</span>}</td>
-              <td><Link href={`/deliveries/${d.id}`} className="table-code" data-testid={`link-delivery-${d.id}`}>{d.code}<span>Pedido {d.orderNumber || '—'}</span></Link>{d.priority === 'urgent' && <span className="priority-tag">URGENTE</span>}</td>
+              <td><Link href={`/deliveries/${d.id}`} className="table-code" data-testid={`link-delivery-${d.id}`}>{d.code}<span>Pedido {d.orderNumber || '—'}</span></Link>{d.priority === 'urgent' && <span className="priority-tag">URGENTE</span>}{d.requiresPrescription && <span className="priority-tag !bg-[#eef4ff] !text-[#1d4f91]">RECEITA</span>}{d.routeId && <span className="priority-tag !bg-[#f3f1ef] !text-[#4b4f56]">EM ROTA</span>}</td>
               <td><div className="font-semibold">{d.customerName}</div><div className="mt-1 flex max-w-[235px] items-center gap-1 text-xs text-muted-foreground" title={d.destination}><MapPin size={12} className="shrink-0"/><span className="min-w-0 truncate">{d.destination}</span></div></td>
               <td><div className="text-sm font-medium">{d.storeName}</div></td>
               <td><StatusBadge status={d.status}/></td>
               <td>{d.courierName ? <div className="flex items-center gap-2"><span className="avatar">{d.courierInitials || d.courierName.slice(0,2).toUpperCase()}</span><div><div className="text-xs font-semibold">{d.courierName}</div><div className="text-[10px] text-muted-foreground">{timeAgo(lastKnownLocationAt(d, allCouriers))}</div></div></div> : <span className="text-xs text-muted-foreground">Sem motoboy</span>}</td>
               <td className="text-xs text-muted-foreground">{fmtTime(d.updatedAt || d.createdAt)}</td>
-              <td className="text-right"><div className="flex justify-end gap-1.5">{['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{canCancel && !['COMPLETED','CANCELLED'].includes(d.status) && <button className="button-small button-red-outline" type="button" onClick={() => { setCancelFeedback(null); setCancelTarget({ id: d.id, code: d.code }); }} aria-label={`Cancelar pedido ${d.code}`} title="Cancelar pedido" data-testid={`button-cancel-${d.id}`}><X size={14}/>Cancelar</button>}{canDelete && <button className="button-small button-red-outline" type="button" onClick={() => { setDeleteFeedback(null); setDeleteTarget({ id: d.id, code: d.code }); }} aria-label={`Excluir definitivamente ${d.code}`} title="Excluir definitivamente" data-testid={`button-delete-delivery-${d.id}`}><Trash2 size={14}/>Excluir</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
+              <td className="text-right"><div className="flex justify-end gap-1.5">{d.routeId && <button className="button-small button-red-outline" type="button" onClick={() => setRemoveTarget({ id: d.id, code: d.code, routeId: d.routeId!, status: d.status })} data-testid={`button-remove-route-${d.id}`}>Tirar da rota</button>}{!d.routeId && ['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{canCancel && !d.routeId && !['COMPLETED','CANCELLED'].includes(d.status) && <button className="button-small button-red-outline" type="button" onClick={() => { setCancelFeedback(null); setCancelTarget({ id: d.id, code: d.code }); }} aria-label={`Cancelar pedido ${d.code}`} title="Cancelar pedido" data-testid={`button-cancel-${d.id}`}><X size={14}/>Cancelar</button>}{canDelete && <button className="button-small button-red-outline" type="button" onClick={() => { setDeleteFeedback(null); setDeleteTarget({ id: d.id, code: d.code }); }} aria-label={`Excluir definitivamente ${d.code}`} title="Excluir definitivamente" data-testid={`button-delete-delivery-${d.id}`}><Trash2 size={14}/>Excluir</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
             </tr>)}</tbody>
           </table></div>}
     </section>
@@ -864,6 +1007,8 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
 
     {showCreate && <DeliveryModal onClose={() => setShowCreate(false)}/>}
     {dispatchId && <DispatchModal deliveryId={dispatchId} onClose={() => setDispatchId(null)}/>}
+    {removeTarget && <RemoveFromRouteModal delivery={removeTarget} onClose={() => setRemoveTarget(null)} onDone={text => { setSelectedDeliveryIds(current => current.filter(id => id !== removeTarget.id)); setRouteFeedback({ kind: 'success', text }); }}/>}
+    {groupOpen && <GroupRouteModal deliveryIds={selectedDeliveryIds} onClose={() => setGroupOpen(false)} onCreated={text => { setSelectedDeliveryIds([]); setRouteFeedback({ kind: 'success', text }); }}/>}
     {cancelTarget && <CancelDeliveryModal
       deliveryId={cancelTarget.id}
       code={cancelTarget.code}
@@ -956,8 +1101,8 @@ function DeliveryDetail() {
             {nextStatus !== "COMPLETED" && <button className="button-secondary" disabled={!nextStatus || updateStatus.isPending} onClick={applyStatus}>{updateStatus.isPending ? 'Salvando…' : 'Aplicar'}</button>}
           </div>
         </div>
-        {nextStatus === "COMPLETED" && <div className="mt-4 max-w-md"><EvidencePhotoAction deliveryId={id} label="Enviar foto e concluir entrega" onComplete={async (evidencePath) => {
-          await updateStatus.mutateAsync({ deliveryId: id, data: { status: "COMPLETED", evidencePath } });
+        {nextStatus === "COMPLETED" && <div className="mt-4 max-w-md"><EvidencePhotoAction deliveryId={id} label="Enviar foto e concluir entrega" requiresPrescription={data.requiresPrescription === true} onComplete={async (evidencePath, options) => {
+          await updateStatus.mutateAsync({ deliveryId: id, data: { status: "COMPLETED", evidencePath, ...(options.prescriptionCollected ? { prescriptionCollected: true } : {}) } });
           refresh();
           setNextStatus("");
         }} /></div>}
@@ -969,7 +1114,7 @@ function DeliveryDetail() {
               <div className="info-grid">
                 <Info label="Cliente" value={data.customerName}/><Info label="Telefone" value={data.customerPhone || 'Não informado'} icon={data.customerPhone ? <Phone size={13}/> : undefined}/>
                 <Info label="Valor do motoboy" value={data.deliveryAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/>
-                <Info label="Endereço de entrega" value={data.destination} wide icon={<MapPin size={14}/>}/><Info label="Unidade de origem" value={data.storeName}/><Info label="Número do pedido" value={data.orderNumber || '—'}/>
+                <Info label="Endereço de entrega" value={data.destination} wide icon={<MapPin size={14}/>}/><Info label="Unidade de origem" value={data.storeName}/><Info label="Número do pedido" value={data.orderNumber || '—'}/>{data.requiresPrescription && <Info label="Receita" value={data.prescriptionCollectedAt ? `Recolhida pelo motoboy · ${fmtTime(data.prescriptionCollectedAt)}` : 'Motoboy precisa pegar com o cliente'}/>}
                 <Info label="Distância informada" value={data.distanceKm != null ? `${data.distanceKm} km` : 'Não disponível'}/><Info label="Previsão" value={data.estimatedMinutes != null ? `${data.estimatedMinutes} min` : 'Não informada'}/>
               </div>
               <div className="mt-5 grid gap-3 rounded-lg bg-[#f7f6f4] p-3 sm:grid-cols-3">
@@ -1078,7 +1223,7 @@ function UserPortalRoute() {
     );
   }
   if (profile.data.role === 'STORE_MANAGER' || profile.data.role === 'STORE_STAFF') {
-    return <StorePortal profile={profile.data} NewDeliveryModal={DeliveryModal} />;
+    return <StorePortal profile={profile.data} NewDeliveryModal={DeliveryModal} DispatchModal={DispatchModal} GroupRouteModal={GroupRouteModal} RemoveFromRouteModal={RemoveFromRouteModal} CancelDeliveryModal={CancelDeliveryModal} />;
   }
   // Admin e Central: a página inicial é a operação de entregas (antes "Visão geral" + "Entregas").
   return <RoutedErrorBoundary><AdminShell profile={profile.data}><Dashboard canCancel={profile.data.role === 'ADMIN' || profile.data.role === 'CENTRAL'} canDelete={profile.data.role === 'ADMIN'} /></AdminShell></RoutedErrorBoundary>;

@@ -126,6 +126,9 @@ export default function CourierRouteMapTab({
             <MapPin size={16} aria-hidden="true" />
             <span>{panelAddress ?? "A rota não tem paradas pendentes."}</span>
           </p>
+          {panelDelivery?.requiresPrescription && (
+            <p className="courier-route-map-screen__prescription">Pegar a receita do cliente nesta entrega</p>
+          )}
         </div>
         <div className="courier-route-map-screen__summary" aria-label="Resumo da rota">
           {route.distanceKm != null && (

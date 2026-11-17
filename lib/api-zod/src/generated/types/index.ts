@@ -74,6 +74,8 @@ export * from './listDeliveriesParams';
 export * from './nativePushTokenInput';
 export * from './pushConfig';
 export * from './pushSubscriptionInput';
+export * from './removeDeliveryFromRouteInput';
+export * from './removeDeliveryFromRouteResult';
 export * from './routeCoordinate';
 export * from './routeDeliverySummary';
 export * from './store';

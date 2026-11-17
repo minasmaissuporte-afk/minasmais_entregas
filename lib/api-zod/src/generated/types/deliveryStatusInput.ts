@@ -12,4 +12,6 @@ export interface DeliveryStatusInput {
   /** @maxLength 500 */
   note?: string;
   evidencePath?: string;
+  /** O motoboy confirma que recolheu a receita */
+  prescriptionCollected?: boolean;
 }

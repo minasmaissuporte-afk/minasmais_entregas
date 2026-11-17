@@ -991,9 +991,20 @@ async function deliveryView(deliveryId: string) {
     .from(deliveryEventsTable)
     .where(eq(deliveryEventsTable.deliveryId, deliveryId))
     .orderBy(deliveryEventsTable.timestamp);
+  const [currentRoute] = await db
+    .select({ id: deliveryRoutesTable.id })
+    .from(deliveryRoutesTable)
+    .where(
+      and(
+        inArray(deliveryRoutesTable.status, ["OFFERED", "ACCEPTED"]),
+        sql`${deliveryId} = ANY(${deliveryRoutesTable.deliveryIds})`,
+      ),
+    )
+    .limit(1);
 
   return {
     ...deliveryData,
+    routeId: currentRoute?.id ?? null,
     deliveryAmount: deliveryAmountCents / 100,
     evidenceAvailable: Boolean(evidencePath),
     storeName: row.storeName,
@@ -1524,6 +1535,7 @@ router.post(
       customerLongitude: body.data.customerLongitude ?? null,
       orderNumber: body.data.orderNumber.trim(),
       notes: body.data.notes?.trim() || null,
+      requiresPrescription: body.data.requiresPrescription ?? false,
       storeId,
       status: "REQUESTED",
       priority: body.data.priority,
@@ -1628,6 +1640,7 @@ router.patch(
     if (input.orderNumber !== undefined) changes.orderNumber = input.orderNumber.trim();
     if (input.notes !== undefined) changes.notes = input.notes?.trim() || null;
     if (input.priority !== undefined) changes.priority = input.priority;
+    if (input.requiresPrescription !== undefined) changes.requiresPrescription = input.requiresPrescription;
     if (addressChanged) {
       if (destination !== undefined) changes.destination = destination;
       // Endereço novo sem coordenadas não pode manter as coordenadas do endereço antigo.
@@ -1920,7 +1933,7 @@ router.get(
 
 router.post(
   "/deliveries/:deliveryId/dispatch",
-  requireRole("ADMIN", "CENTRAL"),
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     const params = DispatchDeliveryParams.safeParse(req.params);
     const body = DispatchDeliveryBody.safeParse(req.body);
@@ -1943,6 +1956,10 @@ router.post(
         .where(eq(deliveriesTable.id, params.data.deliveryId))
         .for("update");
       if (!delivery) return { error: "not_found" as const };
+      // Gerente só despacha entregas da própria filial.
+      if (profile.role === "STORE_MANAGER" && delivery.storeId !== profile.storeId) {
+        return { error: "not_found" as const };
+      }
       const activeRoutes = await tx
         .select({
           deliveryIds: deliveryRoutesTable.deliveryIds,
@@ -2070,9 +2087,10 @@ router.patch(
     if (
       body.data.status === "CANCELLED" &&
       profile.role !== "ADMIN" &&
-      profile.role !== "CENTRAL"
+      profile.role !== "CENTRAL" &&
+      profile.role !== "STORE_MANAGER"
     ) {
-      res.status(403).json({ error: "Somente a Central pode cancelar pedidos." });
+      res.status(403).json({ error: "Somente a Central ou o gerente da filial podem cancelar pedidos." });
       return;
     }
     if (body.data.status === "COMPLETED" && profile.role === "COURIER") {
@@ -2115,11 +2133,20 @@ router.patch(
         return { error: "route_locked" as const };
       }
       const nextStatus = body.data.status;
+      // Gerente: confirma a saída da loja e cancela o que ainda não foi para um motoboy.
+      const managerCanCancel =
+        profile.role === "STORE_MANAGER" &&
+        nextStatus === "CANCELLED" &&
+        ["REQUESTED", "AWAITING_COURIER"].includes(delivery.status);
       if (
         (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") &&
-        nextStatus !== "IN_TRANSIT"
+        nextStatus !== "IN_TRANSIT" &&
+        !managerCanCancel
       ) {
         return { error: "role_restricted" as const };
+      }
+      if (nextStatus === "COMPLETED" && delivery.requiresPrescription && !body.data.prescriptionCollected) {
+        return { error: "prescription_required" as const };
       }
       const allowed: Record<string, string[]> = {
         REQUESTED: ["CANCELLED"],
@@ -2190,6 +2217,9 @@ router.patch(
         .set({
           status: nextStatus,
           courierId,
+          ...(nextStatus === "COMPLETED" && delivery.requiresPrescription
+            ? { prescriptionCollectedAt: new Date() }
+            : {}),
           ...(nextStatus === "COMPLETED" && body.data.evidencePath
             ? { evidencePath: body.data.evidencePath }
             : {}),
@@ -2255,16 +2285,18 @@ router.patch(
 
     if ("error" in result) {
       const status =
-        result.error === "not_found" ? 404 : result.error === "forbidden" ? 403 : 409;
+        result.error === "not_found" ? 404 : result.error === "forbidden" ? 403 : result.error === "prescription_required" ? 422 : 409;
       const message =
         result.error === "not_found"
           ? "Entrega não encontrada."
           : result.error === "forbidden"
             ? "Esta entrega não pertence à sua área de acesso."
             : result.error === "route_locked"
-              ? "Esta entrega faz parte de uma rota agrupada e só pode ser atualizada pela sequência da rota."
+              ? "Esta entrega está numa rota agrupada. Tire ela da rota primeiro (botão \"Tirar da rota\")."
             : result.error === "role_restricted"
-              ? "Este perfil só pode confirmar a saída da unidade."
+              ? "O gerente só pode confirmar a saída da loja ou cancelar entregas que ainda não foram para um motoboy."
+            : result.error === "prescription_required"
+              ? "Esta entrega tem receita: confirme que recolheu a receita do cliente antes de concluir."
           : result.error === "no_courier"
             ? "Nenhum motoboy disponível pode aceitar esta oferta."
             : result.error === "courier_taken"

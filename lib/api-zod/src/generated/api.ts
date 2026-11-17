@@ -306,6 +306,9 @@ export const ListDeliveriesResponseItem = zod.object({
   "code": zod.string(),
   "customerName": zod.string(),
   "customerPhone": zod.string().nullish(),
+  "requiresPrescription": zod.boolean().optional().describe('O motoboy precisa recolher a receita do cliente'),
+  "prescriptionCollectedAt": zod.coerce.date().nullish(),
+  "routeId": zod.string().nullish().describe('Rota agrupada (oferecida ou aceita) em que a entrega está'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -368,6 +371,7 @@ export const CreateDeliveryBody = zod.object({
   "notes": zod.string().optional(),
   "storeId": zod.string(),
   "priority": zod.enum(['normal', 'urgent']),
+  "requiresPrescription": zod.boolean().optional(),
   "deliveryAmount": zod.number().min(createDeliveryBodyDeliveryAmountMin).optional().describe('Deprecated; server uses the selected branch\'s configured fee')
 })
 
@@ -380,6 +384,9 @@ export const CreateDeliveryResponse = zod.object({
   "code": zod.string(),
   "customerName": zod.string(),
   "customerPhone": zod.string().nullish(),
+  "requiresPrescription": zod.boolean().optional().describe('O motoboy precisa recolher a receita do cliente'),
+  "prescriptionCollectedAt": zod.coerce.date().nullish(),
+  "routeId": zod.string().nullish().describe('Rota agrupada (oferecida ou aceita) em que a entrega está'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -429,6 +436,9 @@ export const GetDeliveryResponse = zod.object({
   "code": zod.string(),
   "customerName": zod.string(),
   "customerPhone": zod.string().nullish(),
+  "requiresPrescription": zod.boolean().optional().describe('O motoboy precisa recolher a receita do cliente'),
+  "prescriptionCollectedAt": zod.coerce.date().nullish(),
+  "routeId": zod.string().nullish().describe('Rota agrupada (oferecida ou aceita) em que a entrega está'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -490,7 +500,8 @@ export const UpdateDeliveryBody = zod.object({
   "customerLongitude": zod.number().min(updateDeliveryBodyCustomerLongitudeMin).max(updateDeliveryBodyCustomerLongitudeMax).nullish(),
   "orderNumber": zod.string().min(1).optional(),
   "notes": zod.string().nullish(),
-  "priority": zod.enum(['normal', 'urgent']).optional()
+  "priority": zod.enum(['normal', 'urgent']).optional(),
+  "requiresPrescription": zod.boolean().optional()
 })
 
 export const updateDeliveryResponseDeliveryAmountMin = 0;
@@ -502,6 +513,9 @@ export const UpdateDeliveryResponse = zod.object({
   "code": zod.string(),
   "customerName": zod.string(),
   "customerPhone": zod.string().nullish(),
+  "requiresPrescription": zod.boolean().optional().describe('O motoboy precisa recolher a receita do cliente'),
+  "prescriptionCollectedAt": zod.coerce.date().nullish(),
+  "routeId": zod.string().nullish().describe('Rota agrupada (oferecida ou aceita) em que a entrega está'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -566,6 +580,9 @@ export const DispatchDeliveryResponse = zod.object({
   "code": zod.string(),
   "customerName": zod.string(),
   "customerPhone": zod.string().nullish(),
+  "requiresPrescription": zod.boolean().optional().describe('O motoboy precisa recolher a receita do cliente'),
+  "prescriptionCollectedAt": zod.coerce.date().nullish(),
+  "routeId": zod.string().nullish().describe('Rota agrupada (oferecida ou aceita) em que a entrega está'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -613,7 +630,8 @@ export const updateDeliveryStatusBodyNoteMax = 500;
 export const UpdateDeliveryStatusBody = zod.object({
   "status": zod.enum(['ACCEPTED', 'TO_STORE', 'AT_STORE', 'IN_TRANSIT', 'COMPLETED', 'CANCELLED', 'AWAITING_COURIER', 'RETURNING_TO_STORE', 'NOT_DELIVERED']),
   "note": zod.string().max(updateDeliveryStatusBodyNoteMax).optional(),
-  "evidencePath": zod.string().optional()
+  "evidencePath": zod.string().optional(),
+  "prescriptionCollected": zod.boolean().optional().describe('O motoboy confirma que recolheu a receita')
 })
 
 export const updateDeliveryStatusResponseDeliveryAmountMin = 0;
@@ -625,6 +643,9 @@ export const UpdateDeliveryStatusResponse = zod.object({
   "code": zod.string(),
   "customerName": zod.string(),
   "customerPhone": zod.string().nullish(),
+  "requiresPrescription": zod.boolean().optional().describe('O motoboy precisa recolher a receita do cliente'),
+  "prescriptionCollectedAt": zod.coerce.date().nullish(),
+  "routeId": zod.string().nullish().describe('Rota agrupada (oferecida ou aceita) em que a entrega está'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -1151,6 +1172,39 @@ export const GetCourierEarningsResponse = zod.object({
 
 
 /**
+ * @summary Undo a route offer that no courier accepted yet; its deliveries go back to the queue
+ */
+export const UngroupDeliveryRouteParams = zod.object({
+  "routeId": zod.coerce.string()
+})
+
+export const UngroupDeliveryRouteResponse = zod.void()
+
+
+/**
+ * @summary Take one delivery out of a route (back to the queue or cancelled), redrawing the rest
+ */
+export const RemoveDeliveryFromRouteParams = zod.object({
+  "routeId": zod.coerce.string()
+})
+
+export const removeDeliveryFromRouteBodyReasonMax = 300;
+
+
+
+export const RemoveDeliveryFromRouteBody = zod.object({
+  "deliveryId": zod.string(),
+  "cancel": zod.boolean().optional().describe('true quando o cliente desistiu (a entrega é cancelada); senão volta para a fila'),
+  "reason": zod.string().max(removeDeliveryFromRouteBodyReasonMax).optional()
+})
+
+export const RemoveDeliveryFromRouteResponse = zod.object({
+  "routeStatus": zod.string(),
+  "remainingDeliveries": zod.number().int()
+})
+
+
+/**
  * @summary Group requested deliveries into a courier route offer
  */
 export const createDeliveryRouteBodyDeliveryIdsMin = 2;
@@ -1159,7 +1213,8 @@ export const createDeliveryRouteBodyDeliveryIdsMax = 10;
 
 
 export const CreateDeliveryRouteBody = zod.object({
-  "deliveryIds": zod.array(zod.string()).min(createDeliveryRouteBodyDeliveryIdsMin).max(createDeliveryRouteBodyDeliveryIdsMax)
+  "deliveryIds": zod.array(zod.string()).min(createDeliveryRouteBodyDeliveryIdsMin).max(createDeliveryRouteBodyDeliveryIdsMax),
+  "courierId": zod.string().nullish().describe('Motoboy escolhido. Sem ele, a rota é oferecida a todos os motoboys disponíveis.')
 })
 
 export const createDeliveryRouteResponseRouteGeometryItemLatitudeMin = -90;
@@ -1184,6 +1239,7 @@ export const CreateDeliveryRouteResponse = zod.object({
   "code": zod.string(),
   "customerName": zod.string(),
   "customerPhone": zod.string().nullable(),
+  "requiresPrescription": zod.boolean().optional(),
   "destination": zod.string(),
   "notes": zod.string().nullable(),
   "storeName": zod.string(),
@@ -1242,6 +1298,7 @@ export const ListCourierRoutesResponseItem = zod.object({
   "code": zod.string(),
   "customerName": zod.string(),
   "customerPhone": zod.string().nullable(),
+  "requiresPrescription": zod.boolean().optional(),
   "destination": zod.string(),
   "notes": zod.string().nullable(),
   "storeName": zod.string(),
@@ -1466,6 +1523,7 @@ export const AcceptCourierRouteResponse = zod.object({
   "code": zod.string(),
   "customerName": zod.string(),
   "customerPhone": zod.string().nullable(),
+  "requiresPrescription": zod.boolean().optional(),
   "destination": zod.string(),
   "notes": zod.string().nullable(),
   "storeName": zod.string(),
@@ -1518,7 +1576,8 @@ export const CompleteCourierRouteStopParams = zod.object({
 })
 
 export const CompleteCourierRouteStopBody = zod.object({
-  "evidencePath": zod.string().optional()
+  "evidencePath": zod.string().optional(),
+  "prescriptionCollected": zod.boolean().optional()
 })
 
 export const completeCourierRouteStopResponseRouteGeometryItemLatitudeMin = -90;
@@ -1543,6 +1602,7 @@ export const CompleteCourierRouteStopResponse = zod.object({
   "code": zod.string(),
   "customerName": zod.string(),
   "customerPhone": zod.string().nullable(),
+  "requiresPrescription": zod.boolean().optional(),
   "destination": zod.string(),
   "notes": zod.string().nullable(),
   "storeName": zod.string(),
@@ -1606,6 +1666,7 @@ export const RecordCourierStopArrivalResponse = zod.object({
   "code": zod.string(),
   "customerName": zod.string(),
   "customerPhone": zod.string().nullable(),
+  "requiresPrescription": zod.boolean().optional(),
   "destination": zod.string(),
   "notes": zod.string().nullable(),
   "storeName": zod.string(),

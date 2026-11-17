@@ -1661,7 +1661,7 @@ textarea { resize:vertical; }
 .modal-header { flex:none; background:#fff; }
 .modal-form { display:flex; min-height:0; flex:1; flex-direction:column; overflow:hidden; }
 .modal-fields, .modal-body { min-height:0; flex:1; overflow-y:auto; overscroll-behavior:contain; }
-.modal-form-actions { flex:none; margin-top:auto; padding-bottom:2px; background:#fff; }
+.modal-form-actions { flex:none; margin-top:auto; gap:10px; padding:16px 24px 20px; background:#fff; }
 .modal-close-button { flex:none; }
 .choice-card { display:flex; align-items:center; gap:10px; min-height:68px; border:1px solid #e5e3e0; border-radius:8px; padding:10px; color:#64676d; text-align:left; }
 .choice-card span { display:grid; gap:3px; }
@@ -2588,3 +2588,5 @@ textarea { resize:vertical; }
 /* Mapa em destaque na página de entregas (estilo landing page). */
 .adm-map-frame--hero .live-map-frame { height: clamp(460px, 66dvh, 760px); min-height: 420px; }
 @media (max-width: 639px) { .adm-map-frame--hero .live-map-frame { height: 440px; min-height: 380px; } }
+/* Entrega com receita: aviso para o motoboy no painel do mapa. */
+.courier-route-map-screen__prescription { margin: 6px 0 0; display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; background: #fff0f1; padding: 5px 10px; color: #a3141f; font-size: 13px; font-weight: 700; }

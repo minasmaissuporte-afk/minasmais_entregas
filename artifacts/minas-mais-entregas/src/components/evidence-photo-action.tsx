@@ -58,13 +58,18 @@ export default function EvidencePhotoAction({
   disabled = false,
   label = "Enviar foto e concluir entrega",
   confirmationLabel = "Deslize para enviar a foto e concluir",
+  requiresPrescription = false,
 }: {
   deliveryId: string;
-  onComplete: (evidencePath: string) => Promise<void>;
+  onComplete: (evidencePath: string, options: { prescriptionCollected: boolean }) => Promise<void>;
   disabled?: boolean;
   label?: string;
   confirmationLabel?: string;
+  /** Medicamento com receita: o motoboy confirma que recolheu a receita antes de concluir. */
+  requiresPrescription?: boolean;
 }) {
+  const [prescriptionCollected, setPrescriptionCollected] = useState(false);
+  const blockedByPrescription = requiresPrescription && !prescriptionCollected;
   const requestUpload = useRequestDeliveryEvidenceUploadUrl();
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
@@ -91,6 +96,10 @@ export default function EvidencePhotoAction({
       setError("Anexe ou capture uma foto antes de concluir.");
       return;
     }
+    if (blockedByPrescription) {
+      setError("Marque que pegou a receita do cliente antes de concluir.");
+      return;
+    }
     if (!acceptedTypes.includes(file.type) || file.size > maxInputBytes) {
       setError("Use uma foto JPEG, PNG ou WebP.");
       return;
@@ -113,9 +122,10 @@ export default function EvidencePhotoAction({
         setUploadedPath(evidencePath);
       }
       setStage("confirming");
-      await onComplete(evidencePath);
+      await onComplete(evidencePath, { prescriptionCollected: requiresPrescription && prescriptionCollected });
       setFile(null);
       setUploadedPath(null);
+      setPrescriptionCollected(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível enviar a foto. A entrega não foi concluída.");
     } finally {
@@ -161,15 +171,34 @@ export default function EvidencePhotoAction({
           <Check size={15} className="text-green-700" />
         </div>
       )}
+      {file && requiresPrescription && (
+        <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border-2 border-[#e5b9bd] bg-[#fff6f6] px-3 py-2.5 text-sm font-semibold text-[#8f1d27]">
+          <input
+            type="checkbox"
+            className="h-6 w-6 shrink-0 accent-[#c51c2a]"
+            checked={prescriptionCollected}
+            onChange={(event) => {
+              setPrescriptionCollected(event.target.checked);
+              setError("");
+            }}
+            disabled={submitting}
+            data-testid={`checkbox-prescription-${deliveryId}`}
+          />
+          <span>Peguei a receita do cliente</span>
+        </label>
+      )}
       {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       {file ? (
         <div ref={confirmRef} className="space-y-2 scroll-mb-28">
+          {blockedByPrescription && (
+            <p className="text-center text-xs font-semibold text-[#8f1d27]">Marque a receita acima para liberar a conclusão.</p>
+          )}
           <SwipeToConfirm
-            disabled={disabled || submitting || requestUpload.isPending}
+            disabled={disabled || submitting || requestUpload.isPending || blockedByPrescription}
             onConfirm={() => void submit()}
             label={confirmationLabel}
           />
-          {(disabled || submitting || requestUpload.isPending) && (
+          {(disabled || submitting || requestUpload.isPending) && !blockedByPrescription && (
             <div role="status" aria-live="polite">
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <LoaderCircle size={14} className="animate-spin" />
@@ -187,7 +216,9 @@ export default function EvidencePhotoAction({
         <p className="rounded-md bg-[#f7f4f1] px-3 py-2 text-center text-xs text-muted-foreground">
           {disabled
             ? "Aguarde a ação atual terminar antes de anexar a confirmação."
-            : "Adicione uma foto para confirmar."}
+            : requiresPrescription
+              ? "Esta entrega tem receita: tire a foto e depois marque que pegou a receita."
+              : "Adicione uma foto para confirmar."}
         </p>
       )}
     </div>
