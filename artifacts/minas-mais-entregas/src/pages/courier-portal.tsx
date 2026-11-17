@@ -844,7 +844,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                     <Link href="/account" onClick={() => setMenuOpen(false)} className="button-secondary min-h-12 w-full justify-start" data-testid="link-courier-password">
                       <KeyRound size={17} /> Alterar senha
                     </Link>
-                    <button type="button" className="button-red-outline min-h-12 w-full justify-start rounded-[7px] px-3 text-sm font-bold" onClick={() => void handleSignOut()} data-testid="button-courier-sign-out">
+                    <button type="button" className="button-secondary min-h-12 w-full justify-start !border-[#ead0d2] !text-[#a91d2a]" onClick={() => void handleSignOut()} data-testid="button-courier-sign-out">
                       <LogOut size={17} /> Sair da conta
                     </button>
                   </div>
