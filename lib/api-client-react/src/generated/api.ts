@@ -26,7 +26,9 @@ import type {
 
 import type {
   AcceptCourierRouteInput,
+  AccessInviteInput,
   ActiveOperationsRoute,
+  AddressPrediction,
   AddressSuggestion,
   AppUser,
   AutocompleteAddressesParams,
@@ -57,6 +59,7 @@ import type {
   DemoDataCleanupInput,
   DemoDataCleanupSummary,
   DispatchInput,
+  GetAddressDetailsParams,
   GetCourierEarningsParams,
   GetDeliveryAnalyticsParams,
   HealthStatus,
@@ -2640,11 +2643,11 @@ export const getAutocompleteAddressesUrl = (params: AutocompleteAddressesParams,
 }
 
 /**
- * @summary Search Brazilian addresses through Google Maps (Places API)
+ * @summary Suggest Brazilian streets/addresses (Places Autocomplete), biased to the stores' region
  */
-export const autocompleteAddresses = async (params: AutocompleteAddressesParams, options?: Parameters<typeof customFetch>[1]): Promise<AddressSuggestion[]> => {
+export const autocompleteAddresses = async (params: AutocompleteAddressesParams, options?: Parameters<typeof customFetch>[1]): Promise<AddressPrediction[]> => {
 
-  return customFetch<AddressSuggestion[]>(getAutocompleteAddressesUrl(params),
+  return customFetch<AddressPrediction[]>(getAutocompleteAddressesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -2711,7 +2714,7 @@ export function useAutocompleteAddresses<TData = Awaited<ReturnType<typeof autoc
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Search Brazilian addresses through Google Maps (Places API)
+ * @summary Suggest Brazilian streets/addresses (Places Autocomplete), biased to the stores' region
  */
 
 export function useAutocompleteAddresses<TData = Awaited<ReturnType<typeof autocompleteAddresses>>, TError = ErrorType<void>>(
@@ -2720,6 +2723,114 @@ export function useAutocompleteAddresses<TData = Awaited<ReturnType<typeof autoc
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getAutocompleteAddressesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAddressDetailsUrl = (params: GetAddressDetailsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/enderecos/detalhes?${stringifiedParams}` : `/api/enderecos/detalhes`
+}
+
+/**
+ * @summary Full address and coordinates for a chosen prediction (optionally at a house number)
+ */
+export const getAddressDetails = async (params: GetAddressDetailsParams, options?: Parameters<typeof customFetch>[1]): Promise<AddressSuggestion> => {
+
+  return customFetch<AddressSuggestion>(getGetAddressDetailsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAddressDetailsQueryKey = (params?: GetAddressDetailsParams,) => {
+    return [
+    `/api/enderecos/detalhes`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAddressDetailsQueryOptions = <TData = Awaited<ReturnType<typeof getAddressDetails>>, TError = ErrorType<void>>(params: GetAddressDetailsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAddressDetails>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAddressDetailsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAddressDetails>>> = ({ signal }) => getAddressDetails(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAddressDetails>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetAddressDetailsQueryResult = NonNullable<Awaited<ReturnType<typeof getAddressDetails>>>
+export type GetAddressDetailsQueryError = ErrorType<void>
+
+
+export function useGetAddressDetails<TData = Awaited<ReturnType<typeof getAddressDetails>>, TError = ErrorType<void>>(
+ params: GetAddressDetailsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAddressDetails>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAddressDetails>>,
+          TError,
+          Awaited<ReturnType<typeof getAddressDetails>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAddressDetails<TData = Awaited<ReturnType<typeof getAddressDetails>>, TError = ErrorType<void>>(
+ params: GetAddressDetailsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAddressDetails>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAddressDetails>>,
+          TError,
+          Awaited<ReturnType<typeof getAddressDetails>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAddressDetails<TData = Awaited<ReturnType<typeof getAddressDetails>>, TError = ErrorType<void>>(
+ params: GetAddressDetailsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAddressDetails>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Full address and coordinates for a chosen prediction (optionally at a house number)
+ */
+
+export function useGetAddressDetails<TData = Awaited<ReturnType<typeof getAddressDetails>>, TError = ErrorType<void>>(
+ params: GetAddressDetailsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAddressDetails>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetAddressDetailsQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -3129,6 +3240,94 @@ export function useListAccessUsers<TData = Awaited<ReturnType<typeof listAccessU
 
 
 
+
+export const getInviteAccessUserUrl = () => {
+
+
+
+
+  return `/api/access/invites`
+}
+
+/**
+ * @summary Pre-register an account with its role and e-mail an invite link to choose a password
+ */
+export const inviteAccessUser = async (accessInviteInput: AccessInviteInput, options?: Parameters<typeof customFetch>[1]): Promise<AppUser> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AppUser>(getInviteAccessUserUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(accessInviteInput)
+  }
+);}
+
+
+
+
+
+export const getInviteAccessUserMutationKey = () => ['inviteAccessUser'] as const;
+
+export const getInviteAccessUserMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inviteAccessUser>>, TError,InviteAccessUserMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof inviteAccessUser>>, TError,InviteAccessUserMutationVariables, TContext> => {
+
+const mutationKey = getInviteAccessUserMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof inviteAccessUser>>, InviteAccessUserMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  inviteAccessUser(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InviteAccessUserMutationResult = NonNullable<Awaited<ReturnType<typeof inviteAccessUser>>>
+    export type InviteAccessUserMutationBody = BodyType<AccessInviteInput>
+    export type InviteAccessUserMutationError = ErrorType<void>
+    export type InviteAccessUserMutationVariables = {data: BodyType<AccessInviteInput>}
+
+    /**
+ * @summary Pre-register an account with its role and e-mail an invite link to choose a password
+ */
+export const useInviteAccessUser = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inviteAccessUser>>, TError,InviteAccessUserMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof inviteAccessUser>>,
+        TError,
+        InviteAccessUserMutationVariables,
+        TContext
+      > => {
+      return useMutation(getInviteAccessUserMutationOptions(options), queryClient);
+    }
 
 export const getUpdateAccessUserUrl = (userId: string,) => {
 

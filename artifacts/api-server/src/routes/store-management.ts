@@ -4,6 +4,7 @@ import { Router, type IRouter } from "express";
 import {
   AutocompleteAddressesQueryParams,
   AutocompleteAddressesResponse,
+  GetAddressDetailsResponse,
   CleanupDemoDataBody,
   CleanupDemoDataResponse,
   CreateStoreBody,
@@ -29,7 +30,9 @@ import {
 } from "../middlewares/accessControl";
 import {
   MapsApiError,
+  addressDetails,
   autocompleteAddresses,
+  type SearchBias,
 } from "../lib/googleMaps";
 
 const router: IRouter = Router();
@@ -225,6 +228,41 @@ router.delete(
   },
 );
 
+/**
+ * Região onde as sugestões de endereço aparecem primeiro: a filial do gerente,
+ * ou o centro das filiais ativas. Assim "Avenida Afonso Pena" sugere a da cidade
+ * da operação antes das outras do Brasil.
+ */
+async function searchBiasFor(profile: AppUserProfile): Promise<SearchBias> {
+  const stores = await db
+    .select({ id: storesTable.id, city: storesTable.city, latitude: storesTable.latitude, longitude: storesTable.longitude })
+    .from(storesTable)
+    .where(eq(storesTable.active, true));
+  const located = stores.filter(
+    (store): store is { id: string; city: string; latitude: number; longitude: number } =>
+      store.latitude != null && store.longitude != null,
+  );
+  const own = profile.storeId ? located.find((store) => store.id === profile.storeId) : undefined;
+  const points = own ? [own] : located;
+  if (!points.length) return null;
+  const center = {
+    latitude: points.reduce((sum, point) => sum + point.latitude, 0) / points.length,
+    longitude: points.reduce((sum, point) => sum + point.longitude, 0) / points.length,
+  };
+  const cities = [...new Set(points.map((point) => point.city.trim()).filter(Boolean))];
+  return { center, radiusMeters: 40_000, cities };
+}
+
+function sessionToken(value: unknown) {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(value) ? value : undefined;
+}
+
+function sendMapsError(req: Parameters<Parameters<typeof router.get>[1]>[0], res: Parameters<Parameters<typeof router.get>[1]>[1], error: unknown, message: string) {
+  const mapsError = error instanceof MapsApiError ? error : new MapsApiError(message);
+  req.log.warn({ status: mapsError.status, reason: mapsError.message }, "Google Maps address lookup failed");
+  res.status(mapsError.status).json({ error: mapsError.message });
+}
+
 router.get(
   "/enderecos/autocomplete",
   requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
@@ -238,18 +276,36 @@ router.get(
     }
 
     try {
-      const suggestions = await autocompleteAddresses(query.data.texto.trim());
-      res.json(AutocompleteAddressesResponse.parse(suggestions));
+      const bias = await searchBiasFor(res.locals.appUser as AppUserProfile);
+      const predictions = await autocompleteAddresses(query.data.texto.trim(), {
+        bias,
+        sessionToken: sessionToken(req.query.sessao),
+      });
+      res.json(AutocompleteAddressesResponse.parse(predictions));
     } catch (error) {
-      const mapsError =
-        error instanceof MapsApiError
-          ? error
-          : new MapsApiError("Não foi possível consultar endereços agora.");
-      req.log.warn(
-        { status: mapsError.status },
-        "Google Maps address search failed",
-      );
-      res.status(mapsError.status).json({ error: mapsError.message });
+      sendMapsError(req, res, error, "Não foi possível consultar endereços agora.");
+    }
+  },
+);
+
+router.get(
+  "/enderecos/detalhes",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
+  async (req, res): Promise<void> => {
+    const placeId = typeof req.query.placeId === "string" ? req.query.placeId.trim() : "";
+    if (!placeId || placeId.length > 512 || !/^[A-Za-z0-9_-]+$/.test(placeId)) {
+      res.status(422).json({ error: "Endereço inválido. Escolha uma sugestão da lista." });
+      return;
+    }
+    const houseNumber = typeof req.query.numero === "string" ? req.query.numero.trim().slice(0, 20) : "";
+    try {
+      const details = await addressDetails(placeId, {
+        houseNumber: houseNumber || undefined,
+        sessionToken: sessionToken(req.query.sessao),
+      });
+      res.json(GetAddressDetailsResponse.parse(details));
+    } catch (error) {
+      sendMapsError(req, res, error, "Não foi possível carregar o endereço agora.");
     }
   },
 );

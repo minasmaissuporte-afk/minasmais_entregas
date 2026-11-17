@@ -12,14 +12,19 @@ import {
 import { Check, ShieldCheck, Trash2, UsersRound } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useEffect, useState } from "react";
+import AccessInvitePanel, { inviteErrorMessage, useSendInvite } from "@/components/access-invite-panel";
 
+/** Perfis usados na operação: administradores, gerente de cada filial e motoboys. */
 const roles: { value: AppUser["role"]; label: string }[] = [
   { value: "PENDING", label: "Aguardando aprovação" },
   { value: "ADMIN", label: "Administrador" },
-  { value: "CENTRAL", label: "Central de entregas" },
-  { value: "STORE_MANAGER", label: "Gerente de unidade" },
-  { value: "STORE_STAFF", label: "Equipe da unidade" },
+  { value: "STORE_MANAGER", label: "Gerente da filial" },
   { value: "COURIER", label: "Motoboy" },
+];
+/** Perfis antigos: só aparecem para quem ainda está com eles, até ser trocado. */
+const legacyRoles: { value: AppUser["role"]; label: string }[] = [
+  { value: "CENTRAL", label: "Central de entregas (antigo)" },
+  { value: "STORE_STAFF", label: "Equipe da unidade (antigo)" },
 ];
 
 export default function AccessManagement() {
@@ -37,13 +42,15 @@ export default function AccessManagement() {
           Acessos e perfis
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Novas contas começam sem permissão. Aprove usuários e vincule cada
-          perfil à unidade ou ao cadastro de motoboy correto.
+          Convide por e-mail quem vai usar o sistema: a pessoa cria a senha pelo link e
+          já entra com o perfil certo. Quem se cadastrar sozinho aparece aqui aguardando aprovação.
         </p>
         <p className="mt-2 max-w-3xl text-xs text-muted-foreground">
           Excluir uma conta também apaga o login. O histórico das entregas é preservado; o último administrador e motoboys com trabalho ativo não podem ser excluídos.
         </p>
       </div>
+
+      <AccessInvitePanel stores={stores.data ?? []} />
 
       <section className="panel overflow-hidden">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -120,6 +127,23 @@ function UserAccessRow({
   const [name, setName] = useState(user.role === "COURIER" ? user.name : "");
   const [phone, setPhone] = useState(user.role === "COURIER" ? user.phone ?? "" : "");
   const [message, setMessage] = useState("");
+  const invite = useSendInvite();
+  const resendInvite = async () => {
+    if (user.role !== "ADMIN" && user.role !== "STORE_MANAGER" && user.role !== "COURIER") return;
+    setMessage("");
+    try {
+      await invite.send({
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        storeId: user.storeId,
+        phone: user.phone ?? null,
+      });
+      setMessage("Convite reenviado.");
+    } catch (error) {
+      setMessage(inviteErrorMessage(error));
+    }
+  };
 
   useEffect(() => {
     setRole(user.role);
@@ -258,6 +282,21 @@ function UserAccessRow({
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold">{user.name}</div>
         <div className="mt-1 truncate text-xs text-muted-foreground">{user.email}</div>
+        {!user.authUserId && user.role !== "PENDING" && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+              Convite enviado · aguardando criar a senha
+            </span>
+            <button
+              type="button"
+              className="text-[11px] font-semibold text-[#a91d2a] underline-offset-2 hover:underline disabled:text-muted-foreground"
+              onClick={() => void resendInvite()}
+              disabled={invite.pending}
+            >
+              {invite.pending ? "Reenviando…" : "Reenviar convite"}
+            </button>
+          </div>
+        )}
       </div>
       <select
         className="filter-select w-full"
@@ -266,7 +305,7 @@ function UserAccessRow({
         onChange={(event) => setRole(event.target.value as AppUser["role"])}
         disabled={user.role === "ADMIN" && user.authUserId === null}
       >
-        {roles.map((item) => (
+        {[...roles, ...legacyRoles.filter((item) => item.value === user.role)].map((item) => (
           <option key={item.value} value={item.value}>{item.label}</option>
         ))}
       </select>

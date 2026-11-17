@@ -85,3 +85,37 @@ export async function deleteAuthUser(authUserId: string) {
     throw new Error(`Supabase Auth admin delete failed with status ${response.status}`);
   }
 }
+
+export type InviteResult = "sent" | "already_registered";
+
+/**
+ * Convite por e-mail (Supabase Auth): cria o login sem senha e manda o e-mail
+ * "Invite user". O link abre `redirectTo`, onde a pessoa escolhe a senha.
+ * Precisa de SUPABASE_SECRET_KEY (só no servidor).
+ */
+export async function inviteAuthUser(email: string, name: string, redirectTo: string): Promise<InviteResult> {
+  const secretKey = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !secretKey) {
+    throw new Error("SUPABASE_URL and SUPABASE_SECRET_KEY are required to send invites");
+  }
+  const url = new URL(`${supabaseUrl}/auth/v1/invite`);
+  url.searchParams.set("redirect_to", redirectTo);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(secretKey.startsWith("sb_secret_")
+        ? { apikey: secretKey }
+        : { apikey: secretKey, Authorization: `Bearer ${secretKey}` }),
+    },
+    body: JSON.stringify({ email, data: { full_name: name } }),
+  });
+  if (response.ok) return "sent";
+  const payload = (await response.json().catch(() => ({}))) as { error_code?: string; code?: string | number; msg?: string };
+  const code = String(payload.error_code ?? payload.code ?? "");
+  // A pessoa já tem login (cadastrou-se antes ou já aceitou um convite).
+  if (response.status === 422 && /email_exists|user_already_exists/.test(code)) return "already_registered";
+  if (response.status === 422 && /already been registered/i.test(payload.msg ?? "")) return "already_registered";
+  if (response.status === 429) throw new Error("rate_limited");
+  throw new Error(`Supabase Auth invite failed with status ${response.status} (${code || "sem código"})`);
+}

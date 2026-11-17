@@ -1,6 +1,8 @@
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
+  getAddressDetails,
   useAutocompleteAddresses,
+  type AddressPrediction,
   type AddressSuggestion,
 } from "@workspace/api-client-react";
 import { keepPreviousData } from "@tanstack/react-query";
@@ -8,21 +10,46 @@ import { Loader2, MapPin, Search } from "lucide-react";
 
 const MIN_SEARCH_LENGTH = 3;
 
+/** Endereço escolhido, com o id do Google para depois ajustar o pino pelo número. */
+export type ChosenAddress = AddressSuggestion & { placeId: string };
+
 type AddressAutocompleteProps = {
   id: string;
   value: string;
   onChange: (value: string) => void;
-  onSelect: (suggestion: AddressSuggestion) => void;
+  onSelect: (address: ChosenAddress) => void;
   placeholder: string;
   required?: boolean;
   inputClassName?: string;
   dataTestId?: string;
 };
 
+function newSessionToken() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function apiErrorMessage(error: unknown, fallback: string) {
+  const apiError = error as Error & { data?: { error?: string } };
+  return apiError?.data?.error ?? fallback;
+}
+
 /**
- * Address search following the WAI-ARIA combobox pattern: focus stays in the
- * input, ↑/↓ move the highlighted suggestion, Enter picks it and Esc closes the
- * list (without closing the surrounding modal).
+ * Posição exata de um número na rua escolhida. Se o Google não conhecer o
+ * número, devolve o ponto da rua com o número preenchido.
+ */
+export async function locateHouseNumber(placeId: string, houseNumber: string) {
+  return getAddressDetails({ placeId, numero: houseNumber.trim() });
+}
+
+/**
+ * Busca de endereço (padrão combobox WAI-ARIA): o foco fica no campo, ↑/↓ movem
+ * a sugestão destacada, Enter escolhe e Esc fecha só a lista.
+ *
+ * Duas etapas, como o Google recomenda: enquanto a pessoa digita, só sugestões
+ * de rua (rápidas, sem número); ao escolher, o servidor completa bairro, cidade,
+ * UF, CEP e posição. O número fica para a pessoa preencher.
  */
 export default function AddressAutocomplete({
   id,
@@ -40,6 +67,10 @@ export default function AddressAutocomplete({
   const [selected, setSelected] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
+  // Uma "sessão" do Google vai da primeira letra até a escolha (cobra como uma busca só).
+  const sessionRef = useRef(newSessionToken());
 
   useEffect(() => setInput(value), [value]);
 
@@ -48,19 +79,18 @@ export default function AddressAutocomplete({
       setDebounced("");
       return;
     }
-    const timeout = window.setTimeout(() => setDebounced(input.trim()), 300);
+    const timeout = window.setTimeout(() => setDebounced(input.trim()), 250);
     return () => window.clearTimeout(timeout);
   }, [focused, input, selected]);
 
   const search = useAutocompleteAddresses(
-    { texto: debounced },
+    { texto: debounced, sessao: sessionRef.current },
     {
       query: {
         enabled: debounced.length >= MIN_SEARCH_LENGTH,
-        retry: false,
-        staleTime: 60_000,
-        // Mantém as sugestões anteriores na tela enquanto a nova busca chega,
-        // em vez de a lista piscar vazia a cada letra.
+        retry: 1,
+        staleTime: 5 * 60_000,
+        // Mantém as sugestões anteriores na tela enquanto a nova busca chega.
         placeholderData: keepPreviousData,
       },
     },
@@ -69,9 +99,8 @@ export default function AddressAutocomplete({
   const showList = focused && !selected && !dismissed && typed.length > 0;
   const canSearch = typed.length >= MIN_SEARCH_LENGTH;
   const waitingForDebounce = showList && canSearch && typed !== debounced;
-  const searching = showList && canSearch && (waitingForDebounce || search.isFetching);
-  const previous = search.data ?? [];
-  const suggestions = showList && canSearch && !search.isError ? previous : [];
+  const searching = (showList && canSearch && (waitingForDebounce || search.isFetching)) || loadingDetails;
+  const suggestions: AddressPrediction[] = showList && canSearch && !search.isError ? search.data ?? [] : [];
   const listId = `${id}-suggestions`;
   const optionId = (index: number) => `${id}-option-${index}`;
 
@@ -81,15 +110,28 @@ export default function AddressAutocomplete({
     setInput(nextValue);
     setSelected(false);
     setDismissed(false);
+    setDetailsError("");
     onChange(nextValue);
   };
 
-  const chooseSuggestion = (suggestion: AddressSuggestion) => {
-    setInput(suggestion.formatted);
+  const chooseSuggestion = async (prediction: AddressPrediction) => {
+    setInput(prediction.text);
     setSelected(true);
     setActiveIndex(-1);
-    onChange(suggestion.formatted);
-    onSelect(suggestion);
+    setDetailsError("");
+    setLoadingDetails(true);
+    try {
+      const details = await getAddressDetails({ placeId: prediction.placeId, sessao: sessionRef.current });
+      sessionRef.current = newSessionToken();
+      setInput(details.formatted);
+      onChange(details.formatted);
+      onSelect({ ...details, placeId: prediction.placeId });
+    } catch (error) {
+      setSelected(false);
+      setDetailsError(apiErrorMessage(error, "Não foi possível carregar este endereço. Tente outra sugestão."));
+    } finally {
+      setLoadingDetails(false);
+    }
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -105,13 +147,13 @@ export default function AddressAutocomplete({
         return (current + step + suggestions.length) % suggestions.length;
       });
     } else if (event.key === "Enter") {
-      // Enter on a highlighted suggestion picks it instead of submitting the form.
+      // Enter numa sugestão destacada escolhe, em vez de enviar o formulário.
       if (activeIndex >= 0 && suggestions[activeIndex]) {
         event.preventDefault();
-        chooseSuggestion(suggestions[activeIndex]);
+        void chooseSuggestion(suggestions[activeIndex]);
       }
     } else if (event.key === "Escape" && showList) {
-      // Close only the list; keep the modal open.
+      // Fecha só a lista; o modal continua aberto.
       event.preventDefault();
       event.stopPropagation();
       setDismissed(true);
@@ -135,6 +177,7 @@ export default function AddressAutocomplete({
           aria-autocomplete="list"
           aria-expanded={showList}
           aria-controls={listId}
+          aria-busy={searching}
           aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
           onFocus={() => setFocused(true)}
           onBlur={() => window.setTimeout(() => setFocused(false), 150)}
@@ -157,16 +200,23 @@ export default function AddressAutocomplete({
         )}
       </div>
 
+      {loadingDetails && (
+        <p className="mt-1.5 text-xs text-muted-foreground" role="status">Completando o endereço…</p>
+      )}
+      {detailsError && (
+        <p className="mt-1.5 text-xs text-amber-800" role="alert">{detailsError}</p>
+      )}
+
       {showList && (
         <div
           id={listId}
           role="listbox"
           aria-label="Sugestões de endereço"
-          className="absolute z-[1000] mt-1 max-h-64 w-full overflow-auto rounded-xl border border-border bg-white p-1 shadow-xl"
+          className="absolute z-[1000] mt-1 max-h-72 w-full overflow-auto rounded-xl border border-border bg-white p-1 shadow-xl"
         >
           {!canSearch ? (
             <p className="px-3 py-2.5 text-xs text-muted-foreground" role="status">
-              Continue digitando: a busca começa na 3ª letra (rua, número, bairro ou CEP).
+              Continue digitando o nome da rua (a busca começa na 3ª letra).
             </p>
           ) : searching && !suggestions.length ? (
             <p className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground" role="status">
@@ -175,37 +225,36 @@ export default function AddressAutocomplete({
             </p>
           ) : search.isError ? (
             <p className="px-3 py-2.5 text-xs text-amber-800" role="status">
-              A busca de endereços está indisponível. Você ainda pode informar
-              o endereço manualmente.
+              {apiErrorMessage(search.error, "A busca de endereços está indisponível agora.")} Você ainda pode
+              digitar o endereço completo.
             </p>
           ) : suggestions.length ? (
             suggestions.map((suggestion, index) => (
               <div
-                key={`${suggestion.formatted}-${index}`}
+                key={suggestion.placeId}
                 id={optionId(index)}
                 role="option"
                 aria-selected={index === activeIndex}
-                className={`flex w-full cursor-pointer items-start gap-2 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-[#f7f6f4] ${index === activeIndex ? "bg-[#f7f6f4] ring-1 ring-inset ring-primary/40" : ""}`}
+                className={`flex w-full cursor-pointer items-start gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-[#f7f6f4] ${index === activeIndex ? "bg-[#f7f6f4] ring-1 ring-inset ring-primary/40" : ""}`}
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => chooseSuggestion(suggestion)}
+                onClick={() => void chooseSuggestion(suggestion)}
               >
-                <MapPin
-                  size={15}
-                  className="mt-0.5 shrink-0 text-primary"
-                  aria-hidden="true"
-                />
-                <span>{suggestion.formatted}</span>
+                <MapPin size={15} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-foreground">{suggestion.mainText}</span>
+                  {suggestion.secondaryText && (
+                    <span className="block text-xs text-muted-foreground">{suggestion.secondaryText}</span>
+                  )}
+                </span>
               </div>
             ))
-          ) : debounced.length >= 3 && search.data ? (
+          ) : debounced.length >= MIN_SEARCH_LENGTH && search.data ? (
             <p className="px-3 py-2.5 text-xs text-muted-foreground" role="status">
-              Nenhum endereço encontrado. Confira o texto ou continue digitando.
+              Nenhum endereço encontrado. Confira o nome da rua ou digite também a cidade.
             </p>
           ) : (
-            <p className="px-3 py-2.5 text-xs text-muted-foreground">
-              Continue digitando para buscar endereços.
-            </p>
+            <p className="px-3 py-2.5 text-xs text-muted-foreground">Continue digitando para buscar endereços.</p>
           )}
         </div>
       )}

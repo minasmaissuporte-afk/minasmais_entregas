@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ComponentType } from "react";
 import {
   getListCouriersQueryKey,
   getListDeliveriesQueryKey,
@@ -8,15 +8,23 @@ import {
   useUpdateDeliveryStatus,
   type AppUser,
 } from "@workspace/api-client-react";
-import { Check, KeyRound, LogOut, PackageCheck } from "lucide-react";
+import { Check, FilePlus2, KeyRound, LogOut, PackageCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import LiveMap, { type MapMarker } from "@/components/live-map";
 import { Link } from "wouter";
 import { StatusBadge } from "@/components/delivery-status";
 import { AutoDismissFeedback, type FeedbackMessage } from "@/components/auto-dismiss-feedback";
 
-export default function StorePortal({ profile }: { profile: AppUser }) {
+export default function StorePortal({
+  profile,
+  NewDeliveryModal,
+}: {
+  profile: AppUser;
+  /** Formulário de nova entrega (o mesmo da Central). */
+  NewDeliveryModal?: ComponentType<{ onClose: () => void }>;
+}) {
   const { signOut } = useAuth();
+  const [newDeliveryOpen, setNewDeliveryOpen] = useState(false);
   const queryClient = useQueryClient();
   const [selectedCourierId, setSelectedCourierId] = useState("");
   const deliveries = useListDeliveries(
@@ -104,6 +112,16 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
           <p className="mt-1 text-sm text-muted-foreground">
             Olá, {profile.name}. Aqui aparecem somente as entregas da sua unidade.
           </p>
+          {NewDeliveryModal && (
+            <button
+              type="button"
+              className="button-primary mt-4 min-h-12 w-full px-5 text-base sm:w-auto"
+              onClick={() => setNewDeliveryOpen(true)}
+              data-testid="button-store-new-delivery"
+            >
+              <FilePlus2 size={18} aria-hidden="true" /> Nova entrega
+            </button>
+          )}
         </div>
         <section className="panel mb-5 overflow-hidden" aria-label="Rastreamento dos motoboys da unidade">
           <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
@@ -191,6 +209,9 @@ export default function StorePortal({ profile }: { profile: AppUser }) {
           </div>
         )}
       </div>
+      {NewDeliveryModal && newDeliveryOpen && (
+        <NewDeliveryModal onClose={() => setNewDeliveryOpen(false)} />
+      )}
     </main>
   );
 }

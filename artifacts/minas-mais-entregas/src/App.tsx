@@ -44,7 +44,7 @@ import NotFound from '@/pages/not-found';
 import AccessManagement from '@/pages/access-management';
 import CourierPortal from '@/pages/courier-portal';
 import LiveMap, { type MapMarker } from '@/components/live-map';
-import AddressAutocomplete from '@/components/address-autocomplete';
+import DeliveryAddressFields from '@/components/delivery-address-fields';
 import CourierAccessPage from '@/pages/courier-access';
 import StorePortal from '@/pages/store-portal';
 import StoreManagement from '@/pages/store-management';
@@ -57,7 +57,7 @@ import { Capacitor } from '@capacitor/core';
 import { Network } from '@capacitor/network';
 import NativeCourierSetupGate from '@/components/native-courier-setup';
 import { AuthProvider, useAuth } from '@/lib/auth';
-import { ForgotPasswordPage, PasswordRecoveryRedirect, ResetPasswordPage, SignInPage, SignUpPage } from '@/pages/auth-pages';
+import { AcceptInvitePage, ForgotPasswordPage, InviteLinkRedirect, PasswordRecoveryRedirect, ResetPasswordPage, SignInPage, SignUpPage } from '@/pages/auth-pages';
 import AdminShell from '@/components/admin/admin-shell';
 import AdminOverview from '@/components/admin/overview';
 import { CouriersPage, LiveMapPage } from '@/components/admin/admin-pages';
@@ -164,20 +164,22 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   const [customerCoordinates, setCustomerCoordinates] = useState<{ latitude: number | null; longitude: number | null }>({ latitude: null, longitude: null });
   const [form, setForm] = useState({ customerName: '', customerPhone: '', destination: '', orderNumber: '', notes: '', storeId: '', priority: 'normal' });
   const selectedStore = (storesQuery.data ?? []).find(store => store.id === form.storeId);
+  // Gerente (ou operação com uma filial só): a unidade já vem escolhida.
+  const activeStores = (storesQuery.data ?? []).filter(store => store.active);
+  const onlyStoreId = activeStores.length === 1 ? activeStores[0]!.id : '';
+  useEffect(() => {
+    if (onlyStoreId && !form.storeId) setForm(prev => ({ ...prev, storeId: onlyStoreId }));
+  }, [onlyStoreId, form.storeId]);
   const update = (key: string, value: string) => {
     setForm(prev => ({ ...prev, [key]: value }));
-    // Editing the address invalidates the pin from a previously chosen suggestion;
-    // choosing a suggestion calls onChange first and onSelect right after, so the new pin wins.
-    if (key === 'destination') setCustomerCoordinates({ latitude: null, longitude: null });
   };
-  const destinationWithoutPin = form.destination.trim().length > 0 && customerCoordinates.latitude === null;
   const hasUnsavedChanges = Boolean(
     form.customerName.trim() ||
     form.customerPhone.trim() ||
     form.destination.trim() ||
     form.orderNumber.trim() ||
     form.notes.trim() ||
-    form.storeId ||
+    (form.storeId && form.storeId !== onlyStoreId) ||
     form.priority !== 'normal',
   );
   const requestClose = () => {
@@ -208,19 +210,14 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
           <Field label="Nome do cliente"><input required minLength={2} value={form.customerName} onChange={e => update('customerName', e.target.value)} placeholder="Nome completo" data-modal-initial-focus data-testid="input-customer-name"/></Field>
           <Field label="Telefone"><input type="tel" value={form.customerPhone} onChange={e => update('customerPhone', e.target.value)} placeholder="(31) 99999-0000" data-testid="input-customer-phone"/></Field>
         </div>
-        <Field label="Endereço de entrega">
-          <AddressAutocomplete
-            id="input-destination"
-            required
-            value={form.destination}
-            onChange={value => update('destination', value)}
-            onSelect={suggestion => setCustomerCoordinates({ latitude: suggestion.latitude, longitude: suggestion.longitude })}
-            placeholder="Digite rua, número, bairro ou CEP"
-            inputClassName="w-full"
-            dataTestId="input-destination"
-          />
-          {destinationWithoutPin && <span className="mt-1.5 block text-xs text-amber-800" data-testid="text-destination-without-pin">Escolha um endereço da lista para posicionar o pino no mapa do motoboy.</span>}
-        </Field>
+        <DeliveryAddressFields
+          idPrefix="new-delivery"
+          destinationTestId="input-destination"
+          onChange={value => {
+            setForm(prev => ({ ...prev, destination: value.destination }));
+            setCustomerCoordinates({ latitude: value.latitude, longitude: value.longitude });
+          }}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Número do pedido"><input required value={form.orderNumber} onChange={e => update('orderNumber', e.target.value)} placeholder="Ex.: 48271" data-testid="input-order-number"/></Field>
           <Field label="Unidade"><select required value={form.storeId} onChange={e => update('storeId', e.target.value)} data-testid="select-store"><option value="">Selecione uma unidade</option>{(storesQuery.data ?? []).filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name} · {s.city}</option>)}</select></Field>
@@ -262,7 +259,6 @@ function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery;
   const hasChanges = (Object.keys(initial) as (keyof typeof initial)[]).some(key => form[key].trim() !== String(initial[key]).trim());
   const update = (key: keyof typeof initial, value: string) => {
     setForm(prev => ({ ...prev, [key]: value }));
-    if (key === 'destination') setCoordinates({ latitude: null, longitude: null });
   };
   const requestClose = () => {
     if (save.isPending) return;
@@ -304,28 +300,21 @@ function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery;
           <Field label="Nome do cliente"><input required minLength={2} value={form.customerName} onChange={e => update('customerName', e.target.value)} data-modal-initial-focus data-testid="input-edit-customer-name"/></Field>
           <Field label="Telefone"><input type="tel" value={form.customerPhone} onChange={e => update('customerPhone', e.target.value)} placeholder="(31) 99999-0000" data-testid="input-edit-customer-phone"/></Field>
         </div>
-        <Field label="Endereço de entrega">
-          {addressEditable ? (
-            <>
-              <AddressAutocomplete
-                id="input-edit-destination"
-                required
-                value={form.destination}
-                onChange={value => update('destination', value)}
-                onSelect={suggestion => setCoordinates({ latitude: suggestion.latitude, longitude: suggestion.longitude })}
-                placeholder="Digite rua, número, bairro ou CEP"
-                inputClassName="w-full"
-                dataTestId="input-edit-destination"
-              />
-              {destinationChanged && coordinates.latitude === null && <span className="mt-1.5 block text-xs text-amber-800">Escolha um endereço da lista para posicionar o pino no mapa do motoboy.</span>}
-            </>
-          ) : (
-            <>
-              <input value={form.destination} readOnly aria-readonly="true" className="w-full bg-[#f7f6f4]" data-testid="input-edit-destination-locked"/>
-              <span className="mt-1.5 block text-xs text-muted-foreground">A entrega já foi para um motoboy: o endereço não pode mais mudar. Se estiver errado, cancele e registre de novo.</span>
-            </>
-          )}
-        </Field>
+        {addressEditable ? (
+          <DeliveryAddressFields
+            idPrefix="edit-delivery"
+            initialDestination={delivery.destination}
+            onChange={value => {
+              setForm(prev => ({ ...prev, destination: value.destination }));
+              setCoordinates({ latitude: value.latitude, longitude: value.longitude });
+            }}
+          />
+        ) : (
+          <Field label="Endereço de entrega">
+            <input value={form.destination} readOnly aria-readonly="true" className="w-full bg-[#f7f6f4]" data-testid="input-edit-destination-locked"/>
+            <span className="mt-1.5 block text-xs text-muted-foreground">A entrega já foi para um motoboy: o endereço não pode mais mudar. Se estiver errado, cancele e registre de novo.</span>
+          </Field>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Número do pedido"><input required value={form.orderNumber} onChange={e => update('orderNumber', e.target.value)} data-testid="input-edit-order-number"/></Field>
           <Field label="Prioridade"><select value={form.priority} onChange={e => update('priority', e.target.value)} data-testid="select-edit-priority"><option value="normal">Normal</option><option value="urgent">Urgente</option></select></Field>
@@ -1156,6 +1145,14 @@ function AccountRoute() {
   return <AccountSecurityPage />;
 }
 
+function AdminOverviewWithNewDelivery() {
+  const [open, setOpen] = useState(false);
+  return <>
+    <AdminOverview onNewDelivery={() => setOpen(true)} />
+    {open && <DeliveryModal onClose={() => setOpen(false)} />}
+  </>;
+}
+
 function UserPortalRoute() {
   const { auth, profile } = useSignedInProfile();
   if (!auth.isLoaded || (auth.isSignedIn && profile.isLoading)) return <ProfileLoading />;
@@ -1170,9 +1167,9 @@ function UserPortalRoute() {
     );
   }
   if (profile.data.role === 'STORE_MANAGER' || profile.data.role === 'STORE_STAFF') {
-    return <StorePortal profile={profile.data} />;
+    return <StorePortal profile={profile.data} NewDeliveryModal={DeliveryModal} />;
   }
-  return <RoutedErrorBoundary><AdminShell profile={profile.data}><AdminOverview /></AdminShell></RoutedErrorBoundary>;
+  return <RoutedErrorBoundary><AdminShell profile={profile.data}><AdminOverviewWithNewDelivery /></AdminShell></RoutedErrorBoundary>;
 }
 
 function CentralRoute({ children, adminOnly = false }: { children: ReactNode | ((profile: AppUser) => ReactNode); adminOnly?: boolean }) {
@@ -1194,6 +1191,7 @@ function AppRoutes() {
       <AuthProvider>
         <NativeConnectivityGuard />
         <PasswordRecoveryRedirect />
+        <InviteLinkRedirect />
         <TooltipProvider>
           <Switch>
             <Route path="/" component={HomeRedirect}/>
@@ -1211,6 +1209,7 @@ function AppRoutes() {
             <Route path="/sign-up/*?" component={SignUpPage}/>
             <Route path="/esqueci-senha" component={ForgotPasswordPage}/>
             <Route path="/redefinir-senha" component={ResetPasswordPage}/>
+            <Route path="/aceitar-convite" component={AcceptInvitePage}/>
             <Route component={NotFound}/>
           </Switch>
           <Toaster/>

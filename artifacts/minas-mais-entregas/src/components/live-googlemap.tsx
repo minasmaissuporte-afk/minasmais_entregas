@@ -394,7 +394,9 @@ export default function LiveGoogleMap({
           // Sem o botão "Atalhos do teclado" na barra inferior. A atribuição do Google
           // ("Dados cartográficos", "Termos", "Informar erro no mapa") é obrigatória e fica.
           keyboardShortcuts: false,
-          gestureHandling: interactive ? "cooperative" : "none",
+          // Tela cheia (motoboy): arrastar e dar zoom com um dedo. Mapas dentro de páginas
+          // pedem dois dedos, para a rolagem da página passar por cima do mapa.
+          gestureHandling: interactive ? (size === "full-screen" ? "greedy" : "cooperative") : "none",
         });
         mapRef.current = map;
         librariesRef.current = libraries;
@@ -483,7 +485,7 @@ export default function LiveGoogleMap({
       initialViewSetRef.current = false;
       lastFitGeometryRef.current = null;
     };
-  }, [apiKey, mapId, interactive]);
+  }, [apiKey, mapId, interactive, size]);
 
   useEffect(() => {
     if (mapRef.current) syncMapDataRef.current();

@@ -471,6 +471,14 @@ export interface CourierUnableToDeliverResult {
   affectedDeliveries: number;
 }
 
+export interface AddressPrediction {
+  placeId: string;
+  text: string;
+  mainText: string;
+  /** @nullable */
+  secondaryText: string | null;
+}
+
 export interface AddressSuggestion {
   formatted: string;
   /** @nullable */
@@ -611,6 +619,38 @@ export interface AppUser {
   storeId: string | null;
   /** @nullable */
   courierId: string | null;
+}
+
+export type AccessInviteInputRole = typeof AccessInviteInputRole[keyof typeof AccessInviteInputRole];
+
+
+export const AccessInviteInputRole = {
+  ADMIN: 'ADMIN',
+  STORE_MANAGER: 'STORE_MANAGER',
+  COURIER: 'COURIER',
+} as const;
+
+export interface AccessInviteInput {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * @minLength 2
+     * @maxLength 120
+     */
+  name: string;
+  role: AccessInviteInputRole;
+  /** @nullable */
+  storeId?: string | null;
+  /**
+     * @maxLength 30
+     * @nullable
+     */
+  phone?: string | null;
+  /**
+     * Page of the app that opens from the invite link
+     * @maxLength 300
+     */
+  redirectTo: string;
 }
 
 export type UserRoleInputRole = typeof UserRoleInputRole[keyof typeof UserRoleInputRole];
@@ -890,6 +930,26 @@ export type AutocompleteAddressesParams = {
  * @minLength 3
  */
 texto: string;
+/**
+ * @maxLength 64
+ */
+sessao?: string;
+};
+
+export type GetAddressDetailsParams = {
+/**
+ * @minLength 1
+ * @maxLength 512
+ */
+placeId: string;
+/**
+ * @maxLength 20
+ */
+numero?: string;
+/**
+ * @maxLength 64
+ */
+sessao?: string;
 };
 
 export type ListCouriersParams = {

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetDashboardSummaryQueryKey,
@@ -11,7 +11,6 @@ import {
   useDeleteStore,
   useListStores,
   useUpdateStore,
-  type AddressSuggestion,
   type Store,
   type StoreInput,
 } from "@workspace/api-client-react";
@@ -27,7 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { AutoDismissFeedback } from "@/components/auto-dismiss-feedback";
-import AddressAutocomplete from "@/components/address-autocomplete";
+import AddressAutocomplete, { locateHouseNumber, type ChosenAddress } from "@/components/address-autocomplete";
 import LiveMap, { type MapMarker } from "@/components/live-map";
 
 type BranchForm = Omit<StoreInput, "latitude" | "longitude"> & {
@@ -136,23 +135,53 @@ export default function StoreManagement() {
     setForm((current) => ({ ...current, [key]: key === "deliveryFee" ? Number(value) : value }));
   };
 
-  const selectAddress = (suggestion: AddressSuggestion) => {
+  // Rua escolhida na busca: com ela o pino vai para a posição exata do número.
+  const chosenAddressRef = useRef<ChosenAddress | null>(null);
+  const lastLocatedNumberRef = useRef("");
+  const [locatingNumber, setLocatingNumber] = useState(false);
+
+  const selectAddress = (address: ChosenAddress) => {
+    chosenAddressRef.current = address;
+    lastLocatedNumberRef.current = address.houseNumber ?? "";
     setForm((current) => ({
       ...current,
-      address: suggestion.formatted,
-      street: suggestion.street ?? "",
-      number: suggestion.houseNumber ?? "",
-      neighborhood: suggestion.suburb ?? suggestion.district ?? "",
-      city: suggestion.city ?? "",
-      stateCode: suggestion.stateCode ?? "",
-      postalCode: suggestion.postcode ?? "",
-      latitude: suggestion.latitude,
-      longitude: suggestion.longitude,
+      address: address.formatted,
+      street: address.street ?? "",
+      // O número fica para o gerente digitar (só vem preenchido se ele digitou na busca).
+      number: address.houseNumber ?? "",
+      neighborhood: address.suburb ?? address.district ?? "",
+      city: address.city ?? "",
+      stateCode: address.stateCode ?? "",
+      postalCode: address.postcode ?? "",
+      latitude: address.latitude,
+      longitude: address.longitude,
     }));
-    if (!suggestion.houseNumber) {
+    if (!address.houseNumber) {
       window.requestAnimationFrame(() => {
         document.getElementById("branch-number")?.focus();
       });
+    }
+  };
+
+  const locateBranchNumber = async () => {
+    const chosen = chosenAddressRef.current;
+    const number = form.number.trim();
+    if (!chosen || !number || number === lastLocatedNumberRef.current) return;
+    lastLocatedNumberRef.current = number;
+    setLocatingNumber(true);
+    try {
+      const located = await locateHouseNumber(chosen.placeId, number);
+      setForm((current) => ({
+        ...current,
+        latitude: located.latitude,
+        longitude: located.longitude,
+        postalCode: located.postcode ?? current.postalCode,
+        neighborhood: (current.neighborhood ?? "").trim() || located.suburb || "",
+      }));
+    } catch {
+      // Sem ajuste: o pino continua na rua e pode ser arrastado no mapa.
+    } finally {
+      setLocatingNumber(false);
     }
   };
 
@@ -194,8 +223,9 @@ export default function StoreManagement() {
       return;
     }
 
+    const street = form.street.trim() || form.address.split(",")[0]?.trim() || form.address.trim();
     const address = [
-      form.street,
+      street,
       form.number,
       form.complement,
       form.neighborhood,
@@ -206,7 +236,7 @@ export default function StoreManagement() {
       .map((part) => part?.trim() ?? "")
       .filter(Boolean)
       .join(", ");
-    const payload: StoreInput = { ...form, address, latitude, longitude };
+    const payload: StoreInput = { ...form, street, address, latitude, longitude };
     const callbacks = {
       onSuccess: async () => {
         await invalidateDirectory();
@@ -377,27 +407,19 @@ export default function StoreManagement() {
                   id="branch-address"
                   required
                   value={form.address}
-                  placeholder="Digite rua, bairro ou CEP"
+                  placeholder="Digite o nome da rua ou o CEP"
                   inputClassName="w-full pr-9"
                   dataTestId="input-branch-address"
-                  onChange={(address) =>
+                  onChange={(address) => {
+                    chosenAddressRef.current = null;
                     setForm((current) => ({
                       ...current,
                       address,
                       latitude: null,
                       longitude: null,
-                    }))
-                  }
+                    }));
+                  }}
                   onSelect={selectAddress}
-                />
-              </label>
-              <label className="field-label">
-                Rua ou avenida
-                <input
-                  required
-                  value={form.street}
-                  onChange={(event) => updateField("street", event.target.value)}
-                  placeholder="Nome da via"
                 />
               </label>
               <label className="field-label">
@@ -407,8 +429,14 @@ export default function StoreManagement() {
                   required
                   value={form.number}
                   onChange={(event) => updateField("number", event.target.value)}
-                  placeholder="Número ou s/n"
+                  onBlur={() => void locateBranchNumber()}
+                  placeholder="Ex.: 120 ou s/n"
                 />
+                {locatingNumber && (
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground" role="status">
+                    Ajustando o pino pelo número…
+                  </span>
+                )}
               </label>
               <label className="field-label">
                 Complemento

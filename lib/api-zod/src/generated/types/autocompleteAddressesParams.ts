@@ -11,4 +11,8 @@ export type AutocompleteAddressesParams = {
  * @minLength 3
  */
 texto: string;
+/**
+ * @maxLength 64
+ */
+sessao?: string;
 };
