@@ -817,7 +817,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                     {firstName.charAt(0).toLocaleUpperCase("pt-BR")}
                   </button>
                 </SheetTrigger>
-                <SheetContent side="right" className="courier-profile-sheet flex w-[min(23rem,calc(100vw-1rem))] flex-col border-0 bg-[#faf8f4] p-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))]">
+                <SheetContent side="right" className="courier-profile-sheet flex w-[min(23rem,calc(100vw-1rem))] flex-col overflow-y-auto overscroll-contain border-0 bg-[#faf8f4] p-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))]">
                   <SheetHeader className="text-left">
                     <SheetTitle className="text-xl font-bold">Seu perfil</SheetTitle>
                     <SheetDescription>Seus dados locais e preferências deste aparelho.</SheetDescription>
@@ -844,11 +844,11 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                     <Link href="/account" onClick={() => setMenuOpen(false)} className="button-secondary min-h-12 w-full justify-start" data-testid="link-courier-password">
                       <KeyRound size={17} /> Alterar senha
                     </Link>
+                    <button type="button" className="button-red-outline min-h-12 w-full justify-start rounded-[7px] px-3 text-sm font-bold" onClick={() => void handleSignOut()} data-testid="button-courier-sign-out">
+                      <LogOut size={17} /> Sair da conta
+                    </button>
                   </div>
                   <p className="mt-auto border-t border-[#e9e4dc] pt-4 text-xs text-muted-foreground">Minas Mais Entregas · Versão {appVersion}</p>
-                  <button type="button" className="button-quiet min-h-12 w-full justify-start" onClick={() => void handleSignOut()} data-testid="button-courier-sign-out">
-                    <LogOut size={17} /> Sair da conta
-                  </button>
                 </SheetContent>
               </Sheet>
             </div>
