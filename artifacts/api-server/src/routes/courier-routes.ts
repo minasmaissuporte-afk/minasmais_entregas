@@ -1813,9 +1813,12 @@ router.post(
         ) {
           return { error: "delivery_changed" as const };
         }
+        // A entrega sai da lista do motoboy e volta para a loja decidir (reenviar ou cancelar).
+        // Não existe mais a etapa "levar o produto de volta à filial" no app do motoboy.
+        const wasPickedUp = targetDelivery.status === "IN_TRANSIT";
         await tx
           .update(deliveriesTable)
-          .set({ status: "RETURNING_TO_STORE", updatedAt: now })
+          .set({ status: "AWAITING_COURIER", courierId: null, updatedAt: now })
           .where(eq(deliveriesTable.id, targetDelivery.id));
         await tx.insert(deliveryCancellationsTable).values({
           id: randomUUID(),
@@ -1824,7 +1827,7 @@ router.post(
           routeId: lockedRoute.id,
           reason: reason.label,
           observation: body.data.observation ?? null,
-          status: "RETURNING_TO_STORE",
+          status: "AWAITING_CENTRAL",
           priority: false,
           routeContinues: Boolean(recalculated?.stops.length),
           requestedAt: now,
@@ -1832,8 +1835,8 @@ router.post(
         await tx.insert(deliveryEventsTable).values({
           id: randomUUID(),
           deliveryId: targetDelivery.id,
-          kind: "courier_returning_to_store",
-          label: `Motoboy retornará à filial: ${reason.label}`,
+          kind: "courier_unable_to_deliver",
+          label: `Motoboy não conseguiu entregar${wasPickedUp ? " (o produto volta para a loja)" : ""}: ${reason.label}${body.data.observation ? ` (${body.data.observation})` : ""}`,
           actor,
           timestamp: now,
         });
@@ -1893,17 +1896,16 @@ router.post(
           .where(eq(deliveryRoutesTable.id, lockedRoute.id));
         await tx
           .update(couriersTable)
-          .set({
-            status: "BUSY",
-            currentDeliveryCode: recalculated?.stops.length
-              ? nextCode ?? null
-              : "Devolução na filial",
-          })
+          .set(
+            recalculated?.stops.length
+              ? { status: "BUSY", currentDeliveryCode: nextCode ?? null }
+              : { status: "AVAILABLE", currentDeliveryCode: null },
+          )
           .where(eq(couriersTable.id, courier.id));
         return {
           routeContinues: Boolean(recalculated?.stops.length),
           priority: false,
-          status: "RETURNING_TO_STORE",
+          status: "AWAITING_COURIER",
           affectedDeliveries: 1,
         };
       }
@@ -1924,22 +1926,15 @@ router.post(
       }
 
       const routeAborted = isAccident;
-      const returning = !routeAborted && delivery.status === "IN_TRANSIT";
-      const nextStatus = routeAborted
-        ? "AWAITING_COURIER"
-        : returning
-          ? "RETURNING_TO_STORE"
-          : "AWAITING_COURIER";
-      const cancellationStatus = routeAborted
-        ? "ROUTE_ABORTED"
-        : returning
-          ? "RETURNING_TO_STORE"
-          : "AWAITING_CENTRAL";
+      // Já tinha retirado: o produto volta para a loja, mas a entrega sai da lista do motoboy.
+      const wasPickedUp = delivery.status === "IN_TRANSIT";
+      const nextStatus = "AWAITING_COURIER";
+      const cancellationStatus = routeAborted ? "ROUTE_ABORTED" : "AWAITING_CENTRAL";
       await tx
         .update(deliveriesTable)
         .set({
           status: nextStatus,
-          courierId: routeAborted || !returning ? null : courier.id,
+          courierId: null,
           updatedAt: now,
         })
         .where(eq(deliveriesTable.id, delivery.id));
@@ -1957,22 +1952,16 @@ router.post(
       await tx.insert(deliveryEventsTable).values({
         id: randomUUID(),
         deliveryId: delivery.id,
-        kind: routeAborted
-          ? "courier_route_aborted"
-          : returning
-            ? "courier_returning_to_store"
-            : "courier_unable_to_deliver",
-        label: `${routeAborted ? "Pane/acidente" : returning ? "Retorno à filial" : "Motoboy não conseguiu entregar"}: ${reason.label}${body.data.observation ? ` (${body.data.observation})` : ""}`,
+        kind: routeAborted ? "courier_route_aborted" : "courier_unable_to_deliver",
+        label: `${routeAborted ? "Pane/acidente" : `Motoboy não conseguiu entregar${wasPickedUp ? " (o produto volta para a loja)" : ""}`}: ${reason.label}${body.data.observation ? ` (${body.data.observation})` : ""}`,
         actor,
         timestamp: now,
       });
       await tx
         .update(couriersTable)
         .set({
-          status: routeAborted ? "OFFLINE" : returning ? "BUSY" : "AVAILABLE",
-          currentDeliveryCode: returning
-            ? "Devolução na filial"
-            : null,
+          status: routeAborted ? "OFFLINE" : "AVAILABLE",
+          currentDeliveryCode: null,
         })
         .where(eq(couriersTable.id, courier.id));
       return {

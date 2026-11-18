@@ -67,6 +67,7 @@ import {
 
 // Painel ao vivo: o app do motoboy manda a posição a cada ~15 s.
 const REFRESH_MS = 10_000;
+const OFFLINE_VISIBLE_MS = 2 * 60 * 60 * 1000;
 const AUTO_REFRESH_KEY = "adm-auto-refresh";
 
 // Em entrega: vermelho, igual ao trajeto e ao marcador do cliente (como no app do motoboy).
@@ -351,6 +352,12 @@ export function OperationMap({
 
   const courierMarkers: MapMarker[] = couriers
     .filter((courier) => courier.currentLatitude != null && courier.currentLongitude != null)
+    // Offline há mais de 2 h: a última posição já não diz nada e só polui o mapa.
+    .filter((courier) => {
+      if (courierState(courier, now) !== "offline") return true;
+      const age = courierAgeMs(courier, now);
+      return age != null && age <= OFFLINE_VISIBLE_MS;
+    })
     .map((courier) => {
       const state = courierState(courier, now);
       const current = courier.currentDeliveryCode ? deliveryByCode.get(courier.currentDeliveryCode) : undefined;
@@ -367,6 +374,8 @@ export function OperationMap({
         kind: "courier",
         label: courier.name.split(" ")[0],
         color: state === "offline" ? MARKER.offline : urgent ? MARKER.urgent : state === "busy" ? MARKER.busy : MARKER.available,
+        // Em entrega por cima de tudo; disponível acima do offline (no mesmo lugar, o online aparece).
+        zIndex: state === "busy" ? 6 : state === "available" ? 5 : 1,
       };
     });
   const storeMarkers: MapMarker[] = stores

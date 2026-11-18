@@ -133,12 +133,13 @@ test.describe("Rotas agrupadas: oferta ao motoboy", () => {
     await expectError(await courier.post(`/courier/routes/${route.id}/accept`, {}), 400);
   });
 
-  test("Excluir entrega de rota ainda ofertada: rota de 2 vira cancelada e a outra entrega volta para REQUESTED", async () => {
+  test("Excluir entrega de rota ainda ofertada: a rota some e a outra entrega volta para a fila dos motoboys", async () => {
     const { central, d1, d2, route } = await offeredRoute();
     const admin = await Api.as("admin");
     const res = await admin.delete(`/deliveries/${d1.id}`);
     expect(res.status(), await describe(res)).toBe(204);
-    await expectStatus(central, d2.id, "REQUESTED");
+    await expectStatus(central, d2.id, "OFFERED");
+    expect((await json(await central.get(`/deliveries/${d2.id}`))).routeId).toBeNull();
     const [r] = await query("select status, delivery_ids from delivery_routes where id=$1", [route.id]);
     expect(r?.delivery_ids ?? []).not.toContain(d1.id);
   });
@@ -256,7 +257,7 @@ test.describe("Rotas agrupadas: rota aceita (montada no banco)", () => {
       return;
     }
     expect(res.status(), await describe(res)).toBe(200);
-    expect(await json(res)).toMatchObject({ deliveryId: d1.id, status: "RETURNING_TO_STORE", routeContinues: true });
-    await expectStatus(central, d1.id, "RETURNING_TO_STORE");
+    expect(await json(res)).toMatchObject({ deliveryId: d1.id, status: "AWAITING_COURIER", routeContinues: true });
+    await expectStatus(central, d1.id, "AWAITING_COURIER");
   });
 });

@@ -2068,16 +2068,13 @@ router.delete(
               .for("update")
               .limit(1);
             if (remainingDelivery?.status === "OFFERED") {
-              await tx
-                .update(deliveriesTable)
-                .set({ status: "REQUESTED", updatedAt: new Date() })
-                .where(eq(deliveriesTable.id, remainingDeliveryId));
+              // Continua oferecida: sem a rota, volta a aparecer para todos os motoboys da cidade.
               await tx.insert(deliveryEventsTable).values({
                 id: randomUUID(),
                 deliveryId: remainingDeliveryId,
                 kind: "route_offer_removed",
                 label:
-                  "Oferta de rota desfeita após exclusão de outra entrega",
+                  "Rota desfeita após exclusão de outra entrega: voltou para a fila dos motoboys",
                 actor: "Administrador",
               });
             }
@@ -2100,7 +2097,9 @@ router.delete(
             .where(eq(couriersTable.id, delivery.courierId))
             .for("update")
             .limit(1);
-          if (courier?.currentDeliveryCode === delivery.code) {
+          // Libera o motoboy se ele não tiver outra entrega ativa (mesmo que o "código atual"
+          // não seja o desta entrega, ex.: "Devolução na filial").
+          if (courier) {
             const [otherActiveDelivery] = await tx
               .select({ id: deliveriesTable.id })
               .from(deliveriesTable)
@@ -2116,7 +2115,7 @@ router.delete(
               await tx
                 .update(couriersTable)
                 .set({ status: "AVAILABLE", currentDeliveryCode: null })
-                .where(eq(couriersTable.id, delivery.courierId));
+                .where(and(eq(couriersTable.id, delivery.courierId), eq(couriersTable.status, "BUSY")));
             }
           }
         }

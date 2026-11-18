@@ -254,7 +254,8 @@ test.describe("Motoboy: navegação, foto e ocorrência em entrega individual", 
     await expectError(await courier.post(`/courier/deliveries/${d.id}/unable`, { reason: "x" }), 400);
   });
 
-  test("Ocorrência em entrega já retirada → RETURNING_TO_STORE; Central confirma devolução → NOT_DELIVERED", async () => {
+  // Sem a etapa "devolver à filial": a entrega sai da lista do motoboy e fica com a loja.
+  test("Ocorrência em entrega já retirada → Devolvida pelo motoboy (AWAITING_COURIER) e motoboy liberado", async () => {
     const { central, courier, d } = await inTransitDelivery();
     const res = await courier.post(`/courier/deliveries/${d.id}/unable`, {
       reason: "Cliente ausente / não atende",
@@ -262,19 +263,17 @@ test.describe("Motoboy: navegação, foto e ocorrência em entrega individual", 
       ...BH_POSITION,
     });
     expect(res.status(), await describe(res)).toBe(200);
-    expect(await json(res)).toMatchObject({ deliveryId: d.id, status: "RETURNING_TO_STORE", routeContinues: false, priority: false });
-    await expectStatus(central, d.id, "RETURNING_TO_STORE");
+    expect(await json(res)).toMatchObject({ deliveryId: d.id, status: "AWAITING_COURIER", routeContinues: false, priority: false });
+    await expectStatus(central, d.id, "AWAITING_COURIER");
+    const view = await json(await central.get(`/deliveries/${d.id}`));
+    expect(view.courierId).toBeNull();
+    expect(view.events.at(-1).label).toContain("o produto volta para a loja");
 
     const alerts = await json(await central.get("/delivery-cancellations"));
     const alert = alerts.find((a: any) => a.deliveryId === d.id);
-    expect(alert).toMatchObject({ status: "RETURNING_TO_STORE", reason: "Cliente ausente / não atende", observation: "Toquei o interfone 3 vezes." });
-
-    await expectError(await central.post(`/delivery-cancellations/${alert.id}/action`, { action: "REQUEUE" }), 409);
-    const confirm = await central.post(`/delivery-cancellations/${alert.id}/action`, { action: "CONFIRM_RETURN" });
-    expect(confirm.status(), await describe(confirm)).toBeLessThan(300);
-    await expectStatus(central, d.id, "NOT_DELIVERED");
+    expect(alert).toMatchObject({ status: "AWAITING_CENTRAL", reason: "Cliente ausente / não atende", observation: "Toquei o interfone 3 vezes." });
     const [c] = await query("select status from couriers where id='e2e-courier-1'");
-    expect(c.status).not.toBe("BUSY");
+    expect(c.status).toBe("AVAILABLE");
   });
 
   test("Ocorrência antes da retirada → AWAITING_COURIER; Central reenfileira (REQUEUE) ou encerra (CLOSE)", async () => {

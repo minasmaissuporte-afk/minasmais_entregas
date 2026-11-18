@@ -24,6 +24,8 @@ export type MapMarker = MapCoordinate & {
   textColor?: string;
   draggable?: boolean;
   onDrag?: (coordinate: MapCoordinate) => void;
+  /** Ordem de sobreposição: maior fica por cima (ex.: motoboy online acima do offline). */
+  zIndex?: number;
 };
 
 type MarkerEntry = {
@@ -290,6 +292,7 @@ function syncMarkers(
       existing.marker.position = toLatLng(marker);
       existing.marker.title = marker.title;
       existing.marker.gmpDraggable = draggable;
+      existing.marker.zIndex = marker.zIndex ?? 2;
       existing.infoWindow.setContent(createPopupContent(marker));
       existing.onDrag = marker.onDrag;
       continue;
@@ -307,7 +310,7 @@ function syncMarkers(
       content: element,
       title: marker.title,
       gmpDraggable: draggable,
-      zIndex: 2,
+      zIndex: marker.zIndex ?? 2,
     });
     const entry: MarkerEntry = {
       marker: advancedMarker,

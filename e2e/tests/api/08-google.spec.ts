@@ -150,7 +150,7 @@ test.describe("Rotas otimizadas (Google Route Optimization)", () => {
     await courierOnline(courier);
     const res = await courier.post(`/courier/deliveries/${d1.id}/unable`, { reason: "Cliente ausente / não atende", ...BH_POSITION });
     expect(res.status(), await describe(res)).toBe(200);
-    expect(await json(res)).toMatchObject({ status: "RETURNING_TO_STORE", routeContinues: true });
+    expect(await json(res)).toMatchObject({ status: "AWAITING_COURIER", routeContinues: true });
     await expectStatus(central, d2.id, "IN_TRANSIT");
   });
 });
