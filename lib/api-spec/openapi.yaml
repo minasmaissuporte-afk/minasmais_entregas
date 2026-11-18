@@ -62,6 +62,46 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ActiveOperationsRoute"
+  /reports/store-accounting:
+    get:
+      operationId: getStoreAccounting
+      tags: [dashboard]
+      summary: Store accounting - deliveries, amounts paid and to pay to couriers
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+        - in: query
+          name: storeId
+          schema: { type: string }
+      responses:
+        "200":
+          description: Accounting of the store in the period
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreAccounting"
+  /reports/store-accounting/pay:
+    post:
+      operationId: payCourier
+      tags: [dashboard]
+      summary: Mark the completed, unpaid deliveries of a courier at the store as paid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayCourierInput"
+      responses:
+        "200":
+          description: Payment registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayCourierResult"
   /reports/analytics:
     get:
       operationId: getDeliveryAnalytics
@@ -1069,6 +1109,9 @@ components:
         requiresPrescription: { type: boolean, description: O motoboy precisa recolher a receita do cliente }
         prescriptionCollectedAt: { type: ["string", "null"], format: date-time }
         routeId: { type: ["string", "null"], description: Rota agrupada (oferecida ou aceita) em que a entrega está }
+        paymentMethod: { type: ["string", "null"], description: "Forma de pagamento do cliente: CARD, PIX ou CASH" }
+        changeFor: { type: ["number", "null"], description: "Dinheiro: troco para quanto (valor com que o cliente vai pagar)" }
+        bringCardMachine: { type: ["boolean", "null"], description: "Cartão: levar a maquininha" }
         destination: { type: string }
         orderNumber: { type: string }
         notes: { type: ["string", "null"] }
@@ -1119,6 +1162,9 @@ components:
         storeId: { type: string }
         priority: { type: string, enum: [normal, urgent] }
         requiresPrescription: { type: boolean }
+        paymentMethod: { type: string, enum: [CARD, PIX, CASH] }
+        changeFor: { type: ["number", "null"], minimum: 0, maximum: 100000 }
+        bringCardMachine: { type: ["boolean", "null"] }
         deliveryAmount: { type: number, minimum: 0, description: Deprecated; server uses the selected branch's configured fee }
     DeliveryUpdateInput:
       type: object
@@ -1132,6 +1178,9 @@ components:
         notes: { type: ["string", "null"] }
         priority: { type: string, enum: [normal, urgent] }
         requiresPrescription: { type: boolean }
+        paymentMethod: { type: string, enum: [CARD, PIX, CASH] }
+        changeFor: { type: ["number", "null"], minimum: 0, maximum: 100000 }
+        bringCardMachine: { type: ["boolean", "null"] }
     DispatchInput:
       type: object
       required: [mode]
@@ -1248,8 +1297,12 @@ components:
             $ref: "#/components/schemas/RouteCoordinate"
     DeliveryAnalytics:
       type: object
-      required: [summary, daily, couriers, deliveries, cancellations]
+      required: [summary, daily, couriers, deliveries, cancellations, stores]
       properties:
+        stores:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryAnalyticsStore"
         summary:
           $ref: "#/components/schemas/DeliveryAnalyticsSummary"
         daily:
@@ -1270,15 +1323,96 @@ components:
             $ref: "#/components/schemas/DeliveryAnalyticsCancellation"
     DeliveryAnalyticsSummary:
       type: object
-      required: [total, completed, cancelled, averageTotalMinutes, averageStoreMinutes, averageDeliveryMinutes, courierAmount]
+      required: [total, requested, accepted, pickedUp, completed, cancelled, averageAcceptMinutes, averageTotalMinutes, averageStoreMinutes, averageDeliveryMinutes, courierAmount]
       properties:
         total: { type: integer }
+        requested: { type: integer, description: Solicitadas aguardando um motoboy aceitar }
+        accepted: { type: integer, description: Aceitas, motoboy indo para a loja }
+        pickedUp: { type: integer, description: Retiradas na loja, a caminho do cliente }
         completed: { type: integer }
         cancelled: { type: integer }
-        averageTotalMinutes: { type: number }
-        averageStoreMinutes: { type: number }
-        averageDeliveryMinutes: { type: number }
+        averageAcceptMinutes: { type: number, description: Registro até um motoboy aceitar }
+        averageTotalMinutes: { type: number, description: Registro até a conclusão }
+        averageStoreMinutes: { type: number, description: Aceite até a retirada na loja }
+        averageDeliveryMinutes: { type: number, description: Retirada até a conclusão }
         courierAmount: { type: number }
+    StoreAccounting:
+      type: object
+      required: [storeId, storeName, totalDeliveries, completedDeliveries, cancelledDeliveries, amountTotal, amountPaid, amountToPay, couriers, deliveries]
+      properties:
+        storeId: { type: string }
+        storeName: { type: string }
+        totalDeliveries: { type: integer, description: Pedidos registrados no período }
+        completedDeliveries: { type: integer }
+        cancelledDeliveries: { type: integer }
+        amountTotal: { type: number, description: Valor das entregas concluídas }
+        amountPaid: { type: number, description: Já pago aos motoboys }
+        amountToPay: { type: number, description: A pagar aos motoboys }
+        couriers:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoreAccountingCourier"
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoreAccountingDelivery"
+    StoreAccountingCourier:
+      type: object
+      required: [courierId, courierName, completedDeliveries, amountTotal, amountPaid, amountToPay]
+      properties:
+        courierId: { type: string }
+        courierName: { type: string }
+        completedDeliveries: { type: integer }
+        amountTotal: { type: number }
+        amountPaid: { type: number }
+        amountToPay: { type: number }
+    StoreAccountingDelivery:
+      type: object
+      required: [id, code, orderNumber, customerName, courierId, courierName, status, amount, createdAt, completedAt, paidAt]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        orderNumber: { type: string }
+        customerName: { type: string }
+        courierId: { type: ["string", "null"] }
+        courierName: { type: ["string", "null"] }
+        status: { type: string }
+        amount: { type: number }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: ["string", "null"], format: date-time }
+        paidAt: { type: ["string", "null"], format: date-time }
+    PayCourierInput:
+      type: object
+      required: [courierId]
+      properties:
+        courierId: { type: string }
+        storeId: { type: string, description: Só para o admin; o gerente usa a própria filial }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+    PayCourierResult:
+      type: object
+      required: [paidDeliveries, amount]
+      properties:
+        paidDeliveries: { type: integer }
+        amount: { type: number }
+    DeliveryAnalyticsStore:
+      type: object
+      required: [storeId, storeName, city, total, requested, accepted, pickedUp, completed, cancelled, amount, averageAcceptMinutes, averagePickupMinutes, averageDeliveryMinutes, averageTotalMinutes]
+      properties:
+        storeId: { type: string }
+        storeName: { type: string }
+        city: { type: string }
+        total: { type: integer }
+        requested: { type: integer }
+        accepted: { type: integer }
+        pickedUp: { type: integer }
+        completed: { type: integer }
+        cancelled: { type: integer }
+        amount: { type: number, description: Valor das entregas concluídas (custo da filial) }
+        averageAcceptMinutes: { type: number }
+        averagePickupMinutes: { type: number }
+        averageDeliveryMinutes: { type: number }
+        averageTotalMinutes: { type: number }
     DeliveryAnalyticsDay:
       type: object
       required: [date, created, completed]
@@ -1288,13 +1422,15 @@ components:
         completed: { type: integer }
     DeliveryAnalyticsCourier:
       type: object
-      required: [courierId, courierName, completedDeliveries, courierAmount, averageTotalMinutes]
+      required: [courierId, courierName, completedDeliveries, courierAmount, averageTotalMinutes, averagePickupMinutes, averageDeliveryMinutes]
       properties:
         courierId: { type: string }
         courierName: { type: string }
         completedDeliveries: { type: integer }
         courierAmount: { type: number }
         averageTotalMinutes: { type: number }
+        averagePickupMinutes: { type: number, description: Aceite até a retirada na loja }
+        averageDeliveryMinutes: { type: number, description: Retirada até a conclusão }
     DeliveryAnalyticsRow:
       type: object
       required: [id, code, customerName, destination, storeName, courierName, status, deliveryAmount, createdAt, storeArrivedAt, storeDepartedAt, completedAt, evidenceAvailable]
@@ -1468,6 +1604,7 @@ components:
         name: { type: string }
         phone: { type: ["string", "null"] }
         storeName: { type: ["string", "null"] }
+        courierCity: { type: ["string", "null"], description: Cidade em que o motoboy recebe entregas }
         courierStatus: { type: ["string", "null"] }
         role:
           type: string
@@ -1482,6 +1619,7 @@ components:
         name: { type: string, minLength: 2, maxLength: 120 }
         role: { type: string, enum: [ADMIN, STORE_MANAGER, COURIER] }
         storeId: { type: ["string", "null"] }
+        courierCity: { type: ["string", "null"], maxLength: 120 }
         phone: { type: ["string", "null"], maxLength: 30 }
         redirectTo: { type: string, maxLength: 300, description: Page of the app that opens from the invite link }
     UserRoleInput:
@@ -1494,6 +1632,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 120 }
         phone: { type: ["string", "null"], maxLength: 40 }
         storeId: { type: ["string", "null"] }
+        courierCity: { type: ["string", "null"], maxLength: 120 }
         courierId: { type: ["string", "null"] }
     CourierEarnings:
       type: object
@@ -1596,6 +1735,9 @@ components:
         customerName: { type: string }
         customerPhone: { type: ["string", "null"] }
         requiresPrescription: { type: boolean }
+        paymentMethod: { type: ["string", "null"], description: "Forma de pagamento do cliente: CARD, PIX ou CASH" }
+        changeFor: { type: ["number", "null"], description: "Dinheiro: troco para quanto (valor com que o cliente vai pagar)" }
+        bringCardMachine: { type: ["boolean", "null"], description: "Cartão: levar a maquininha" }
         destination: { type: string }
         notes: { type: ["string", "null"] }
         storeName: { type: string }

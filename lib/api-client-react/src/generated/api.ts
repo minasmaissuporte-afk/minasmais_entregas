@@ -62,15 +62,19 @@ import type {
   GetAddressDetailsParams,
   GetCourierEarningsParams,
   GetDeliveryAnalyticsParams,
+  GetStoreAccountingParams,
   HealthStatus,
   ListCouriersParams,
   ListDeliveriesParams,
   NativePushTokenInput,
+  PayCourierInput,
+  PayCourierResult,
   PushConfig,
   PushSubscriptionInput,
   RemoveDeliveryFromRouteInput,
   RemoveDeliveryFromRouteResult,
   Store,
+  StoreAccounting,
   StoreInput,
   UpdateDeliveryCancellationReasonsInput,
   UserRoleInput,
@@ -407,6 +411,202 @@ export function useListActiveRoutes<TData = Awaited<ReturnType<typeof listActive
 
 
 
+
+export const getGetStoreAccountingUrl = (params?: GetStoreAccountingParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/store-accounting?${stringifiedParams}` : `/api/reports/store-accounting`
+}
+
+/**
+ * @summary Store accounting - deliveries, amounts paid and to pay to couriers
+ */
+export const getStoreAccounting = async (params?: GetStoreAccountingParams, options?: Parameters<typeof customFetch>[1]): Promise<StoreAccounting> => {
+
+  return customFetch<StoreAccounting>(getGetStoreAccountingUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStoreAccountingQueryKey = (params?: GetStoreAccountingParams,) => {
+    return [
+    `/api/reports/store-accounting`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetStoreAccountingQueryOptions = <TData = Awaited<ReturnType<typeof getStoreAccounting>>, TError = ErrorType<unknown>>(params?: GetStoreAccountingParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStoreAccounting>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStoreAccountingQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStoreAccounting>>> = ({ signal }) => getStoreAccounting(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStoreAccounting>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetStoreAccountingQueryResult = NonNullable<Awaited<ReturnType<typeof getStoreAccounting>>>
+export type GetStoreAccountingQueryError = ErrorType<unknown>
+
+
+export function useGetStoreAccounting<TData = Awaited<ReturnType<typeof getStoreAccounting>>, TError = ErrorType<unknown>>(
+ params: undefined |  GetStoreAccountingParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStoreAccounting>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getStoreAccounting>>,
+          TError,
+          Awaited<ReturnType<typeof getStoreAccounting>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetStoreAccounting<TData = Awaited<ReturnType<typeof getStoreAccounting>>, TError = ErrorType<unknown>>(
+ params?: GetStoreAccountingParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStoreAccounting>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getStoreAccounting>>,
+          TError,
+          Awaited<ReturnType<typeof getStoreAccounting>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetStoreAccounting<TData = Awaited<ReturnType<typeof getStoreAccounting>>, TError = ErrorType<unknown>>(
+ params?: GetStoreAccountingParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStoreAccounting>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Store accounting - deliveries, amounts paid and to pay to couriers
+ */
+
+export function useGetStoreAccounting<TData = Awaited<ReturnType<typeof getStoreAccounting>>, TError = ErrorType<unknown>>(
+ params?: GetStoreAccountingParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStoreAccounting>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetStoreAccountingQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPayCourierUrl = () => {
+
+
+
+
+  return `/api/reports/store-accounting/pay`
+}
+
+/**
+ * @summary Mark the completed, unpaid deliveries of a courier at the store as paid
+ */
+export const payCourier = async (payCourierInput: PayCourierInput, options?: Parameters<typeof customFetch>[1]): Promise<PayCourierResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PayCourierResult>(getPayCourierUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(payCourierInput)
+  }
+);}
+
+
+
+
+
+export const getPayCourierMutationKey = () => ['payCourier'] as const;
+
+export const getPayCourierMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof payCourier>>, TError,PayCourierMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof payCourier>>, TError,PayCourierMutationVariables, TContext> => {
+
+const mutationKey = getPayCourierMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof payCourier>>, PayCourierMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  payCourier(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PayCourierMutationResult = NonNullable<Awaited<ReturnType<typeof payCourier>>>
+    export type PayCourierMutationBody = BodyType<PayCourierInput>
+    export type PayCourierMutationError = ErrorType<unknown>
+    export type PayCourierMutationVariables = {data: BodyType<PayCourierInput>}
+
+    /**
+ * @summary Mark the completed, unpaid deliveries of a courier at the store as paid
+ */
+export const usePayCourier = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof payCourier>>, TError,PayCourierMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof payCourier>>,
+        TError,
+        PayCourierMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPayCourierMutationOptions(options), queryClient);
+    }
 
 export const getGetDeliveryAnalyticsUrl = (params?: GetDeliveryAnalyticsParams,) => {
   const normalizedParams = new URLSearchParams();

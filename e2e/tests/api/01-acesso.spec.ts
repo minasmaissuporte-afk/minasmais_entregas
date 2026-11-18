@@ -3,7 +3,7 @@ import { Api, describe, json } from "../../support/api.ts";
 import type { RoleKey } from "../../support/fixtures-data.ts";
 
 type Role = "ADMIN" | "CENTRAL" | "STORE_MANAGER" | "STORE_STAFF" | "COURIER";
-const roleOf: Record<RoleKey, Role | "PENDING"> = {
+const roleOf: Partial<Record<RoleKey, Role | "PENDING">> = {
   admin: "ADMIN",
   central: "CENTRAL",
   manager: "STORE_MANAGER",
@@ -26,7 +26,8 @@ const endpoints: { method: "get" | "post" | "put" | "patch" | "delete"; path: st
   { method: "delete", path: "/push/native-token", roles: ["COURIER", "ADMIN", "CENTRAL"] },
   { method: "get", path: "/dashboard/summary", roles: ["ADMIN", "CENTRAL"] },
   { method: "get", path: "/operations/active-routes", roles: ["ADMIN", "CENTRAL"] },
-  { method: "get", path: "/reports/analytics", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"] },
+  { method: "get", path: "/reports/analytics", roles: ["ADMIN", "CENTRAL"] },
+  { method: "get", path: "/reports/store-accounting", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER"] },
   { method: "get", path: "/delivery-cancellation-reasons", roles: ["ADMIN", "CENTRAL", "COURIER"] },
   { method: "put", path: "/delivery-cancellation-reasons", roles: ["ADMIN", "CENTRAL"] },
   { method: "get", path: "/delivery-cancellations", roles: ["ADMIN", "CENTRAL"] },
@@ -35,7 +36,7 @@ const endpoints: { method: "get" | "post" | "put" | "patch" | "delete"; path: st
   { method: "post", path: "/deliveries", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"] },
   { method: "get", path: `/deliveries/${X}`, roles: ALL },
   { method: "delete", path: `/deliveries/${X}`, roles: ["ADMIN"] },
-  { method: "post", path: `/deliveries/${X}/dispatch`, roles: ["ADMIN", "CENTRAL"] },
+  { method: "post", path: `/deliveries/${X}/dispatch`, roles: ["ADMIN", "CENTRAL", "STORE_MANAGER"] },
   { method: "patch", path: `/deliveries/${X}/status`, roles: ALL },
   { method: "post", path: `/deliveries/${X}/evidence/upload-url`, roles: ["COURIER"] },
   { method: "get", path: `/deliveries/${X}/evidence`, roles: ALL },
@@ -50,7 +51,7 @@ const endpoints: { method: "get" | "post" | "put" | "patch" | "delete"; path: st
   { method: "patch", path: `/access/users/${X}`, roles: ["ADMIN"] },
   { method: "delete", path: `/access/users/${X}`, roles: ["ADMIN"] },
   { method: "get", path: "/courier/earnings", roles: ["COURIER"] },
-  { method: "post", path: "/delivery-routes", roles: ["ADMIN", "CENTRAL"] },
+  { method: "post", path: "/delivery-routes", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER"] },
   { method: "get", path: "/courier/routes", roles: ["COURIER"] },
   { method: "get", path: `/courier/routes/${X}/preview`, roles: ["COURIER"] },
   { method: "patch", path: "/courier/availability", roles: ["COURIER"] },
@@ -109,7 +110,7 @@ test.describe("Sem login: todas as rotas protegidas devolvem 401", () => {
 
 test.describe("Matriz de permissões: papel × rota", () => {
   for (const key of Object.keys(roleOf) as RoleKey[]) {
-    const role = roleOf[key];
+    const role = roleOf[key]!;
     test(`${role}: só acessa as rotas do seu papel`, async () => {
       const api = await Api.as(key);
       const problems: string[] = [];

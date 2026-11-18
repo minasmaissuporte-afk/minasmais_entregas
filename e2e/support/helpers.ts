@@ -17,6 +17,7 @@ export function deliveryInput(overrides: Record<string, unknown> = {}) {
     notes: "Entregar na portaria. Troco para R$ 50,00.",
     storeId: stores.a.id,
     priority: "normal",
+    paymentMethod: "PIX",
     ...overrides,
   };
 }

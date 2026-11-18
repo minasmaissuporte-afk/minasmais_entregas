@@ -1,6 +1,6 @@
 import pg from "pg";
 import { assertSafeEnvironment } from "./env.ts";
-import { secondCourier, stores, users, type RoleKey } from "./fixtures-data.ts";
+import { courierCities, secondCourier, stores, users, type RoleKey } from "./fixtures-data.ts";
 
 let pool: pg.Pool | undefined;
 
@@ -72,10 +72,13 @@ export async function seedDatabase(authIds: Record<RoleKey, string>) {
     );
   }
   await query(
-    `insert into couriers (id, name, phone, initials, status) values
-       ('e2e-courier-1', $1, '(31) 98888-0001', 'JM', 'OFFLINE'),
-       ('e2e-courier-2', $2, '(31) 98888-0002', 'MM', 'OFFLINE')`,
-    [users.courier.name, secondCourier.name],
+    `insert into couriers (id, name, phone, initials, status, city) values
+       ('e2e-courier-1', $1, '(31) 98888-0001', 'JM', 'OFFLINE', $5),
+       ('e2e-courier-2', $2, '(31) 98888-0002', 'MM', 'OFFLINE', $6),
+       ('e2e-courier-b', $3, '(31) 98888-0003', 'BM', 'OFFLINE', $7),
+       ('e2e-courier-c', $4, '(31) 98888-0004', 'CM', 'OFFLINE', $8)`,
+    [users.courier.name, secondCourier.name, users.courierB.name, users.courierC.name,
+      courierCities["e2e-courier-1"], courierCities["e2e-courier-2"], courierCities["e2e-courier-b"], courierCities["e2e-courier-c"]],
   );
   for (const [key, user] of Object.entries(users) as [RoleKey, (typeof users)[RoleKey]][]) {
     await query(

@@ -321,7 +321,9 @@ export async function addressDetails(
       component(components, "administrative_area_level_2") ??
       component(components, "locality"),
     stateCode: component(components, "administrative_area_level_1", "shortText"),
-    postcode: component(components, "postal_code"),
+    // A rua inteira não tem um CEP só (o Google às vezes devolve um CEP de outro lugar):
+    // sem número, fica sem CEP; ele vem quando o número é informado.
+    postcode: component(components, "street_number") ? component(components, "postal_code") : null,
   };
   let result: AddressSuggestion = { ...base, formatted: joinAddress(base), ...coordinate };
 
@@ -336,7 +338,7 @@ export async function addressDetails(
           ...result,
           latitude: precise.latitude,
           longitude: precise.longitude,
-          postcode: precise.postcode ?? result.postcode,
+          postcode: precise.postcode ?? null,
           // Avenidas longas não têm bairro único: o número diz qual é.
           suburb: result.suburb ?? precise.suburb,
         };

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DeliveryInputPaymentMethod } from './deliveryInputPaymentMethod';
 import type { DeliveryInputPriority } from './deliveryInputPriority';
 
 export interface DeliveryInput {
@@ -31,6 +32,15 @@ export interface DeliveryInput {
   storeId: string;
   priority: DeliveryInputPriority;
   requiresPrescription?: boolean;
+  paymentMethod?: DeliveryInputPaymentMethod;
+  /**
+     * @minimum 0
+     * @maximum 100000
+     * @nullable
+     */
+  changeFor?: number | null;
+  /** @nullable */
+  bringCardMachine?: boolean | null;
   /**
      * Deprecated; server uses the selected branch's configured fee
      * @minimum 0

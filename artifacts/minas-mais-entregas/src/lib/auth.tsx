@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createClient, type Session, type User } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
-import { setAuthTokenGetter } from "@workspace/api-client-react";
+import { setAuthTokenGetter, setAuthTokenRefresher } from "@workspace/api-client-react";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY) as string | undefined;
@@ -51,8 +51,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const previousUserId = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
-    // Every API call carries the current access token (refreshed automatically by supabase-js).
-    setAuthTokenGetter(async () => (await supabase.auth.getSession()).data.session?.access_token ?? null);
+    // Every API call carries the current access token. If it is about to expire (the tab
+    // was idle or the computer slept, so the automatic refresh did not run), renew it first.
+    const refreshToken = async () => {
+      const { data } = await supabase.auth.refreshSession();
+      return data.session?.access_token ?? null;
+    };
+    setAuthTokenGetter(async () => {
+      const current = (await supabase.auth.getSession()).data.session;
+      if (!current) return null;
+      const expiresInMs = (current.expires_at ?? 0) * 1000 - Date.now();
+      if (expiresInMs < 60_000) return (await refreshToken().catch(() => null)) ?? current.access_token;
+      return current.access_token;
+    });
+    // A request that still gets 401 renews the session and is retried once.
+    setAuthTokenRefresher(refreshToken);
+
+    // Back to the tab after a while: make sure the session is fresh before anything runs.
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void supabase.auth.getSession().then(({ data }) => {
+        const expiresInMs = (data.session?.expires_at ?? 0) * 1000 - Date.now();
+        if (data.session && expiresInMs < 5 * 60_000) void refreshToken().catch(() => undefined);
+      });
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     const applySession = (next: Session | null) => {
       const userId = next?.user.id ?? null;
@@ -75,7 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     return () => {
       data.subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", onVisible);
       setAuthTokenGetter(null);
+      setAuthTokenRefresher(null);
     };
   }, [queryClient]);
 

@@ -9,9 +9,11 @@ import type { DeliveryAnalyticsCancellation } from './deliveryAnalyticsCancellat
 import type { DeliveryAnalyticsCourier } from './deliveryAnalyticsCourier';
 import type { DeliveryAnalyticsDay } from './deliveryAnalyticsDay';
 import type { DeliveryAnalyticsRow } from './deliveryAnalyticsRow';
+import type { DeliveryAnalyticsStore } from './deliveryAnalyticsStore';
 import type { DeliveryAnalyticsSummary } from './deliveryAnalyticsSummary';
 
 export interface DeliveryAnalytics {
+  stores: DeliveryAnalyticsStore[];
   summary: DeliveryAnalyticsSummary;
   daily: DeliveryAnalyticsDay[];
   couriers: DeliveryAnalyticsCourier[];

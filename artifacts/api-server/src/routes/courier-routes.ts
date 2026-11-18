@@ -58,8 +58,24 @@ import {
   type OptimizedVisit,
 } from "../lib/googleMaps";
 import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
-import { notifyAvailableCouriers, notifyCentralUsers, notifyCouriers } from "../lib/webPush";
+import { notifyCentralUsers, notifyCouriers } from "../lib/webPush";
+import { courierCity, notifyCityCouriers, offerToCity, sameCity } from "../lib/deliveryOffers";
+
+/**
+ * Rota oferecida a todos (sem motoboy escolhido) só vale para os motoboys da cidade das filiais
+ * das entregas, como as entregas avulsas. Motoboy sem cidade cadastrada continua vendo todas.
+ */
 import { getCourierDisplayName, getCourierFirstName } from "../lib/courierName";
+
+/** Rota aberta a todos só aparece para motoboys da cidade das filiais dela. */
+function openRouteInCity(city: string | null) {
+  if (!city) return sql`true`;
+  return sql`(${deliveryRoutesTable.courierId} IS NOT NULL OR NOT EXISTS (
+    SELECT 1 FROM ${deliveriesTable} d JOIN ${storesTable} s ON s.id = d.store_id
+    WHERE d.id = ANY(${deliveryRoutesTable.deliveryIds})
+      AND lower(trim(coalesce(s.city, ''))) <> lower(trim(${city}))
+  ))`;
+}
 
 const router: IRouter = Router();
 router.use(requireAuthentication);
@@ -133,6 +149,20 @@ function samePlacePickupGroup(stops: RouteStopRecord[], first: RouteStopRecord):
   return group;
 }
 
+/** O app do motoboy não recebe valores em R$ (ele vê só a quantidade de entregas). */
+function withoutAmounts(view: CourierDeliveryRoute): CourierDeliveryRoute {
+  return {
+    ...view,
+    amountToReceive: 0,
+    deliveries: view.deliveries.map((delivery) => ({ ...delivery, deliveryAmount: 0 })),
+    stops: view.stops.map((stop) => ({ ...stop, deliveryAmount: 0 })),
+  };
+}
+
+async function courierRouteView(route: typeof deliveryRoutesTable.$inferSelect) {
+  return withoutAmounts(await routeView(route));
+}
+
 async function routeView(
   route: typeof deliveryRoutesTable.$inferSelect,
 ): Promise<CourierDeliveryRoute> {
@@ -169,6 +199,9 @@ async function routeView(
       customerName: delivery.customerName,
       customerPhone: delivery.customerPhone,
       requiresPrescription: delivery.requiresPrescription,
+      paymentMethod: delivery.paymentMethod,
+      changeFor: delivery.changeForCents == null ? null : delivery.changeForCents / 100,
+      bringCardMachine: delivery.bringCardMachine,
       destination: delivery.destination,
       notes: delivery.notes,
       storeName: row.storeName,
@@ -449,9 +482,24 @@ router.post(
         if (profile.role === "STORE_MANAGER" && delivery.storeId !== profile.storeId) {
           return { error: "not_found" as const };
         }
-        if (delivery.status !== "REQUESTED") {
+        const waitingInQueue =
+          delivery.status === "REQUESTED" ||
+          delivery.status === "AWAITING_COURIER" ||
+          (delivery.status === "OFFERED" && !delivery.courierId);
+        if (!waitingInQueue) {
           return { error: "not_requested" as const };
         }
+        const [inRoute] = await tx
+          .select({ id: deliveryRoutesTable.id })
+          .from(deliveryRoutesTable)
+          .where(
+            and(
+              inArray(deliveryRoutesTable.status, ["OFFERED", "ACCEPTED"]),
+              sql`${delivery.id} = ANY(${deliveryRoutesTable.deliveryIds})`,
+            ),
+          )
+          .limit(1);
+        if (inRoute) return { error: "not_requested" as const };
         rows.push(delivery);
       }
 
@@ -467,7 +515,7 @@ router.post(
       for (const delivery of rows) {
         await tx
           .update(deliveriesTable)
-          .set({ status: "OFFERED", updatedAt: new Date() })
+          .set({ status: "OFFERED", courierId: null, updatedAt: new Date() })
           .where(eq(deliveriesTable.id, delivery.id));
         await tx.insert(deliveryEventsTable).values({
           id: randomUUID(),
@@ -507,10 +555,11 @@ router.post(
         body: `${route.deliveryIds.length} entregas aguardam o seu aceite.`,
       });
     } else {
-      await notifyAvailableCouriers({
-        title: "Nova rota disponível",
-        body: `${route.deliveryIds.length} entregas aguardam aceite.`,
-      });
+      await notifyCityCouriers(
+        route.deliveryIds[0],
+        "Nova rota disponível",
+        `${route.deliveryIds.length} entregas aguardam aceite.`,
+      );
     }
     res.status(201).json(CreateDeliveryRouteResponse.parse(await routeView(route)));
   },
@@ -601,19 +650,13 @@ router.post(
       if (locked?.status !== "OFFERED") return false;
       await tx.update(deliveryRoutesTable).set({ status: "CANCELLED" }).where(eq(deliveryRoutesTable.id, route.id));
       for (const deliveryId of route.deliveryIds) {
-        const [updated] = await tx
-          .update(deliveriesTable)
-          .set({ status: "REQUESTED", updatedAt: new Date() })
-          .where(and(eq(deliveriesTable.id, deliveryId), eq(deliveriesTable.status, "OFFERED")))
-          .returning({ id: deliveriesTable.id });
-        if (updated) {
-          await tx.insert(deliveryEventsTable).values({
-            id: randomUUID(),
-            deliveryId,
-            kind: "route_ungrouped",
-            label: "Rota desfeita: a entrega voltou para a fila",
-            actor: actorFor(profile),
-          });
+        const [current] = await tx
+          .select({ status: deliveriesTable.status })
+          .from(deliveriesTable)
+          .where(eq(deliveriesTable.id, deliveryId))
+          .limit(1);
+        if (current?.status === "OFFERED") {
+          await offerToCity(tx, { id: deliveryId, courierId: null }, "Rota desfeita: voltou para a fila dos motoboys", actorFor(profile));
         }
       }
       return true;
@@ -621,6 +664,9 @@ router.post(
     if (!done) {
       res.status(409).json({ error: "A rota mudou enquanto era desfeita. Atualize e tente de novo." });
       return;
+    }
+    if (route.deliveryIds[0]) {
+      await notifyCityCouriers(route.deliveryIds[0], "Entregas na fila", `${route.deliveryIds.length} entregas voltaram para a fila. Quem aceitar primeiro leva.`);
     }
     if (route.courierId) {
       await notifyCouriers([route.courierId], { title: "Rota cancelada", body: "A rota que tinha sido oferecida a você foi desfeita." });
@@ -747,6 +793,9 @@ router.post(
         .update(deliveriesTable)
         .set({ status: cancel ? "CANCELLED" : "REQUESTED", courierId: null, updatedAt: now })
         .where(eq(deliveriesTable.id, deliveryId));
+      if (!cancel) {
+        await offerToCity(tx, { id: deliveryId, courierId: null }, "Voltou para a fila dos motoboys", actorFor(profile));
+      }
       await tx.insert(deliveryEventsTable).values({
         id: randomUUID(),
         deliveryId,
@@ -834,6 +883,7 @@ router.get(
     const offeredToMe = and(
       eq(deliveryRoutesTable.status, "OFFERED"),
       or(isNull(deliveryRoutesTable.courierId), eq(deliveryRoutesTable.courierId, profile.courierId)),
+      openRouteInCity(await courierCity(profile.courierId)),
     );
     const availableOffers = declinedRouteIds.length
       ? and(offeredToMe, notInArray(deliveryRoutesTable.id, declinedRouteIds))
@@ -857,7 +907,7 @@ router.get(
           ),
       )
       .orderBy(asc(deliveryRoutesTable.createdAt));
-    const result = await Promise.all(routes.map(routeView));
+    const result = await Promise.all(routes.map(courierRouteView));
     res.json(ListCourierRoutesResponse.parse(result));
   },
 );
@@ -923,6 +973,13 @@ router.get(
     if (rows.length !== route.deliveryIds.length || !rows.length) {
       res.status(409).json({ error: "Uma entrega da oferta não está mais disponível." });
       return;
+    }
+    if (!route.courierId) {
+      const city = await courierCity(profile.courierId);
+      if (rows.some((row) => !sameCity(city, row.storeCity))) {
+        res.status(403).json({ error: "Esta rota é de uma filial de outra cidade." });
+        return;
+      }
     }
 
     const gpsIsFresh =
@@ -1066,30 +1123,36 @@ router.post(
         .from(deliveriesTable)
         .where(eq(deliveriesTable.id, params.data.deliveryId))
         .for("update");
-      if (!delivery || delivery.status !== "OFFERED" || delivery.courierId !== profile.courierId) {
+      if (!delivery || delivery.status !== "OFFERED") {
         return { error: "not_offered" as const };
       }
-      await tx
-        .update(deliveriesTable)
-        .set({
-          status: "AWAITING_COURIER",
-          courierId: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(deliveriesTable.id, delivery.id));
-      await tx.insert(deliveryEventsTable).values({
-        id: randomUUID(),
-        deliveryId: delivery.id,
-        kind: "offer_declined",
-        label: "Motoboy recusou a oferta; entrega retornou à fila da Central",
-        actor: getCourierDisplayName(profile.name, profile.email),
-      });
-      return { ok: true as const };
+      // Oferta aberta a todos: só some para este motoboy; os outros continuam vendo.
+      if (!delivery.courierId) {
+        await tx.execute(sql`
+          INSERT INTO delivery_offer_declines (id, delivery_id, courier_id)
+          VALUES (${randomUUID()}, ${delivery.id}, ${profile.courierId})
+          ON CONFLICT DO NOTHING`);
+        return { ok: true as const, broadcast: true };
+      }
+      if (delivery.courierId !== profile.courierId) {
+        return { error: "not_offered" as const };
+      }
+      // Oferta direcionada recusada: vai para a fila de todos os motoboys da cidade.
+      await offerToCity(
+        tx,
+        { id: delivery.id, courierId: null },
+        `${getCourierDisplayName(profile.name, profile.email)} recusou; voltou para a fila dos motoboys`,
+        getCourierDisplayName(profile.name, profile.email),
+      );
+      return { ok: true as const, broadcast: false };
     });
 
     if ("error" in result) {
       res.status(409).json({ error: "Esta entrega não está mais disponível para recusa." });
       return;
+    }
+    if (!result.broadcast) {
+      await notifyCityCouriers(params.data.deliveryId, "Nova entrega disponível", "Uma entrega voltou para a fila. Quem aceitar primeiro leva.");
     }
     res.sendStatus(204);
   },
@@ -1142,19 +1205,18 @@ router.post(
           .where(eq(couriersTable.id, profile.courierId!))
           .limit(1);
         for (const deliveryId of route.deliveryIds) {
-          const [updated] = await tx
-            .update(deliveriesTable)
-            .set({ status: "REQUESTED", updatedAt: new Date() })
-            .where(and(eq(deliveriesTable.id, deliveryId), eq(deliveriesTable.status, "OFFERED")))
-            .returning({ id: deliveriesTable.id });
-          if (updated) {
-            await tx.insert(deliveryEventsTable).values({
-              id: randomUUID(),
-              deliveryId,
-              kind: "route_declined",
-              label: `${courierRow?.name ?? "O motoboy"} recusou a rota; a entrega voltou para a fila`,
-              actor: courierRow?.name ?? null,
-            });
+          const [current] = await tx
+            .select({ status: deliveriesTable.status })
+            .from(deliveriesTable)
+            .where(eq(deliveriesTable.id, deliveryId))
+            .limit(1);
+          if (current?.status === "OFFERED") {
+            await offerToCity(
+              tx,
+              { id: deliveryId, courierId: null },
+              `${courierRow?.name ?? "O motoboy"} recusou a rota; voltou para a fila dos motoboys`,
+              courierRow?.name ?? "Motoboy",
+            );
           }
         }
         return true;
@@ -1165,9 +1227,12 @@ router.post(
       }
       await notifyCentralUsers({
         title: "Rota recusada",
-        body: `${route.deliveryIds.length} entregas voltaram para a fila. Escolha outro motoboy.`,
+        body: `${route.deliveryIds.length} entregas voltaram para a fila dos motoboys.`,
         url: "/entregas",
       });
+      if (route.deliveryIds[0]) {
+        await notifyCityCouriers(route.deliveryIds[0], "Entregas na fila", `${route.deliveryIds.length} entregas aguardam um motoboy. Quem aceitar primeiro leva.`);
+      }
       res.sendStatus(204);
       return;
     }
@@ -1787,7 +1852,7 @@ router.post(
           : returning
             ? "courier_returning_to_store"
             : "courier_unable_to_deliver",
-        label: `${routeAborted ? "Pane/acidente" : returning ? "Retorno à filial" : "Pedido reenviado"}: ${reason.label}`,
+        label: `${routeAborted ? "Pane/acidente" : returning ? "Retorno à filial" : "Motoboy não conseguiu entregar"}: ${reason.label}${body.data.observation ? ` (${body.data.observation})` : ""}`,
         actor,
         timestamp: now,
       });
@@ -1881,6 +1946,13 @@ router.post(
     if (rows.length !== route.deliveryIds.length) {
       res.status(409).json({ error: "Uma entrega da rota não está mais disponível." });
       return;
+    }
+    if (!route.courierId) {
+      const city = await courierCity(profile.courierId);
+      if (rows.some((row) => !sameCity(city, row.storeCity))) {
+        res.status(403).json({ error: "Esta rota é de uma filial de outra cidade." });
+        return;
+      }
     }
 
     // Checa antes de consultar o Google Maps: evita gastar uma otimização (e mostrar erro de mapa)
@@ -2013,7 +2085,7 @@ router.post(
       res.status(500).json({ error: "A rota foi aceita, mas não pôde ser carregada." });
       return;
     }
-    res.json(AcceptCourierRouteResponse.parse(await routeView(updatedRoute)));
+    res.json(AcceptCourierRouteResponse.parse(await courierRouteView(updatedRoute)));
   },
 );
 
@@ -2096,7 +2168,7 @@ router.post(
       res.status(404).json({ error: "Rota não encontrada." });
       return;
     }
-    res.json(RecordCourierStopArrivalResponse.parse(await routeView(route)));
+    res.json(RecordCourierStopArrivalResponse.parse(await courierRouteView(route)));
   },
 );
 
@@ -2196,7 +2268,16 @@ router.post(
               ),
             )
             .limit(1);
-          if (!arrival) return { error: "store_arrival_missing" as const };
+          // Chegada e retirada viraram um passo só: sem "cheguei" antes, a retirada registra as duas.
+          if (!arrival) {
+            await tx.insert(deliveryEventsTable).values({
+              id: randomUUID(),
+              deliveryId: delivery.id,
+              kind: "store_arrived",
+              label: "Chegada à loja",
+              actor: "Motoboy",
+            });
+          }
         } else if (!body.data.evidencePath) {
           return { error: "evidence_missing" as const };
         } else if (delivery.requiresPrescription && !body.data.prescriptionCollected) {
@@ -2294,8 +2375,6 @@ router.post(
           ? "Esta rota não pertence à sua conta ou já foi encerrada."
           : result.error === "wrong_stop_order"
             ? "Siga a sequência travada da rota e conclua a próxima parada."
-            : result.error === "store_arrival_missing"
-              ? "Registre a chegada à loja antes de confirmar a saída."
               : result.error === "evidence_missing"
                 ? "Envie a foto de comprovação antes de concluir a entrega."
               : result.error === "prescription_required"
@@ -2317,7 +2396,7 @@ router.post(
       return;
     }
     res.json(
-      CompleteCourierRouteStopResponse.parse(await routeView(updatedRoute)),
+      CompleteCourierRouteStopResponse.parse(await courierRouteView(updatedRoute)),
     );
   },
 );

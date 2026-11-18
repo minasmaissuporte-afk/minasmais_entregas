@@ -13,6 +13,7 @@ import LiveMap, { type MapCoordinate, type MapMarker } from "@/components/live-m
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
 import useCourierMapPanel from "@/hooks/use-courier-map-panel";
 import { groupRouteStops } from "@/lib/route-stops";
+import { paymentLabel } from "@/lib/payment";
 
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -65,7 +66,7 @@ export default function CourierRouteMapTab({
   const panelName = isPickup ? nextStopName : panelDelivery?.customerName ?? nextStopName;
   const panelAddress = isPickup ? nextStop?.address : panelDelivery?.destination ?? nextStop?.address;
   const phone = isPickup ? null : panelDelivery?.customerPhone ?? (nextStop?.kind === "delivery" ? nextDelivery?.customerPhone : null);
-  const amount = activeDelivery?.deliveryAmount ?? nextStop?.deliveryAmount ?? route.amountToReceive;
+  const payment = isPickup ? null : paymentLabel(panelDelivery ?? route.deliveries.find((item) => item.id === nextStop?.deliveryId));
   const nextStopUrl = nextStop
     ? `https://www.google.com/maps/dir/?api=1&destination=${nextStop.latitude},${nextStop.longitude}&travelmode=driving`
     : null;
@@ -137,7 +138,7 @@ export default function CourierRouteMapTab({
           {route.estimatedMinutes != null && (
             <span><Clock3 size={16} aria-hidden="true" />{route.estimatedMinutes} min</span>
           )}
-          <span><Banknote size={16} aria-hidden="true" />{money(amount)}</span>
+          {payment && <span><Banknote size={16} aria-hidden="true" />{payment}</span>}
         </div>
         {nextStopUrl && nextStopWazeUrl && (
           <div className="courier-route-map-screen__actions">

@@ -7,6 +7,10 @@ import {
   GetCourierEarningsResponse,
   GetDeliveryAnalyticsQueryParams,
   GetDeliveryAnalyticsResponse,
+  GetStoreAccountingQueryParams,
+  GetStoreAccountingResponse,
+  PayCourierBody,
+  PayCourierResponse,
   CreateDeliveryBody,
   CreateDeliveryResponse,
   ActOnDeliveryCancellationBody,
@@ -52,6 +56,7 @@ import {
   deliveryRoutesTable,
   storesTable,
 } from "@workspace/db";
+import { courierCity, notifyCityCouriers, offerToCity, openOfferFor, sameCity } from "../lib/deliveryOffers";
 import {
   requireAuthentication,
   requireRole,
@@ -88,16 +93,12 @@ const linkedCourierEmail = sql<string | null>`(
   LIMIT 1
 )`;
 
+// Só os motivos mais frequentes. "Outro motivo" pede uma observação.
 const defaultCourierCancellationReasons = [
   { id: "CLIENT_ABSENT", label: "Cliente ausente / não atende" },
-  { id: "ADDRESS_NOT_FOUND", label: "Endereço não encontrado ou incorreto" },
-  { id: "CUSTOMER_REFUSED", label: "Cliente recusou o pedido" },
-  { id: "DOCUMENT_MISSING", label: "Receita ou documento não apresentado" },
-  { id: "PAYMENT_PROBLEM", label: "Problema no pagamento" },
-  { id: "PRODUCT_ISSUE", label: "Produto errado ou avariado" },
-  { id: "MOTORCYCLE_ISSUE", label: "Moto com problema / acidente" },
-  { id: "PERSONAL_ISSUE", label: "Imprevisto pessoal" },
-  { id: "OTHER", label: "Outro" },
+  { id: "ADDRESS_NOT_FOUND", label: "Endereço não encontrado" },
+  { id: "CUSTOMER_REFUSED", label: "Cliente desistiu / recusou" },
+  { id: "OTHER", label: "Outro motivo" },
 ];
 
 router.get(
@@ -141,14 +142,8 @@ router.put(
       res.status(400).json({ error: "Os motivos não podem ficar vazios ou repetidos." });
       return;
     }
-    if (
-      !body.data.reasons.some(
-        (reason) => reason.id === "MOTORCYCLE_ISSUE" && reason.active,
-      )
-    ) {
-      res.status(400).json({
-        error: "Mantenha ativo o motivo 'Moto com problema / acidente'.",
-      });
+    if (!body.data.reasons.some((reason) => reason.active)) {
+      res.status(400).json({ error: "Deixe pelo menos um motivo ativo." });
       return;
     }
     const reasons = await db.transaction(async (tx) => {
@@ -260,6 +255,7 @@ router.post(
           .update(deliveryCancellationsTable)
           .set({ status: "REENQUEUED", resolvedAt: now })
           .where(eq(deliveryCancellationsTable.id, cancellation.id));
+        await offerToCity(tx, { id: delivery.id, courierId: null }, "Voltou para a fila dos motoboys", "Central de entregas");
         return { deliveryId: delivery.id, courierId: cancellation.courierId };
       }
 
@@ -356,22 +352,26 @@ router.post(
       return;
     }
     if (body.data.action === "REQUEUE") {
-      await notifyAvailableCouriers({
-        title: "Entrega aguardando motoboy",
-        body: `O pedido foi liberado novamente pela Central.`,
-      });
+      await notifyCityCouriers(result.deliveryId, "Entrega aguardando motoboy", "Um pedido voltou para a fila. Quem aceitar primeiro leva.");
     }
     res.status(204).end();
   },
 );
 
-function canAccessDelivery(profile: AppUserProfile, delivery: { storeId: string; courierId: string | null }) {
+/** O app do motoboy não recebe o valor da entrega em R$. */
+function hideAmountForCourier<T extends { deliveryAmount: number }>(profile: AppUserProfile, view: T): T {
+  return profile.role === "COURIER" ? { ...view, deliveryAmount: 0 } : view;
+}
+
+function canAccessDelivery(profile: AppUserProfile, delivery: { storeId: string; courierId: string | null; status?: string }) {
   if (profile.role === "ADMIN" || profile.role === "CENTRAL") return true;
   if (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") {
     return Boolean(profile.storeId && profile.storeId === delivery.storeId);
   }
-  return profile.role === "COURIER" &&
-    Boolean(profile.courierId && profile.courierId === delivery.courierId);
+  if (profile.role !== "COURIER" || !profile.courierId) return false;
+  // Oferta aberta a todos: qualquer motoboy pode ver e aceitar (a cidade é conferida no aceite).
+  if (delivery.status === "OFFERED" && !delivery.courierId) return true;
+  return profile.courierId === delivery.courierId;
 }
 
 function startOfSaoPauloPeriod(period: "day" | "week" | "month") {
@@ -426,16 +426,10 @@ router.get("/me", async (req, res): Promise<void> => {
             name: couriersTable.name,
             phone: couriersTable.phone,
             status: couriersTable.status,
+            city: couriersTable.city,
           })
           .from(couriersTable)
           .where(eq(couriersTable.id, profile.courierId))
-          .limit(1)
-      : [];
-    const [store] = profile.storeId
-      ? await db
-          .select({ name: storesTable.name })
-          .from(storesTable)
-          .where(eq(storesTable.id, profile.storeId))
           .limit(1)
       : [];
     res.json(
@@ -443,7 +437,8 @@ router.get("/me", async (req, res): Promise<void> => {
         ...profile,
         name: getCourierDisplayName(courier?.name ?? profile.name, profile.email),
         phone: courier?.phone ?? null,
-        storeName: store?.name ?? null,
+        storeName: null,
+        courierCity: courier?.city ?? null,
         courierStatus: courier?.status ?? null,
       }),
     );
@@ -465,19 +460,21 @@ router.get("/access/users", requireRole("ADMIN"), async (_req, res): Promise<voi
       user: appUsersTable,
       courierName: couriersTable.name,
       courierPhone: couriersTable.phone,
+      courierCity: couriersTable.city,
     })
     .from(appUsersTable)
     .leftJoin(couriersTable, eq(appUsersTable.courierId, couriersTable.id))
     .orderBy(appUsersTable.email);
   res.json(
     ListAccessUsersResponse.parse(
-      rows.map(({ user, courierName, courierPhone }) => ({
+      rows.map(({ user, courierName, courierPhone, courierCity }) => ({
         ...user,
         name:
           user.role === "COURIER"
             ? getCourierDisplayName(courierName ?? user.name, user.email)
             : user.name,
         phone: user.role === "COURIER" ? courierPhone ?? null : null,
+        courierCity: user.role === "COURIER" ? courierCity ?? null : null,
       })),
     ),
   );
@@ -510,7 +507,9 @@ router.post(
     const name = body.data.name.trim();
     const role = body.data.role as AppRole;
     const phone = body.data.phone?.trim() || null;
-    const storeId = role === "STORE_MANAGER" || role === "COURIER" ? body.data.storeId ?? null : null;
+    // Gerente fica preso à filial escolhida aqui; motoboy é por cidade, não por filial.
+    const storeId = role === "STORE_MANAGER" ? body.data.storeId ?? null : null;
+    const courierCity = role === "COURIER" ? body.data.courierCity?.trim() || null : null;
     const redirectTo = safeInviteRedirect(body.data.redirectTo);
     if (!redirectTo) {
       res.status(400).json({ error: "Endereço de retorno do convite inválido." });
@@ -518,6 +517,10 @@ router.post(
     }
     if (role === "STORE_MANAGER" && !storeId) {
       res.status(400).json({ error: "Escolha a filial do gerente." });
+      return;
+    }
+    if (role === "COURIER" && !courierCity) {
+      res.status(400).json({ error: "Escolha a cidade em que o motoboy vai atender." });
       return;
     }
     if (storeId) {
@@ -565,7 +568,7 @@ router.post(
         if (courierId) {
           await tx
             .update(couriersTable)
-            .set({ name, initials: getCourierInitials(name), phone })
+            .set({ name, initials: getCourierInitials(name), phone, city: courierCity })
             .where(eq(couriersTable.id, courierId));
         } else {
           courierId = randomUUID();
@@ -574,6 +577,7 @@ router.post(
             name,
             initials: getCourierInitials(name),
             phone,
+            city: courierCity,
             status: "OFFLINE",
           });
         }
@@ -604,6 +608,7 @@ router.post(
       InviteAccessUserResponse.parse({
         ...saved,
         phone: role === "COURIER" ? phone : null,
+        courierCity,
       }),
     );
   },
@@ -683,10 +688,10 @@ router.patch(
       }
     }
     const isCourier = role === "COURIER";
-    const storeId =
-      ["STORE_MANAGER", "STORE_STAFF"].includes(role) || isCourier
-        ? body.data.storeId ?? null
-        : null;
+    const storeId = ["STORE_MANAGER", "STORE_STAFF"].includes(role)
+      ? body.data.storeId ?? null
+      : null;
+    const courierCity = isCourier ? body.data.courierCity?.trim() || null : null;
     const requestedCourierId = isCourier ? body.data.courierId ?? null : null;
     const courierName = body.data.name?.trim() ?? "";
     const courierPhone = body.data.phone?.trim() || null;
@@ -710,16 +715,9 @@ router.patch(
         res.status(400).json({ error: "Informe o nome do motoboy para aprovar o acesso." });
         return;
       }
-      if (storeId) {
-        const [store] = await db
-          .select({ id: storesTable.id })
-          .from(storesTable)
-          .where(eq(storesTable.id, storeId))
-          .limit(1);
-        if (!store) {
-          res.status(400).json({ error: "Unidade não encontrada." });
-          return;
-        }
+      if (!courierCity) {
+        res.status(400).json({ error: "Escolha a cidade em que o motoboy vai atender." });
+        return;
       }
       if (requestedCourierId) {
         const [courier] = await db
@@ -745,6 +743,7 @@ router.patch(
               name: courierName,
               initials: getCourierInitials(courierName),
               phone: courierPhone,
+              city: courierCity,
             })
             .where(eq(couriersTable.id, requestedCourierId))
             .returning({ id: couriersTable.id });
@@ -755,6 +754,7 @@ router.patch(
             name: courierName,
             initials: getCourierInitials(courierName),
             phone: courierPhone,
+            city: courierCity,
             status: "AVAILABLE",
           });
         }
@@ -781,6 +781,7 @@ router.patch(
         ...result.user,
         name: isCourier ? courierName : result.user.name,
         phone: isCourier ? courierPhone : null,
+        courierCity,
       }),
     );
   },
@@ -945,7 +946,8 @@ router.get(
       GetCourierEarningsResponse.parse({
         period,
         completedDeliveries: uniqueRows.length,
-        amountToReceive: Number((totalCents / 100).toFixed(2)),
+        // O motoboy acompanha só a quantidade de entregas; valores ficam na contabilidade da filial.
+        amountToReceive: 0,
       }),
     );
   },
@@ -984,7 +986,7 @@ async function deliveryView(deliveryId: string) {
     .limit(1);
 
   if (!row) return null;
-  const { deliveryAmountCents, evidencePath, ...deliveryData } = row.delivery;
+  const { deliveryAmountCents, evidencePath, changeForCents, ...deliveryData } = row.delivery;
 
   const events = await db
     .select()
@@ -1005,6 +1007,7 @@ async function deliveryView(deliveryId: string) {
   return {
     ...deliveryData,
     routeId: currentRoute?.id ?? null,
+    changeFor: changeForCents == null ? null : changeForCents / 100,
     deliveryAmount: deliveryAmountCents / 100,
     evidenceAvailable: Boolean(evidencePath),
     storeName: row.storeName,
@@ -1049,9 +1052,171 @@ function saoPauloDayBoundary(value: string | Date) {
   return new Date(`${date}T03:00:00.000Z`);
 }
 
+/** Filial da contabilidade: o gerente só vê a dele; admin/Central escolhem. */
+function accountingStoreId(profile: AppUserProfile, requested?: string | null) {
+  if (profile.role === "STORE_MANAGER") return profile.storeId ?? null;
+  return requested || null;
+}
+
+/** Período por data de registro da entrega (dias no fuso de São Paulo). */
+function accountingPeriod(from?: Date, to?: Date) {
+  const conditions = [];
+  if (from) conditions.push(gte(deliveriesTable.createdAt, saoPauloDayBoundary(from)));
+  if (to) {
+    const until = saoPauloDayBoundary(to);
+    until.setUTCDate(until.getUTCDate() + 1);
+    conditions.push(lt(deliveriesTable.createdAt, until));
+  }
+  return conditions;
+}
+
+const parseDay = (value: unknown) =>
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00.000Z`) : undefined;
+
+router.get(
+  "/reports/store-accounting",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  async (req, res): Promise<void> => {
+    const query = GetStoreAccountingQueryParams.safeParse({
+      from: parseDay(req.query.from),
+      to: parseDay(req.query.to),
+      storeId: typeof req.query.storeId === "string" ? req.query.storeId : undefined,
+    });
+    if (!query.success) {
+      res.status(400).json({ error: "Período inválido." });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    const storeId = accountingStoreId(profile, query.data.storeId);
+    if (!storeId) {
+      res.status(profile.role === "STORE_MANAGER" ? 403 : 400).json({
+        error: profile.role === "STORE_MANAGER" ? "Esta conta não está vinculada a uma filial." : "Escolha a filial.",
+      });
+      return;
+    }
+    const [store] = await db.select({ name: storesTable.name }).from(storesTable).where(eq(storesTable.id, storeId)).limit(1);
+    if (!store) {
+      res.status(404).json({ error: "Filial não encontrada." });
+      return;
+    }
+    const rows = await db
+      .select({
+        delivery: deliveriesTable,
+        courierName: couriersTable.name,
+        courierEmail: linkedCourierEmail,
+      })
+      .from(deliveriesTable)
+      .leftJoin(couriersTable, eq(deliveriesTable.courierId, couriersTable.id))
+      .where(and(eq(deliveriesTable.storeId, storeId), ...accountingPeriod(query.data.from, query.data.to)))
+      .orderBy(desc(deliveriesTable.createdAt));
+    const ids = rows.map(({ delivery }) => delivery.id);
+    const completedEvents = ids.length
+      ? await db
+          .select({ deliveryId: deliveryEventsTable.deliveryId, timestamp: deliveryEventsTable.timestamp })
+          .from(deliveryEventsTable)
+          .where(and(inArray(deliveryEventsTable.deliveryId, ids), eq(deliveryEventsTable.kind, "completed")))
+      : [];
+    const completedAt = new Map(completedEvents.map((event) => [event.deliveryId, event.timestamp]));
+    const cents = (value: number) => Number((value / 100).toFixed(2));
+    const couriers = new Map<string, { courierId: string; courierName: string; completedDeliveries: number; total: number; paid: number }>();
+    let total = 0;
+    let paid = 0;
+    for (const { delivery, courierName, courierEmail } of rows) {
+      if (delivery.status !== "COMPLETED") continue;
+      total += delivery.deliveryAmountCents;
+      if (delivery.courierPaidAt) paid += delivery.deliveryAmountCents;
+      if (!delivery.courierId) continue;
+      const record = couriers.get(delivery.courierId) ?? {
+        courierId: delivery.courierId,
+        courierName: getCourierDisplayName(courierName, courierEmail),
+        completedDeliveries: 0,
+        total: 0,
+        paid: 0,
+      };
+      record.completedDeliveries += 1;
+      record.total += delivery.deliveryAmountCents;
+      if (delivery.courierPaidAt) record.paid += delivery.deliveryAmountCents;
+      couriers.set(delivery.courierId, record);
+    }
+    res.json(
+      GetStoreAccountingResponse.parse({
+        storeId,
+        storeName: store.name,
+        totalDeliveries: rows.length,
+        completedDeliveries: rows.filter(({ delivery }) => delivery.status === "COMPLETED").length,
+        cancelledDeliveries: rows.filter(({ delivery }) => ["CANCELLED", "NOT_DELIVERED"].includes(delivery.status)).length,
+        amountTotal: cents(total),
+        amountPaid: cents(paid),
+        amountToPay: cents(total - paid),
+        couriers: [...couriers.values()]
+          .map((courier) => ({
+            courierId: courier.courierId,
+            courierName: courier.courierName,
+            completedDeliveries: courier.completedDeliveries,
+            amountTotal: cents(courier.total),
+            amountPaid: cents(courier.paid),
+            amountToPay: cents(courier.total - courier.paid),
+          }))
+          .sort((a, b) => b.amountToPay - a.amountToPay || b.completedDeliveries - a.completedDeliveries),
+        deliveries: rows.map(({ delivery, courierName, courierEmail }) => ({
+          id: delivery.id,
+          code: delivery.code,
+          orderNumber: delivery.orderNumber,
+          customerName: delivery.customerName,
+          courierId: delivery.courierId,
+          courierName: getOptionalCourierDisplayName(courierName, courierEmail),
+          status: delivery.status,
+          amount: cents(delivery.deliveryAmountCents),
+          createdAt: delivery.createdAt.toISOString(),
+          completedAt: completedAt.get(delivery.id)?.toISOString() ?? null,
+          paidAt: delivery.courierPaidAt?.toISOString() ?? null,
+        })),
+      }),
+    );
+  },
+);
+
+router.post(
+  "/reports/store-accounting/pay",
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  async (req, res): Promise<void> => {
+    const body = PayCourierBody.safeParse({
+      ...req.body,
+      from: parseDay(req.body?.from),
+      to: parseDay(req.body?.to),
+    });
+    if (!body.success) {
+      res.status(400).json({ error: "Escolha o motoboy." });
+      return;
+    }
+    const profile = res.locals.appUser as AppUserProfile;
+    const storeId = accountingStoreId(profile, body.data.storeId);
+    if (!storeId) {
+      res.status(400).json({ error: "Escolha a filial." });
+      return;
+    }
+    const paidRows = await db
+      .update(deliveriesTable)
+      .set({ courierPaidAt: new Date(), courierPaidBy: profile.name })
+      .where(
+        and(
+          eq(deliveriesTable.storeId, storeId),
+          eq(deliveriesTable.courierId, body.data.courierId),
+          eq(deliveriesTable.status, "COMPLETED"),
+          sql`${deliveriesTable.courierPaidAt} IS NULL`,
+          ...accountingPeriod(body.data.from, body.data.to),
+        ),
+      )
+      .returning({ amountCents: deliveriesTable.deliveryAmountCents });
+    const amount = paidRows.reduce((sum, row) => sum + row.amountCents, 0) / 100;
+    res.json(PayCourierResponse.parse({ paidDeliveries: paidRows.length, amount: Number(amount.toFixed(2)) }));
+  },
+);
+
 router.get(
   "/reports/analytics",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
+  // Relatório geral é só da administração; o gerente usa a contabilidade da filial.
+  requireRole("ADMIN", "CENTRAL"),
   async (req, res): Promise<void> => {
     const queryInput: Record<string, unknown> = { ...req.query };
     for (const field of ["from", "to"] as const) {
@@ -1103,6 +1268,7 @@ router.get(
       .select({
         delivery: deliveriesTable,
         storeName: storesTable.name,
+        storeCity: storesTable.city,
         courierName: couriersTable.name,
         courierEmail: linkedCourierEmail,
       })
@@ -1129,6 +1295,11 @@ router.get(
       eventsByDelivery
         .get(deliveryId)
         ?.find((event) => kinds.includes(event.kind))?.timestamp ?? null;
+    // Entrega reenviada pode ter mais de um aceite: vale o último.
+    const lastEvent = (deliveryId: string, kinds: string[]) =>
+      [...(eventsByDelivery.get(deliveryId) ?? [])]
+        .reverse()
+        .find((event) => kinds.includes(event.kind))?.timestamp ?? null;
     const reportRows = rows.map(({ delivery, storeName, courierName, courierEmail }) => ({
       id: delivery.id,
       code: delivery.code,
@@ -1139,6 +1310,7 @@ router.get(
       status: delivery.status,
       deliveryAmount: delivery.deliveryAmountCents / 100,
       createdAt: delivery.createdAt.toISOString(),
+      acceptedAt: lastEvent(delivery.id, ["accepted"])?.toISOString() ?? null,
       storeArrivedAt: firstEvent(delivery.id, ["at_store", "store_arrived"])?.toISOString() ?? null,
       storeDepartedAt: firstEvent(delivery.id, ["in_transit"])?.toISOString() ?? null,
       completedAt: firstEvent(delivery.id, ["completed"])?.toISOString() ?? null,
@@ -1201,6 +1373,7 @@ router.get(
         observation: cancellation.observation,
         status: cancellation.status,
         priority: cancellation.priority,
+        routeContinues: cancellation.routeContinues ?? false,
         requestedAt: cancellation.requestedAt.toISOString(),
       }),
     );
@@ -1222,6 +1395,8 @@ router.get(
       completedDeliveries: number;
       courierAmount: number;
       totalMinutes: number[];
+      pickupMinutes: number[];
+      deliveryMinutes: number[];
     }>();
     for (const row of reportRows) {
       const createdDate = saoPauloDate(new Date(row.createdAt));
@@ -1252,7 +1427,16 @@ router.get(
         completedDeliveries: 0,
         courierAmount: 0,
         totalMinutes: [],
+        pickupMinutes: [],
+        deliveryMinutes: [],
       };
+      const timing = reportRows.find((row) => row.id === delivery.id);
+      if (timing) {
+        const pickup = minutes(timing.acceptedAt, timing.storeDepartedAt);
+        const drive = minutes(timing.storeDepartedAt, timing.completedAt);
+        if (pickup != null) record.pickupMinutes.push(pickup);
+        if (drive != null) record.deliveryMinutes.push(drive);
+      }
       record.completedDeliveries += 1;
       record.courierAmount += delivery.deliveryAmountCents / 100;
       if (completedAt) {
@@ -1265,21 +1449,75 @@ router.get(
     const averageTotalMinutes = averages(
       completedRows.map((row) => minutes(row.createdAt, row.completedAt)),
     );
+    // Quatro etapas: solicitada (com a oferta aos motoboys), aceita, retirada (chegada + retirada), concluída.
+    type Stage = "requested" | "accepted" | "pickedUp" | "completed" | "cancelled";
+    const stageOf = (status: string): Stage =>
+      ["ACCEPTED", "TO_STORE", "AT_STORE"].includes(status)
+        ? "accepted"
+        : ["IN_TRANSIT", "RETURNING_TO_STORE"].includes(status)
+          ? "pickedUp"
+          : status === "COMPLETED"
+            ? "completed"
+            : ["CANCELLED", "NOT_DELIVERED"].includes(status)
+              ? "cancelled"
+              : "requested";
+    const stageCount = (stage: Stage) => rows.filter(({ delivery }) => stageOf(delivery.status) === stage).length;
+    const storeMap = new Map<string, {
+      storeId: string; storeName: string; city: string; total: number;
+      requested: number; accepted: number; pickedUp: number; completed: number; cancelled: number; amount: number;
+      times: { accept: number[]; pickup: number[]; drive: number[]; total: number[] };
+    }>();
+    const rowById = new Map(reportRows.map((row) => [row.id, row]));
+    for (const { delivery, storeName, storeCity } of rows) {
+      const record = storeMap.get(delivery.storeId) ?? {
+        storeId: delivery.storeId, storeName, city: storeCity, total: 0,
+        requested: 0, accepted: 0, pickedUp: 0, completed: 0, cancelled: 0, amount: 0,
+        times: { accept: [], pickup: [], drive: [], total: [] },
+      };
+      const timing = rowById.get(delivery.id);
+      if (timing) {
+        const accept = minutes(timing.createdAt, timing.acceptedAt);
+        if (accept != null) record.times.accept.push(accept);
+        if (timing.completedAt) {
+          const pickup = minutes(timing.acceptedAt, timing.storeDepartedAt);
+          const drive = minutes(timing.storeDepartedAt, timing.completedAt);
+          const total = minutes(timing.createdAt, timing.completedAt);
+          if (pickup != null) record.times.pickup.push(pickup);
+          if (drive != null) record.times.drive.push(drive);
+          if (total != null) record.times.total.push(total);
+        }
+      }
+      record.total += 1;
+      record[stageOf(delivery.status)] += 1;
+      if (delivery.status === "COMPLETED") record.amount += delivery.deliveryAmountCents / 100;
+      storeMap.set(delivery.storeId, record);
+    }
     res.json(
       GetDeliveryAnalyticsResponse.parse({
+        stores: [...storeMap.values()]
+          .map(({ times, ...store }) => ({
+            ...store,
+            amount: Number(store.amount.toFixed(2)),
+            averageAcceptMinutes: averages(times.accept),
+            averagePickupMinutes: averages(times.pickup),
+            averageDeliveryMinutes: averages(times.drive),
+            averageTotalMinutes: averages(times.total),
+          }))
+          .sort((a, b) => b.total - a.total || a.storeName.localeCompare(b.storeName, "pt-BR")),
         summary: {
           total: reportRows.length,
+          requested: stageCount("requested"),
+          accepted: stageCount("accepted"),
+          pickedUp: stageCount("pickedUp"),
           completed: completedRows.length,
-          cancelled: new Set([
-            ...reportRows
-              .filter((row) => ["CANCELLED", "NOT_DELIVERED"].includes(row.status))
-              .map((row) => row.id),
-            ...cancellationReportRows.map((row) => row.deliveryId),
-          ]).size,
+          // Só as que terminaram canceladas/não entregues (devolvidas e reenviadas contam na etapa atual).
+          cancelled: stageCount("cancelled"),
+          averageAcceptMinutes: averages(reportRows.map((row) => minutes(row.createdAt, row.acceptedAt))),
           averageTotalMinutes,
+          // Chegada e retirada viraram um passo só: mede do aceite até a retirada na loja.
           averageStoreMinutes: averages(
             completedRows.map((row) =>
-              minutes(row.storeArrivedAt, row.storeDepartedAt),
+              minutes(row.acceptedAt, row.storeDepartedAt),
             ),
           ),
           averageDeliveryMinutes: averages(
@@ -1300,6 +1538,8 @@ router.get(
             completedDeliveries: courier.completedDeliveries,
             courierAmount: Number(courier.courierAmount.toFixed(2)),
             averageTotalMinutes: averages(courier.totalMinutes),
+            averagePickupMinutes: averages(courier.pickupMinutes),
+            averageDeliveryMinutes: averages(courier.deliveryMinutes),
           }))
           .sort((a, b) => b.completedDeliveries - a.completedDeliveries),
         deliveries: reportRows,
@@ -1437,12 +1677,18 @@ router.get(
       res.status(403).json({ error: "Esta conta não está vinculada a um motoboy." });
       return;
     }
-    filters.push(eq(deliveriesTable.courierId, profile.courierId));
     const [courier] = await db
-      .select({ status: couriersTable.status })
+      .select({ status: couriersTable.status, city: couriersTable.city })
       .from(couriersTable)
       .where(eq(couriersTable.id, profile.courierId))
       .limit(1);
+    // As entregas dele + as ofertas abertas a todos os motoboys da cidade dele.
+    filters.push(
+      or(
+        eq(deliveriesTable.courierId, profile.courierId),
+        openOfferFor(profile.courierId, courier?.city?.trim() || null),
+      ),
+    );
     if (courier?.status === "OFFLINE") {
       filters.push(sql`${deliveriesTable.status} <> 'OFFERED'`);
     }
@@ -1472,7 +1718,7 @@ router.get(
   const deliveries = await Promise.all(
     selected.map((item) => deliveryView(item.id)),
   );
-  res.json(ListDeliveriesResponse.parse(deliveries.filter(Boolean)));
+  res.json(ListDeliveriesResponse.parse(deliveries.filter(Boolean).map((item) => hideAmountForCourier(profile, item!))));
   },
 );
 
@@ -1495,6 +1741,17 @@ router.post(
     });
     return;
   }
+
+  const paymentMethod = body.data.paymentMethod ?? null;
+  if (!paymentMethod) {
+    res.status(400).json({ error: "Escolha a forma de pagamento: cartão, Pix ou dinheiro." });
+    return;
+  }
+  const changeForCents =
+    paymentMethod === "CASH" && body.data.changeFor != null && body.data.changeFor > 0
+      ? Math.round(body.data.changeFor * 100)
+      : null;
+  const bringCardMachine = paymentMethod === "CARD" ? body.data.bringCardMachine ?? true : null;
 
   const storeId = profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF"
     ? profile.storeId
@@ -1536,13 +1793,26 @@ router.post(
       orderNumber: body.data.orderNumber.trim(),
       notes: body.data.notes?.trim() || null,
       requiresPrescription: body.data.requiresPrescription ?? false,
+      paymentMethod,
+      changeForCents,
+      bringCardMachine,
       storeId,
       status: "REQUESTED",
       priority: body.data.priority,
       deliveryAmountCents: store.deliveryFeeCents,
     })
     .returning();
-  await addEvent(created.id, "REQUESTED", eventLabels.REQUESTED);
+  await addEvent(
+    created.id,
+    "REQUESTED",
+    eventLabels.REQUESTED,
+    profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF" ? "Equipe da unidade" : "Central de entregas",
+  );
+  // Despacho automático: vai direto para todos os motoboys da cidade; quem aceitar primeiro leva.
+  await db.transaction((tx) =>
+    offerToCity(tx, { id: created.id, courierId: null }, `Enviada para os motoboys de ${store.city}`, "Sistema"),
+  );
+  await notifyCityCouriers(created.id, "Nova entrega disponível", `${code} · ${store.name}. Quem aceitar primeiro leva.`);
   const view = await deliveryView(created.id);
   res.status(201).json(CreateDeliveryResponse.parse(view));
   },
@@ -1567,7 +1837,7 @@ router.get(
     res.status(403).json({ error: "Esta entrega não pertence à sua área de acesso." });
     return;
   }
-  res.json(GetDeliveryResponse.parse(delivery));
+  res.json(GetDeliveryResponse.parse(hideAmountForCourier(res.locals.appUser as AppUserProfile, delivery)));
   },
 );
 
@@ -1576,7 +1846,7 @@ const CLOSED_DELIVERY_STATUSES = new Set(["COMPLETED", "CANCELLED", "NOT_DELIVER
 
 router.patch(
   "/deliveries/:deliveryId",
-  requireRole("ADMIN", "CENTRAL"),
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     const params = UpdateDeliveryParams.safeParse(req.params);
     if (!params.success) {
@@ -1608,6 +1878,30 @@ router.patch(
       res.status(409).json({ error: "Esta entrega já foi encerrada e não pode mais ser editada." });
       return;
     }
+    const editor = res.locals.appUser as AppUserProfile;
+    if (editor.role === "STORE_MANAGER") {
+      // Gerente: só entregas da própria filial e só enquanto estão na fila, antes de um motoboy pegar.
+      if (!editor.storeId || editor.storeId !== current.storeId) {
+        res.status(403).json({ error: "Esta entrega não pertence à sua área de acesso." });
+        return;
+      }
+      const [inRoute] = await db
+        .select({ id: deliveryRoutesTable.id })
+        .from(deliveryRoutesTable)
+        .where(
+          and(
+            sql`${current.id} = ANY(${deliveryRoutesTable.deliveryIds})`,
+            inArray(deliveryRoutesTable.status, ["OFFERED", "ACCEPTED"]),
+          ),
+        )
+        .limit(1);
+      if (!["REQUESTED", "OFFERED", "AWAITING_COURIER"].includes(current.status) || current.courierId || inRoute) {
+        res.status(409).json({
+          error: "A loja só pode editar a entrega enquanto ela está na fila. Depois que um motoboy aceitar, fale com a Central.",
+        });
+        return;
+      }
+    }
 
     const destination = input.destination?.trim();
     const addressChanged =
@@ -1626,7 +1920,7 @@ router.patch(
           ),
         )
         .limit(1);
-      if (current.status !== "REQUESTED" || current.courierId || route) {
+      if (!["REQUESTED", "OFFERED", "AWAITING_COURIER"].includes(current.status) || current.courierId || route) {
         res.status(409).json({
           error: "O endereço só pode ser alterado antes de a entrega ir para um motoboy. Cancele e registre de novo, se precisar.",
         });
@@ -1641,6 +1935,14 @@ router.patch(
     if (input.notes !== undefined) changes.notes = input.notes?.trim() || null;
     if (input.priority !== undefined) changes.priority = input.priority;
     if (input.requiresPrescription !== undefined) changes.requiresPrescription = input.requiresPrescription;
+    if (input.paymentMethod !== undefined) {
+      changes.paymentMethod = input.paymentMethod;
+      changes.changeForCents =
+        input.paymentMethod === "CASH" && input.changeFor != null && input.changeFor > 0
+          ? Math.round(input.changeFor * 100)
+          : null;
+      changes.bringCardMachine = input.paymentMethod === "CARD" ? input.bringCardMachine ?? true : null;
+    }
     if (addressChanged) {
       if (destination !== undefined) changes.destination = destination;
       // Endereço novo sem coordenadas não pode manter as coordenadas do endereço antigo.
@@ -1658,7 +1960,11 @@ router.patch(
         current.id,
         "EDITED",
         addressChanged ? "Dados da entrega editados (endereço alterado)" : "Dados da entrega editados",
-        profile.role === "ADMIN" ? "Administração" : "Central de entregas",
+        profile.role === "ADMIN"
+          ? "Administração"
+          : profile.role === "STORE_MANAGER"
+            ? "Equipe da unidade"
+            : "Central de entregas",
       );
     }
     const view = await deliveryView(current.id);
@@ -1971,8 +2277,19 @@ router.post(
       if (activeRoutes.some((route) => route.deliveryIds.includes(delivery.id))) {
         return { error: "route_locked" as const };
       }
-      if (!["REQUESTED", "OFFERED", "AWAITING_COURIER"].includes(delivery.status))
+      if (!["REQUESTED", "OFFERED", "AWAITING_COURIER", "NOT_DELIVERED", "RETURNING_TO_STORE"].includes(delivery.status))
         return { error: "not_dispatchable" as const };
+
+      // Sem motoboy escolhido: volta para a fila de todos os motoboys da cidade.
+      if (body.data.mode === "group" || !body.data.courierId) {
+        await offerToCity(
+          tx,
+          delivery,
+          "Reenviada para a fila dos motoboys",
+          profile.role === "STORE_MANAGER" ? "Gerente da filial" : "Central de entregas",
+        );
+        return { deliveryId: delivery.id, broadcast: true as const };
+      }
 
       let courierId: string | null = null;
       if (body.data.mode === "single") {
@@ -2026,10 +2343,7 @@ router.post(
         id: randomUUID(),
         deliveryId: delivery.id,
         kind: "offered",
-        label:
-          body.data.mode === "group"
-            ? "Oferta enviada ao grupo de motoboys elegíveis"
-            : `Oferta enviada${courierId ? " a um motoboy disponível" : ""}`,
+        label: "Oferta enviada a um motoboy escolhido",
         actor: "Central de entregas",
       });
       return { deliveryId: delivery.id };
@@ -2055,11 +2369,8 @@ router.post(
           title: "Nova entrega disponível",
           body: `A entrega ${view.code} foi enviada para você.`,
         });
-      } else if (body.data.mode === "group") {
-        await notifyAvailableCouriers({
-          title: "Nova entrega disponível",
-          body: `A entrega ${view.code} aguarda aceite.`,
-        });
+      } else {
+        await notifyCityCouriers(view.id, "Nova entrega disponível", `${view.code} · ${view.storeName}. Quem aceitar primeiro leva.`);
       }
     }
     res.json(DispatchDeliveryResponse.parse(view));
@@ -2118,6 +2429,11 @@ router.patch(
         .for("update");
       if (!delivery) return { error: "not_found" as const };
 
+      // Quem perdeu a disputa precisa saber disso: a entrega já é de outro motoboy, então o
+      // canAccessDelivery abaixo responderia "não pertence à sua área", que confunde.
+      if (body.data.status === "ACCEPTED" && profile.role === "COURIER" && delivery.status !== "OFFERED") {
+        return { error: "taken" as const };
+      }
       if (!canAccessDelivery(profile, delivery)) {
         return { error: "forbidden" as const };
       }
@@ -2137,7 +2453,8 @@ router.patch(
       const managerCanCancel =
         profile.role === "STORE_MANAGER" &&
         nextStatus === "CANCELLED" &&
-        ["REQUESTED", "AWAITING_COURIER"].includes(delivery.status);
+        (["REQUESTED", "AWAITING_COURIER", "NOT_DELIVERED"].includes(delivery.status) ||
+          (delivery.status === "OFFERED" && !delivery.courierId));
       if (
         (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") &&
         nextStatus !== "IN_TRANSIT" &&
@@ -2148,44 +2465,37 @@ router.patch(
       if (nextStatus === "COMPLETED" && delivery.requiresPrescription && !body.data.prescriptionCollected) {
         return { error: "prescription_required" as const };
       }
+      // Chegar à loja e retirar viraram um passo só: de ACCEPTED dá para ir direto a IN_TRANSIT.
       const allowed: Record<string, string[]> = {
         REQUESTED: ["CANCELLED"],
         OFFERED: ["ACCEPTED", "CANCELLED"],
-        ACCEPTED: ["TO_STORE", "AT_STORE", "CANCELLED"],
-        TO_STORE: ["AT_STORE", "CANCELLED"],
+        AWAITING_COURIER: ["CANCELLED"],
+        ACCEPTED: ["TO_STORE", "AT_STORE", "IN_TRANSIT", "CANCELLED"],
+        TO_STORE: ["AT_STORE", "IN_TRANSIT", "CANCELLED"],
         AT_STORE: ["IN_TRANSIT", "CANCELLED"],
         IN_TRANSIT: ["COMPLETED", "CANCELLED"],
+        RETURNING_TO_STORE: ["CANCELLED"],
+        NOT_DELIVERED: ["CANCELLED"],
       };
+      if (nextStatus === "ACCEPTED" && profile.role === "COURIER" && delivery.status !== "OFFERED") {
+        return { error: "taken" as const };
+      }
       if (!allowed[delivery.status]?.includes(nextStatus))
         return { error: "invalid_transition" as const };
 
       let courierId = delivery.courierId;
       if (nextStatus === "ACCEPTED" && !courierId) {
-        const linkedCourierRows = await tx
-          .select({ courierId: appUsersTable.courierId })
-          .from(appUsersTable)
-          .where(eq(appUsersTable.role, "COURIER"));
-        const linkedCourierIds = [
-          ...new Set(
-            linkedCourierRows
-              .map((row) => row.courierId)
-              .filter((id): id is string => Boolean(id)),
-          ),
-        ];
-        const [available] = linkedCourierIds.length
-          ? await tx
-              .select()
-              .from(couriersTable)
-              .where(
-                and(
-                  eq(couriersTable.status, "AVAILABLE"),
-                  inArray(couriersTable.id, linkedCourierIds),
-                ),
-              )
-              .limit(1)
-          : [];
-        if (!available) return { error: "no_courier" as const };
-        courierId = available.id;
+        // Oferta aberta: fica com o motoboy que aceitou primeiro (a linha está travada).
+        if (profile.role !== "COURIER" || !profile.courierId) return { error: "no_courier" as const };
+        const [store] = await tx
+          .select({ city: storesTable.city })
+          .from(storesTable)
+          .where(eq(storesTable.id, delivery.storeId))
+          .limit(1);
+        if (!sameCity(await courierCity(profile.courierId), store?.city)) {
+          return { error: "other_city" as const };
+        }
+        courierId = profile.courierId;
       }
       if (nextStatus === "ACCEPTED" && courierId) {
         const [linkedCourier] = await tx
@@ -2244,6 +2554,17 @@ router.patch(
           );
       }
 
+      if (nextStatus === "CANCELLED") {
+        await tx
+          .update(deliveryCancellationsTable)
+          .set({ status: "CLOSED" })
+          .where(
+            and(
+              eq(deliveryCancellationsTable.deliveryId, delivery.id),
+              inArray(deliveryCancellationsTable.status, ["AWAITING_CENTRAL", "RETURNING_TO_STORE", "ROUTE_ABORTED"]),
+            ),
+          );
+      }
       if (["COMPLETED", "CANCELLED"].includes(nextStatus) && courierId) {
         await tx
           .update(couriersTable)
@@ -2262,11 +2583,12 @@ router.patch(
       }
 
       const note = body.data.note?.trim();
+      const cancelledBy = profile.role === "STORE_MANAGER" ? "Cancelada pela loja" : "Cancelada pela Central";
       const label =
         nextStatus === "CANCELLED"
           ? note
-            ? `Cancelado pela Central · Motivo: ${note}`
-            : eventLabels.CANCELLED
+            ? `${cancelledBy} · Motivo: ${note}`
+            : cancelledBy
           : note || eventLabels[nextStatus];
       await tx.insert(deliveryEventsTable).values({
         id: randomUUID(),
@@ -2299,15 +2621,21 @@ router.patch(
               ? "Esta entrega tem receita: confirme que recolheu a receita do cliente antes de concluir."
           : result.error === "no_courier"
             ? "Nenhum motoboy disponível pode aceitar esta oferta."
+            : result.error === "taken"
+              ? "Outro motoboy aceitou esta entrega primeiro."
+            : result.error === "other_city"
+              ? "Esta entrega é de uma filial de outra cidade."
             : result.error === "courier_taken"
-              ? "Este motoboy já está em outra entrega."
-              : "Transição de status não permitida.";
+              ? profile.role === "COURIER"
+                ? "Termine a entrega atual antes de aceitar outra."
+                : "Este motoboy já está em outra entrega."
+              : "Esta entrega não pode mudar para esse status agora. Atualize a lista.";
       res.status(status).json({ error: message });
       return;
     }
 
     const view = await deliveryView(result.deliveryId);
-    res.json(UpdateDeliveryStatusResponse.parse(view));
+    res.json(UpdateDeliveryStatusResponse.parse(view ? hideAmountForCourier(profile, view) : view));
   },
 );
 

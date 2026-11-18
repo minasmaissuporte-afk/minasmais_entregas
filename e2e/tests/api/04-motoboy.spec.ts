@@ -66,7 +66,7 @@ test.describe("Motoboy: disponibilidade e localização", () => {
     await expectError(await courier.get("/courier/earnings?period=ano"), 400);
   });
 
-  test("Ganhos somam a tarifa das entregas concluídas hoje", async () => {
+  test("Totais do motoboy contam as entregas concluídas hoje (sem valores em R$)", async () => {
     const central = await Api.as("central");
     const courier = await Api.as("courier");
     const before = await json(await courier.get("/courier/earnings?period=day"));
@@ -76,18 +76,20 @@ test.describe("Motoboy: disponibilidade e localização", () => {
     for (const s of ["ACCEPTED", "AT_STORE", "IN_TRANSIT", "COMPLETED"]) await setStatus(central, d.id, s);
     const after = await json(await courier.get("/courier/earnings?period=day"));
     expect(after.completedDeliveries).toBe(before.completedDeliveries + 1);
-    expect(after.amountToReceive).toBeCloseTo(before.amountToReceive + d.deliveryAmount, 2);
+    // Valores ficam na contabilidade da filial: o app do motoboy não recebe R$.
+    expect(after.amountToReceive).toBe(0);
   });
 });
 
 test.describe("Despacho individual", () => {
   test.beforeEach(wipeDeliveries);
 
-  test("Sem motoboy disponível → 409", async () => {
+  test("Enviar só para um motoboy offline → 409 (a entrega continua na fila)", async () => {
     const central = await Api.as("central");
     const d = await createDelivery(central);
-    await expectError(await central.post(`/deliveries/${d.id}/dispatch`, { mode: "single" }), 409, "motoboy disponível");
-    await expectStatus(central, d.id, "REQUESTED");
+    await setCourierStatus("e2e-courier-1", "OFFLINE");
+    await expectError(await central.post(`/deliveries/${d.id}/dispatch`, { mode: "single", courierId: "e2e-courier-1" }), 409, "motoboy disponível");
+    await expectStatus(central, d.id, "OFFERED");
   });
 
   test("Modo inválido → 400 e entrega inexistente → 404", async () => {
@@ -128,7 +130,7 @@ test.describe("Despacho individual", () => {
     expect(await json(res)).toMatchObject({ status: "OFFERED", courierId: null });
   });
 
-  test("Motoboy recusa oferta individual → volta para AWAITING_COURIER; recusar de novo → 409", async () => {
+  test("Motoboy recusa oferta só para ele → volta para a fila de todos; dispensar de novo some só para ele", async () => {
     const central = await Api.as("central");
     const courier = await Api.as("courier");
     await courierOnline(courier);
@@ -137,9 +139,11 @@ test.describe("Despacho individual", () => {
     const res = await courier.post(`/courier/deliveries/${d.id}/decline`);
     expect(res.status(), await describe(res)).toBe(204);
     const after = await json(await central.get(`/deliveries/${d.id}`));
-    expect(after.status).toBe("AWAITING_COURIER");
+    expect(after.status).toBe("OFFERED");
     expect(after.courierId).toBeNull();
-    await expectError(await courier.post(`/courier/deliveries/${d.id}/decline`), 409);
+    expect((await courier.post(`/courier/deliveries/${d.id}/decline`)).status()).toBe(204);
+    const list = await json(await courier.get("/deliveries"));
+    expect(list.map((item: any) => item.id)).not.toContain(d.id);
   });
 
   test("Entrega devolvida à fila (AWAITING_COURIER) pode ser redespachada", async () => {
@@ -281,20 +285,24 @@ test.describe("Motoboy: navegação, foto e ocorrência em entrega individual", 
       const d = await createDelivery(central);
       await central.post(`/deliveries/${d.id}/dispatch`, { mode: "single", courierId: "e2e-courier-1" });
       await setStatus(central, d.id, "ACCEPTED");
-      const res = await courier.post(`/courier/deliveries/${d.id}/unable`, { reason: "Imprevisto pessoal" });
+      const res = await courier.post(`/courier/deliveries/${d.id}/unable`, { reason: "Cliente desistiu / recusou" });
       expect(res.status(), await describe(res)).toBe(200);
       expect((await json(res)).status).toBe("AWAITING_COURIER");
       const alert = (await json(await central.get("/delivery-cancellations"))).find((a: any) => a.deliveryId === d.id);
       expect(alert.status).toBe("AWAITING_CENTRAL");
       const done = await central.post(`/delivery-cancellations/${alert.id}/action`, { action });
       expect(done.status(), await describe(done)).toBeLessThan(300);
-      await expectStatus(central, d.id, action === "REQUEUE" ? "AWAITING_COURIER" : "NOT_DELIVERED");
+      // REQUEUE: volta para a fila de todos os motoboys da cidade.
+      await expectStatus(central, d.id, action === "REQUEUE" ? "OFFERED" : "NOT_DELIVERED");
       const again = await central.post(`/delivery-cancellations/${alert.id}/action`, { action });
       expect(again.status(), `ação repetida: ${await describe(again)}`).toBe(409);
     }
   });
 
+  // "Moto com problema" saiu da lista padrão; o fluxo continua valendo se a Central reativar o motivo.
   test("Acidente (moto com problema) aborta: entrega volta à fila como prioridade e motoboy fica OFFLINE", async () => {
+    await query("update delivery_cancellation_reasons set active = true where id = 'MOTORCYCLE_ISSUE'");
+    test.info().annotations.push({ type: "cleanup", description: "motivo reativado só neste teste" });
     const { central, courier, d } = await inTransitDelivery();
     const res = await courier.post(`/courier/deliveries/${d.id}/unable`, { reason: "Moto com problema / acidente" });
     expect(res.status(), await describe(res)).toBe(200);
@@ -303,6 +311,7 @@ test.describe("Motoboy: navegação, foto e ocorrência em entrega individual", 
     expect(c.status).toBe("OFFLINE");
     const alert = (await json(await central.get("/delivery-cancellations"))).find((a: any) => a.deliveryId === d.id);
     expect(alert).toMatchObject({ status: "ROUTE_ABORTED", priority: true });
+    await query("update delivery_cancellation_reasons set active = false where id = 'MOTORCYCLE_ISSUE'");
   });
 
   test("Ocorrência em entrega de outro motoboy → 403 e em entrega não iniciada → 409", async () => {
@@ -312,12 +321,12 @@ test.describe("Motoboy: navegação, foto e ocorrência em entrega individual", 
     const other = await createDelivery(central);
     await central.post(`/deliveries/${other.id}/dispatch`, { mode: "single", courierId: "e2e-courier-2" });
     await setStatus(central, other.id, "ACCEPTED");
-    await expectError(await courier.post(`/courier/deliveries/${other.id}/unable`, { reason: "Imprevisto pessoal" }), 403);
+    await expectError(await courier.post(`/courier/deliveries/${other.id}/unable`, { reason: "Cliente ausente / não atende" }), 403);
 
     await courierOnline(courier);
     const offered = await createDelivery(central);
     await central.post(`/deliveries/${offered.id}/dispatch`, { mode: "single", courierId: "e2e-courier-1" });
-    await expectError(await courier.post(`/courier/deliveries/${offered.id}/unable`, { reason: "Imprevisto pessoal" }), 409);
+    await expectError(await courier.post(`/courier/deliveries/${offered.id}/unable`, { reason: "Cliente ausente / não atende" }), 409);
   });
 
   test("Ação de ocorrência inválida → 400 e ocorrência inexistente → 404", async () => {

@@ -15,8 +15,8 @@ test.describe("Gestão de acessos (Admin)", () => {
     );
   });
   test.afterAll(async () => {
-    await query(`delete from app_users where id = $1`, [TEMP]);
-    await query(`delete from couriers where id like 'e2e-%' and id not in ('e2e-courier-1','e2e-courier-2')`);
+    // Só apaga motoboys temporários (sem login vinculado); os da semente ficam.
+    await query(`delete from couriers c where c.id like 'e2e-%' and not exists (select 1 from app_users u where u.courier_id = c.id)`);
   });
 
   test("Lista todas as contas com papel, loja e motoboy", async () => {
@@ -45,12 +45,13 @@ test.describe("Gestão de acessos (Admin)", () => {
       role: "COURIER",
       name: "  E2E Lúcia Ávila  ",
       phone: "(31) 97777-0000",
+      courierCity: "Belo Horizonte",
       courierId: "e2e-courier-temp",
     });
     expect(linked.status(), await describe(linked)).toBe(200);
     expect(await json(linked)).toMatchObject({ role: "COURIER", courierId: "e2e-courier-temp", name: "E2E Lúcia Ávila" });
-    const [courier] = await query(`select name, initials, phone from couriers where id='e2e-courier-temp'`);
-    expect(courier).toMatchObject({ name: "E2E Lúcia Ávila", phone: "(31) 97777-0000" });
+    const [courier] = await query(`select name, initials, phone, city from couriers where id='e2e-courier-temp'`);
+    expect(courier).toMatchObject({ name: "E2E Lúcia Ávila", phone: "(31) 97777-0000", city: "Belo Horizonte" });
     expect(courier.initials).toMatch(/^[A-ZÁ]{1,3}$/);
   });
 
@@ -127,10 +128,10 @@ test.describe("Motivos de ocorrência", () => {
     expect(list.map((r: any) => r.id)).toEqual(changed.filter((r) => r.active).map((r) => r.id));
   });
 
-  test("Motivo de acidente não pode ser desativado (400)", async () => {
+  test("Desativar todos os motivos → 400", async () => {
     const central = await Api.as("central");
-    const changed = original.map((r) => ({ ...r, active: r.id !== "MOTORCYCLE_ISSUE" }));
-    await expectError(await central.put("/delivery-cancellation-reasons", { reasons: changed }), 400, "acidente");
+    const changed = original.map((r) => ({ ...r, active: false }));
+    await expectError(await central.put("/delivery-cancellation-reasons", { reasons: changed }), 400, "pelo menos um");
   });
 
   test("Lista vazia, rótulo vazio ou repetido → 400", async () => {
@@ -205,11 +206,11 @@ test.describe("Relatórios e painel", () => {
     await expectError(await admin.get(`/reports/analytics?from=31/12/2026`), 400);
   });
 
-  test("Gerente: relatório só da própria filial; pedir outra filial → 403", async () => {
+  test("Gerente: relatório geral é só da administração (403); contabilidade é só da filial dele", async () => {
     const manager = await Api.as("manager");
-    const own = await json(await manager.get("/reports/analytics"));
-    expect(own.deliveries.every((d: any) => d.storeName === stores.a.name)).toBe(true);
-    await expectError(await manager.get(`/reports/analytics?storeId=${stores.b.id}`), 403, "própria filial");
+    await expectError(await manager.get("/reports/analytics"), 403);
+    const own = await json(await manager.get(`/reports/store-accounting?storeId=${stores.b.id}`));
+    expect(own.storeId).toBe(stores.a.id);
   });
 });
 

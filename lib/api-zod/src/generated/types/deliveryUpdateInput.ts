@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DeliveryUpdateInputPaymentMethod } from './deliveryUpdateInputPaymentMethod';
 import type { DeliveryUpdateInputPriority } from './deliveryUpdateInputPriority';
 
 export interface DeliveryUpdateInput {
@@ -32,4 +33,13 @@ export interface DeliveryUpdateInput {
   notes?: string | null;
   priority?: DeliveryUpdateInputPriority;
   requiresPrescription?: boolean;
+  paymentMethod?: DeliveryUpdateInputPaymentMethod;
+  /**
+     * @minimum 0
+     * @maximum 100000
+     * @nullable
+     */
+  changeFor?: number | null;
+  /** @nullable */
+  bringCardMachine?: boolean | null;
 }

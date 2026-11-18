@@ -34,9 +34,9 @@ test.describe("Mapa (Google Maps)", () => {
     await courierOnline(courier);
   });
 
-  test("/mapa carrega o Google Maps sem erro de chave/API e mostra filiais e motoboy", async ({ page }) => {
+  test("Página Entregas (/) carrega o Google Maps sem erro de chave/API e mostra filiais e motoboy", async ({ page }) => {
     const errors = watchGoogle(page);
-    await loginAs(page, "central", "/mapa");
+    await loginAs(page, "central", "/");
     await waitForGoogleMap(page);
     const markers = page.locator("gmp-advanced-marker, [data-map-marker]");
     await expect.poll(() => markers.count(), { timeout: 15_000 }).toBeGreaterThanOrEqual(3); // 3 filiais ativas + motoboy
@@ -44,7 +44,7 @@ test.describe("Mapa (Google Maps)", () => {
   });
 
   test("Zoom pelos botões e arrasto mudam o mapa", async ({ page }) => {
-    await loginAs(page, "central", "/mapa");
+    await loginAs(page, "central", "/");
     await waitForGoogleMap(page);
     const map = page.locator(".gm-style").first();
     const before = await map.screenshot();
@@ -149,26 +149,35 @@ test.describe("Foto no detalhe da entrega", () => {
 });
 
 test.describe("Endereços pela tela", () => {
-  test("Nova entrega: digitar endereço, escolher sugestão e o pino cai no lugar certo", async ({ page }) => {
+  test("Nova entrega: digitar endereço, escolher sugestão, digitar o número e o pino cai no lugar certo", async ({ page }) => {
     await loginAs(page, "central", "/entregas");
     await page.getByTestId("button-new-delivery").click();
     const dialog = page.getByRole("dialog", { name: "Registrar entrega" });
     await dialog.getByTestId("input-customer-name").fill("E2E Endereço Pela Tela");
     const address = dialog.getByTestId("input-destination");
     const started = Date.now();
-    await address.pressSequentially("Rua Pernambuco, 1000, Belo Horizonte", { delay: 30 });
+    await address.pressSequentially("Rua Pernambuco, Belo Horizonte", { delay: 30 });
     const options = page.getByRole("listbox", { name: "Sugestões de endereço" }).getByRole("option");
     await expect(options.first(), "nenhuma sugestão apareceu").toBeVisible({ timeout: 10_000 });
     test.info().annotations.push({ type: "tempo", description: `Sugestões apareceram ${Date.now() - started} ms após começar a digitar` });
     await options.first().click();
-    await expect(dialog.getByTestId("text-destination-without-pin")).toHaveCount(0);
+    await expect(dialog.getByTestId("text-new-delivery-without-pin")).toHaveCount(0);
+    // 2º passo: o número é obrigatório e fica num campo separado.
+    const number = dialog.getByTestId("input-new-delivery-number");
+    await expect(number).toBeVisible();
+    expect(await number.evaluate((el: HTMLInputElement) => el.required)).toBe(true);
+    await number.fill("1000");
+    await number.blur();
+    await expect(dialog.getByRole("status").filter({ hasText: /Pino|pino/ })).toBeVisible({ timeout: 10_000 }).catch(() => undefined);
     const order = `PED-END-${Date.now()}`;
     await dialog.getByTestId("input-order-number").fill(order);
     await dialog.getByTestId("select-store").selectOption(stores.a.id);
+    await dialog.getByText("Pix", { exact: true }).click();
     await dialog.getByRole("button", { name: "Registrar pedido" }).click();
     await expect(dialog).toBeHidden({ timeout: 15_000 });
     const [row] = await query("select customer_latitude as lat, customer_longitude as lng, destination from deliveries where order_number=$1", [order]);
     expect(row.lat, "entrega salva sem coordenadas").not.toBeNull();
+    expect(row.destination).toMatch(/Pernambuco, 1000/);
     expect(Math.abs(row.lat - -19.9359)).toBeLessThan(0.01);
     expect(Math.abs(row.lng - -43.9351)).toBeLessThan(0.01);
     test.info().annotations.push({ type: "endereço salvo", description: row.destination });
@@ -180,7 +189,10 @@ test.describe("Endereços pela tela", () => {
     const dialog = page.getByRole("dialog", { name: "Registrar entrega" });
     await dialog.getByTestId("input-destination").fill("Rua Qualquer 123, Belo Horizonte");
     await dialog.getByTestId("input-customer-name").click();
-    await expect(dialog.getByTestId("text-destination-without-pin")).toBeVisible();
+    await expect(dialog.getByTestId("text-new-delivery-without-pin")).toBeVisible();
+    await expect(dialog.getByTestId("text-new-delivery-without-pin")).toContainText("Escolha a rua na lista");
+    // Sem sugestão escolhida, o campo Número não aparece.
+    await expect(dialog.getByTestId("input-new-delivery-number")).toHaveCount(0);
   });
 
   test("Nova filial: endereço com sugestão preenche os campos, mostra o pino e salva as coordenadas certas", async ({ page }) => {
@@ -193,13 +205,19 @@ test.describe("Endereços pela tela", () => {
     const options = page.getByRole("listbox", { name: "Sugestões de endereço" }).getByRole("option");
     await expect(options.first()).toBeVisible({ timeout: 10_000 });
     await options.first().click();
-    await expect(page.getByLabel("Rua ou avenida")).toHaveValue(/Afonso Pena/);
-    await expect(page.getByLabel("Número")).toHaveValue("1500");
+    // O campo "Rua ou avenida" saiu: a sugestão preenche o endereço completo; o número é separado.
+    await expect(page.getByLabel("Rua ou avenida")).toHaveCount(0);
+    await expect(page.getByTestId("input-branch-address")).toHaveValue(/Afonso Pena/);
+    const number = page.getByLabel("Número", { exact: true });
+    const suggestedNumber = await number.inputValue();
+    test.info().annotations.push({ type: "número após a sugestão", description: suggestedNumber || "(vazio)" });
+    if (suggestedNumber !== "1500") await number.fill("1500");
+    await number.blur();
     await expect(page.getByLabel("Cidade")).toHaveValue("Belo Horizonte");
     test.info().annotations.push({ type: "complemento sugerido", description: (await page.getByLabel("Complemento").inputValue()) || "(vazio)" });
     await expect(page.locator(".gm-style").last(), "mapa do formulário com o pino").toBeVisible({ timeout: 15_000 });
     await page.getByLabel("Nome do gerente").fill("E2E Gerente Afonso Pena");
-    await page.locator('button[type="submit"]').filter({ hasText: /Salvar|Cadastrar|Criar/ }).first().click();
+    await page.getByRole("button", { name: "Cadastrar filial" }).click();
     await expect.poll(async () => (await query("select latitude, longitude from stores where name=$1", [name]))[0], { timeout: 15_000 }).toBeTruthy();
     const [row] = await query("select latitude, longitude from stores where name=$1", [name]);
     expect(Math.abs(row.latitude - -19.9245)).toBeLessThan(0.01);
@@ -215,7 +233,15 @@ test.describe("Rota pela tela da Central", () => {
     const d2 = await createDelivery(central, { storeId: stores.a.id, customerName: "E2E Rota Tela 2" });
     await loginAs(page, "central", "/entregas");
     for (const d of [d1, d2]) await page.getByLabel(`Selecionar ${d.code} para uma rota`).check();
+    await expect(page.getByTestId("button-create-route")).toHaveText(/Montar rota com 2/);
     await page.getByTestId("button-create-route").click();
+    const modal = page.getByRole("dialog", { name: "Montar rota com 2 entregas" });
+    await expect(modal).toBeVisible();
+    // "Quem vai levar": sem escolha, a rota é oferecida a todos os motoboys disponíveis.
+    await expect(modal.getByLabel("Quem vai levar")).toHaveValue("");
+    await modal.getByTestId("button-confirm-route").click();
+    await expect(modal).toBeHidden({ timeout: 15_000 });
+    await expect(page.getByText("Rota com 2 entregas oferecida a todos os motoboys disponíveis.")).toBeVisible();
     await expect.poll(async () => (await query("select count(*)::int as n from delivery_routes where $1 = any(delivery_ids)", [d1.id]))[0].n, { timeout: 15_000 }).toBe(1);
     await expect.poll(async () => (await json(await central.get(`/deliveries/${d2.id}`))).status).toBe("OFFERED");
   });
@@ -223,7 +249,7 @@ test.describe("Rota pela tela da Central", () => {
 
 test.describe("Atualizar a página (F5) e sair/entrar", () => {
   const pages: [string, RegExp | string][] = [
-    ["/user-portal", /Sua operação/], ["/entregas", /^Entregas$/], ["/mapa", /Mapa em tempo real/],
+    ["/user-portal", /^Entregas$/], ["/entregas", /^Entregas$/],
     ["/motoboys", /^Motoboys$/], ["/reports", /Relatórios e indicadores/], ["/account", /Alterar senha/],
   ];
   for (const [path, heading] of pages) {
@@ -236,19 +262,27 @@ test.describe("Atualizar a página (F5) e sair/entrar", () => {
     });
   }
 
-  test("Sair e entrar de novo volta para a Visão Geral", async ({ page }) => {
+  test("/mapa (aba removida) redireciona para a página Entregas", async ({ page }) => {
+    await loginAs(page, "central", "/mapa");
+    await expect(page).toHaveURL(/^https?:\/\/[^/]+\/$/);
+    await expect(page.getByRole("heading", { level: 1, name: /^Entregas$/ })).toBeVisible({ timeout: 20_000 });
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1, name: /^Entregas$/ })).toBeVisible({ timeout: 20_000 });
+  });
+
+  test("Sair e entrar de novo volta para a página Entregas", async ({ page }) => {
     await loginAs(page, "central", "/entregas");
     await page.getByRole("button", { name: /menu da conta/i }).click();
     await page.getByRole("menuitem", { name: /Sair/ }).click();
     await page.waitForURL((u) => !/entregas/.test(u.pathname), { timeout: 15_000 });
     await page.waitForLoadState("networkidle");
     await loginAs(page, "central");
-    await expect(page.getByRole("heading", { name: /Sua operação/ })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("heading", { level: 1, name: /^Entregas$/ })).toBeVisible({ timeout: 20_000 });
   });
 });
 
 test.describe("Permissões: abrir páginas proibidas digitando o endereço", () => {
-  const forbidden = ["/entregas", "/mapa", "/motoboys", "/reports", "/access", "/filiais"];
+  const forbidden = ["/entregas", "/motoboys", "/reports", "/access", "/filiais"];
   for (const role of ["manager", "courier", "pending"] as const) {
     test(`${role}: nenhuma página da Central abre`, async ({ page }) => {
       const [d] = await query("select id from deliveries limit 1");
@@ -260,7 +294,8 @@ test.describe("Permissões: abrir páginas proibidas digitando o endereço", () 
         await expect(page.getByText("Contas cadastradas"), `${role} vê acessos em ${path}`).toHaveCount(0);
         await expect(page.getByText("Filiais cadastradas"), `${role} vê filiais em ${path}`).toHaveCount(0);
         await expect(page.getByTestId("report-delivery-table"), `${role} vê relatórios em ${path}`).toHaveCount(0);
-        await expect(page.getByRole("heading", { name: /Mapa em tempo real|Informações da entrega/ }), `${role} em ${path}`).toHaveCount(0);
+        await expect(page.locator("#operation-title"), `${role} vê a página Entregas da Central em ${path}`).toHaveCount(0);
+        await expect(page.getByRole("heading", { name: /Informações da entrega|Relatórios e indicadores/ }), `${role} em ${path}`).toHaveCount(0);
       }
     });
   }
@@ -273,18 +308,19 @@ test.describe("Relatórios batem com as entregas", () => {
       count(*) filter (where status='COMPLETED')::int as completed,
       count(*) filter (where status in ('CANCELLED','NOT_DELIVERED'))::int as cancelled
       from deliveries where (created_at at time zone 'America/Sao_Paulo')::date = $1::date`, [today]);
-    await loginAs(page, "central", "/reports");
+    // O relatório geral é do admin/Central (o gerente vê só a "Contabilidade da filial").
+    await loginAs(page, "admin", "/reports");
     await page.getByTestId("filter-report-from").fill(today);
     await page.getByTestId("filter-report-to").fill(today);
+    await expect(page.getByTestId("report-stage-cards")).toBeVisible({ timeout: 20_000 });
     await page.waitForTimeout(2500);
-    const card = (label: string) => page.locator("section, div").filter({ hasText: new RegExp(`^${label}`, "i") }).last();
-    const text = await page.locator("main").innerText();
+    const metric = async (testId: string) =>
+      Number((await page.getByTestId(testId).getByTestId("report-metric-value").innerText()).replace(/\D/g, ""));
     test.info().annotations.push({ type: "banco (hoje)", description: JSON.stringify(db) });
-    const registered = Number(text.match(/Entregas registradas\s+(\d+)/i)?.[1]);
-    const completed = Number(text.match(/Entregas concluídas\s+(\d+)/i)?.[1]);
-    expect(registered, "Entregas registradas").toBe(db.total);
-    expect(completed, "Entregas concluídas").toBe(db.completed);
-    void card;
+    // O card "Entregas concluídas" saiu: o número de concluídas está no card de etapa "Concluídas".
+    expect(await metric("report-metric-entregas-registradas"), "Entregas registradas").toBe(db.total);
+    expect(await metric("report-metric-concluídas"), "Concluídas").toBe(db.completed);
+    expect(await metric("report-metric-canceladas"), "Canceladas").toBe(db.cancelled);
   });
 });
 

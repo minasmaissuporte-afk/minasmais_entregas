@@ -15,6 +15,30 @@ export async function loginAs(page: Page, role: RoleKey, path?: string) {
   await page.waitForLoadState("networkidle").catch(() => undefined);
 }
 
+/**
+ * A chave do Google Maps só aceita a página em localhost:5173. Com E2E_SOURCE_URL (painel com o
+ * código atual, ex.: http://localhost:5174), o navegador abre "localhost:5173" e recebe esse código.
+ */
+export async function serveSourceAs5173(context: import("@playwright/test").BrowserContext) {
+  const sourceUrl = process.env.E2E_SOURCE_URL;
+  if (!sourceUrl) return;
+  await context.route("http://localhost:5173/**", async (route) => {
+    const url = route.request().url().replace("http://localhost:5173", sourceUrl);
+    // O servidor de desenvolvimento às vezes derruba a conexão (ECONNRESET): tenta de novo.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const response = await route.fetch({ url });
+        await route.fulfill({ response });
+        return;
+      } catch (error) {
+        if (attempt >= 3) return route.abort().catch(() => undefined);
+        await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+      }
+    }
+  });
+  await context.routeWebSocket(/localhost:5173/, () => {});
+}
+
 /** Coleta erros de console/página durante o teste. */
 export function trackErrors(page: Page) {
   const errors: string[] = [];

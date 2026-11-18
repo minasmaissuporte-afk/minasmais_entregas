@@ -7,9 +7,30 @@ import {
   useListDeliveries,
   useUpdateDeliveryStatus,
   type AppUser,
+  type Delivery,
 } from "@workspace/api-client-react";
-import { Bike, Check, FilePlus2, KeyRound, LogOut, PackageCheck, Truck, X } from "lucide-react";
+import { BarChart3, Bike, Check, CircleHelp, FilePlus2, KeyRound, LogOut, PackageCheck, Pencil, Truck, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { supportWhatsAppUrl } from "@/lib/support";
+import { paymentLabel } from "@/lib/payment";
+import DeliveryProgress from "@/components/delivery-progress";
+import RequeueButton, { REQUEUE_STATUSES } from "@/components/requeue-button";
+
+/** Entrega esperando um motoboy aceitar (pode entrar numa rota agrupada ou ser cancelada pela loja). */
+const waitingForCourier = (d: { status: string; courierId?: string | null; routeId?: string | null }) =>
+  !d.routeId && (d.status === "REQUESTED" || d.status === "AWAITING_COURIER" || d.status === "NOT_DELIVERED" || (d.status === "OFFERED" && !d.courierId));
+
+/** A loja edita a entrega só enquanto ela está na fila, antes de um motoboy aceitar (mesma regra da API). */
+const editableByStore = (d: { status: string; courierId?: string | null; routeId?: string | null }) =>
+  !d.routeId && !d.courierId && ["REQUESTED", "OFFERED", "AWAITING_COURIER"].includes(d.status);
+
+/** Último motivo informado pelo motoboy ao devolver a entrega. */
+const returnReason = (events: { kind: string; label: string }[]) => {
+  const label = [...events].reverse().find((event) => ["courier_unable_to_deliver", "courier_returning_to_store", "courier_route_aborted"].includes(event.kind))?.label;
+  if (!label) return "";
+  const reason = label.includes(": ") ? label.slice(label.indexOf(": ") + 2) : label;
+  return `Motivo: ${reason}`;
+};
 import LiveMap, { type MapMarker } from "@/components/live-map";
 import { Link } from "wouter";
 import { StatusBadge } from "@/components/delivery-status";
@@ -22,6 +43,7 @@ export default function StorePortal({
   GroupRouteModal,
   RemoveFromRouteModal,
   CancelDeliveryModal,
+  EditDeliveryModal,
 }: {
   profile: AppUser;
   /** Formulário de nova entrega (o mesmo da Central). */
@@ -34,6 +56,8 @@ export default function StorePortal({
   RemoveFromRouteModal?: ComponentType<{ delivery: { id: string; code: string; routeId: string; status: string }; onClose: () => void; onDone: (message: string) => void }>;
   /** Cancelar uma entrega que ainda não foi para um motoboy. */
   CancelDeliveryModal?: ComponentType<{ deliveryId: string; code: string; onClose: () => void; onCancelled: () => void }>;
+  /** Editar endereço, pagamento, receita e observações enquanto a entrega está na fila. */
+  EditDeliveryModal?: ComponentType<{ delivery: Delivery; onClose: () => void; onSaved: () => void }>;
 }) {
   const { signOut } = useAuth();
   const [newDeliveryOpen, setNewDeliveryOpen] = useState(false);
@@ -43,6 +67,7 @@ export default function StorePortal({
   const [routeFeedback, setRouteFeedback] = useState<FeedbackMessage | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{ id: string; code: string; routeId: string; status: string } | null>(null);
   const [cancelTarget, setCancelTarget] = useState<{ id: string; code: string } | null>(null);
+  const [editTarget, setEditTarget] = useState<Delivery | null>(null);
   const toggleSelected = (id: string, checked: boolean) =>
     setSelectedIds((current) =>
       checked ? (current.includes(id) || current.length >= 10 ? current : [...current, id]) : current.filter((item) => item !== id),
@@ -116,6 +141,22 @@ export default function StorePortal({
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
+            {profile.role === "STORE_MANAGER" && (
+              <Link href="/reports" className="button-secondary min-h-9 px-2 text-xs sm:px-3" aria-label="Contabilidade da filial" data-testid="link-store-reports">
+                <BarChart3 size={14} /> <span className="hidden sm:inline">Contabilidade</span>
+              </Link>
+            )}
+            <a
+              href={supportWhatsAppUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="button-secondary min-h-9 px-2 text-xs sm:px-3"
+              aria-label="Ajuda e Suporte: entre em contato com nossa equipe"
+              title="Ajuda e Suporte"
+              data-testid="link-store-support"
+            >
+              <CircleHelp size={14} /> <span className="hidden sm:inline">Suporte</span>
+            </a>
             <Link href="/account" className="button-secondary min-h-9 px-2 text-xs sm:px-3" aria-label="Alterar senha">
               <KeyRound size={14} /> <span className="hidden sm:inline">Senha</span>
             </Link>
@@ -186,7 +227,7 @@ export default function StorePortal({
             <p className="text-sm text-muted-foreground">
               {selectedIds.length
                 ? `${selectedIds.length} entrega${selectedIds.length > 1 ? "s" : ""} marcada${selectedIds.length > 1 ? "s" : ""} para a mesma rota.`
-                : "Para mandar várias entregas com o mesmo motoboy, marque as entregas novas e monte a rota."}
+                : "Toda entrega nova já vai para os motoboys da cidade. Para mandar várias com o mesmo motoboy, marque as que ainda não foram aceitas e monte a rota."}
             </p>
             <div className="flex flex-wrap gap-2">
               {selectedIds.length > 0 && (
@@ -219,10 +260,10 @@ export default function StorePortal({
             {deliveries.data.map((delivery) => (
               <article key={delivery.id} className="panel p-4 sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  {GroupRouteModal && delivery.status === "REQUESTED" && (
+                  {GroupRouteModal && waitingForCourier(delivery) && delivery.status !== "NOT_DELIVERED" && (
                     <input
                       type="checkbox"
-                      className="mt-1 h-5 w-5 shrink-0 accent-[#b91e2c]"
+                      className="mt-1 !h-5 !w-5 shrink-0 accent-[#b91e2c]"
                       aria-label={`Marcar ${delivery.code} para a mesma rota`}
                       checked={selectedIds.includes(delivery.id)}
                       disabled={!selectedIds.includes(delivery.id) && selectedIds.length >= 10}
@@ -234,9 +275,12 @@ export default function StorePortal({
                     <div className="font-mono text-xs font-semibold text-[#a91d2a]">{delivery.code}</div>
                     <h2 className="mt-1 text-sm font-bold">{delivery.customerName}</h2>
                     <p className="mt-1 text-xs text-muted-foreground">{delivery.destination}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">Pedido {delivery.orderNumber}</p>
-                    {(delivery.requiresPrescription || delivery.routeId) && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">Pedido {delivery.orderNumber}{delivery.courierName ? ` · Motoboy: ${delivery.courierName}` : ""}</p>
+                    {(delivery.requiresPrescription || delivery.routeId || paymentLabel(delivery)) && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
+                        {paymentLabel(delivery) && (
+                          <span className="rounded-md bg-[#f3f1ef] px-2 py-0.5 text-[11px] font-semibold text-[#4b4f56]">{paymentLabel(delivery)}</span>
+                        )}
                         {delivery.requiresPrescription && (
                           <span className="rounded-md bg-[#eef4ff] px-2 py-0.5 text-[11px] font-semibold text-[#1d4f91]">
                             {delivery.prescriptionCollectedAt ? "Receita recolhida" : "Com receita"}
@@ -250,6 +294,18 @@ export default function StorePortal({
                   </div>
                   <StatusBadge status={delivery.status} />
                 </div>
+                <div className="mt-3">
+                  <DeliveryProgress status={delivery.status} events={delivery.events} createdAt={delivery.createdAt} compact />
+                </div>
+                {delivery.status === "OFFERED" && !delivery.courierId && !delivery.routeId && (
+                  <p className="mt-3 text-xs text-muted-foreground">Na fila dos motoboys da cidade. Quem aceitar primeiro leva.</p>
+                )}
+                {["AWAITING_COURIER", "RETURNING_TO_STORE", "NOT_DELIVERED"].includes(delivery.status) && (
+                  <p className="mt-3 rounded-lg bg-[#fff6e8] px-3 py-2 text-xs text-[#7a4b06]" role="status">
+                    {delivery.status === "RETURNING_TO_STORE" ? "O produto está voltando para a loja. " : "O motoboy devolveu esta entrega. "}
+                    {returnReason(delivery.events)}
+                  </p>
+                )}
                 {RemoveFromRouteModal && delivery.routeId && (
                   <button
                     type="button"
@@ -260,24 +316,34 @@ export default function StorePortal({
                     <X size={15} aria-hidden="true" /> Tirar da rota
                   </button>
                 )}
-                {CancelDeliveryModal && !delivery.routeId && ["REQUESTED", "AWAITING_COURIER"].includes(delivery.status) && (
+                {!delivery.routeId && REQUEUE_STATUSES.includes(delivery.status) && (
+                  <span className="mt-4 inline-block w-full sm:mr-2 sm:w-auto">
+                    <RequeueButton
+                      deliveryId={delivery.id}
+                      code={delivery.code}
+                      className="button-primary min-h-11 w-full sm:w-auto"
+                      onDone={(text) => setRouteFeedback({ kind: "success", text })}
+                    />
+                  </span>
+                )}
+                {EditDeliveryModal && editableByStore(delivery) && (
                   <button
                     type="button"
-                    className="button-quiet mt-4 min-h-11 w-full sm:ml-2 sm:w-auto"
+                    className="button-secondary mt-4 min-h-11 w-full sm:mr-2 sm:w-auto"
+                    onClick={() => setEditTarget(delivery)}
+                    data-testid={`button-store-edit-${delivery.id}`}
+                  >
+                    <Pencil size={15} aria-hidden="true" /> Editar
+                  </button>
+                )}
+                {CancelDeliveryModal && waitingForCourier(delivery) && (
+                  <button
+                    type="button"
+                    className="button-quiet mt-4 min-h-11 w-full sm:w-auto"
                     onClick={() => setCancelTarget({ id: delivery.id, code: delivery.code })}
                     data-testid={`button-store-cancel-${delivery.id}`}
                   >
                     <X size={15} aria-hidden="true" /> Cancelar entrega
-                  </button>
-                )}
-                {DispatchModal && !delivery.routeId && ["REQUESTED", "AWAITING_COURIER"].includes(delivery.status) && (
-                  <button
-                    type="button"
-                    className="button-secondary mt-4 min-h-11 w-full sm:w-auto"
-                    onClick={() => setDispatchId(delivery.id)}
-                    data-testid={`button-store-dispatch-${delivery.id}`}
-                  >
-                    <Truck size={15} aria-hidden="true" /> Despachar para um motoboy
                   </button>
                 )}
                 {delivery.status === "AT_STORE" ? (
@@ -321,6 +387,16 @@ export default function StorePortal({
           delivery={removeTarget}
           onClose={() => setRemoveTarget(null)}
           onDone={(text) => setRouteFeedback({ kind: "success", text })}
+        />
+      )}
+      {EditDeliveryModal && editTarget && (
+        <EditDeliveryModal
+          delivery={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => {
+            void queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
+            setRouteFeedback({ kind: "success", text: `Entrega ${editTarget.code} atualizada.` });
+          }}
         />
       )}
       {CancelDeliveryModal && cancelTarget && (

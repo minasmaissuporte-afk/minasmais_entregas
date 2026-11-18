@@ -2,7 +2,7 @@
  * Dados fictícios usados pela bateria E2E. Tudo que a bateria cria usa o
  * prefixo `e2e-` (ids) ou `E2E ` (nomes), e é removido pela limpeza.
  */
-export type RoleKey = "admin" | "central" | "manager" | "staff" | "courier" | "pending";
+export type RoleKey = "admin" | "central" | "manager" | "staff" | "courier" | "courierB" | "courierC" | "pending";
 
 export const users: Record<
   RoleKey,
@@ -28,7 +28,28 @@ export const users: Record<
     role: "COURIER",
     courierId: "e2e-courier-1",
   },
+  // Roteiro da nova versão: A (courier) e B na cidade da filial A (Belo Horizonte); C em outra cidade.
+  courierB: {
+    email: "e2e-motoboy-b@example.com",
+    name: "E2E Bruno Motoboy",
+    role: "COURIER",
+    courierId: "e2e-courier-b",
+  },
+  courierC: {
+    email: "e2e-motoboy-c@example.com",
+    name: "E2E Carla Motoboy",
+    role: "COURIER",
+    courierId: "e2e-courier-c",
+  },
   pending: { email: "e2e-pendente@example.com", name: "E2E Pendente", role: "PENDING" },
+};
+
+/** Cidade em que cada motoboy recebe entregas (a da filial A é Belo Horizonte). */
+export const courierCities: Record<string, string> = {
+  "e2e-courier-1": "Belo Horizonte",
+  "e2e-courier-2": "Belo Horizonte",
+  "e2e-courier-b": "Belo Horizonte",
+  "e2e-courier-c": "Contagem",
 };
 
 /** Motoboy extra sem login (só no banco) para cenários com dois motoboys. */

@@ -22,6 +22,21 @@ export interface Delivery {
      * @nullable
      */
   routeId?: string | null;
+  /**
+     * Forma de pagamento do cliente: CARD, PIX ou CASH
+     * @nullable
+     */
+  paymentMethod?: string | null;
+  /**
+     * Dinheiro: troco para quanto (valor com que o cliente vai pagar)
+     * @nullable
+     */
+  changeFor?: number | null;
+  /**
+     * Cartão: levar a maquininha
+     * @nullable
+     */
+  bringCardMachine?: boolean | null;
   destination: string;
   orderNumber?: string;
   /** @nullable */

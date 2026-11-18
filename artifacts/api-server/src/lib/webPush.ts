@@ -1,5 +1,5 @@
 import { createECDH, createHash } from "node:crypto";
-import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import webpush from "web-push";
 import {
   appUsersTable,
@@ -324,11 +324,15 @@ export async function notifyCentralUsers(payload: {
   }
 }
 
+/**
+ * Avisa os motoboys que podem pegar uma entrega. Com `city`, só os daquela cidade
+ * (e os que ainda não têm cidade cadastrada).
+ */
 export async function notifyAvailableCouriers(payload: {
   title: string;
   body: string;
   url?: string;
-}): Promise<void> {
+}, city?: string | null): Promise<void> {
   try {
     const linkedCouriers = await db
       .select({ courierId: appUsersTable.courierId })
@@ -338,6 +342,9 @@ export async function notifyAvailableCouriers(payload: {
         and(
           eq(appUsersTable.role, "COURIER"),
           inArray(couriersTable.status, ["AVAILABLE", "OFFLINE"]),
+          city
+            ? sql`(${couriersTable.city} IS NULL OR lower(trim(${couriersTable.city})) = lower(trim(${city})))`
+            : undefined,
         ),
       );
     await notifyCouriers(

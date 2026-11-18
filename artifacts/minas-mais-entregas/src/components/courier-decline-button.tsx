@@ -60,7 +60,7 @@ export default function CourierDeclineButton({
             }}
             data-testid={testId ? `${testId}-yes` : undefined}
           >
-            Sim, recusar
+            Sim, dispensar
           </button>
         </div>
       </div>

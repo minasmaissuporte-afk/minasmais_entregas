@@ -8,7 +8,8 @@ import type { RoleKey } from "../../support/fixtures-data.ts";
 const pages: [RoleKey, string][] = [
   ["central", "/user-portal"],
   ["central", "/entregas"],
-  ["central", "/mapa"],
+  // "/mapa" saiu (redireciona para "/"): a página inicial do admin tem o mapa grande.
+  ["admin", "/"],
   ["central", "/motoboys"],
   ["central", "/reports"],
   ["admin", "/access"],
@@ -35,7 +36,8 @@ for (const width of [390, 768]) {
 test("Menu lateral: rótulo 'WORKSPACE' alinhado com os itens do menu", async ({ page }) => {
   await loginAs(page, "central");
   const label = page.getByText(/^workspace$/i).first();
-  const item = page.getByRole("link", { name: /Visão Geral/ }).first();
+  // "Visão Geral" saiu do menu: o primeiro item agora é "Entregas".
+  const item = page.getByRole("navigation", { name: "Navegação principal" }).getByRole("link", { name: /^Entregas/ }).first();
   await expect(label).toBeVisible({ timeout: 20_000 });
   // Mede onde o TEXTO começa (não a caixa do elemento, que ocupa a largura toda).
   const textLeft = await label.evaluate((el) => {
@@ -55,10 +57,19 @@ test("Campo de busca de Filiais: ícone não cobre o texto", async ({ page }) =>
   expect(paddingLeft, "padding-left do campo (o ícone ocupa ~16px)").toBeGreaterThanOrEqual(28);
 });
 
-test("Formulário Nova entrega: selects com o mesmo estilo dos outros campos", async ({ page }) => {
+test("Formulário Nova entrega: select da unidade com o mesmo estilo dos outros campos", async ({ page }) => {
   await loginAs(page, "central", "/entregas");
   await page.getByTestId("button-new-delivery").click();
-  const border = (sel: string) => page.getByTestId(sel).evaluate((el) => getComputedStyle(el).borderTopWidth);
-  expect(await border("select-store")).toBe(await border("input-order-number"));
-  expect(await border("select-priority")).toBe(await border("input-order-number"));
+  await expect(page.getByRole("dialog", { name: "Registrar entrega" })).toBeVisible();
+  // O select de Prioridade saiu do formulário; sobrou o da unidade (a Central tem várias filiais).
+  await expect(page.getByTestId("select-priority")).toHaveCount(0);
+  const style = (sel: string) => page.getByTestId(sel).evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { border: s.borderTopWidth, radius: s.borderTopLeftRadius, height: Math.round(el.getBoundingClientRect().height) };
+  });
+  const reference = await style("input-order-number");
+  const select = await style("select-store");
+  expect(select.border).toBe(reference.border);
+  expect(select.radius).toBe(reference.radius);
+  expect(Math.abs(select.height - reference.height), "altura do select diferente dos campos").toBeLessThanOrEqual(2);
 });

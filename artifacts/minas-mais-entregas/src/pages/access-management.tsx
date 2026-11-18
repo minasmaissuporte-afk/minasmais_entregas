@@ -12,7 +12,7 @@ import {
 import { Check, ShieldCheck, Trash2, UsersRound } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useEffect, useState } from "react";
-import AccessInvitePanel, { inviteErrorMessage, useSendInvite } from "@/components/access-invite-panel";
+import AccessInvitePanel, { CityStores, inviteErrorMessage, useSendInvite } from "@/components/access-invite-panel";
 
 /** Perfis usados na operação: administradores, gerente de cada filial e motoboys. */
 const roles: { value: AppUser["role"]; label: string }[] = [
@@ -123,6 +123,7 @@ function UserAccessRow({
   const deleteAccount = useDeleteAccessUser();
   const [role, setRole] = useState<AppUser["role"]>(user.role);
   const [storeId, setStoreId] = useState(user.storeId ?? "");
+  const [courierCity, setCourierCity] = useState(user.courierCity ?? "");
   const [courierId, setCourierId] = useState(user.courierId ?? "");
   const [name, setName] = useState(user.role === "COURIER" ? user.name : "");
   const [phone, setPhone] = useState(user.role === "COURIER" ? user.phone ?? "" : "");
@@ -136,7 +137,8 @@ function UserAccessRow({
         email: user.email,
         name: user.name,
         role: user.role,
-        storeId: user.storeId,
+        storeId: user.role === "STORE_MANAGER" ? user.storeId : null,
+        courierCity: user.role === "COURIER" ? user.courierCity ?? null : null,
         phone: user.phone ?? null,
       });
       setMessage("Convite reenviado.");
@@ -148,16 +150,18 @@ function UserAccessRow({
   useEffect(() => {
     setRole(user.role);
     setStoreId(user.storeId ?? "");
+    setCourierCity(user.courierCity ?? "");
     setCourierId(user.courierId ?? "");
     setName(user.role === "COURIER" ? user.name : "");
     setPhone(user.role === "COURIER" ? user.phone ?? "" : "");
-  }, [user.role, user.storeId, user.courierId, user.name, user.phone]);
+  }, [user.role, user.storeId, user.courierCity, user.courierId, user.name, user.phone]);
 
   const needsStore = role === "STORE_MANAGER" || role === "STORE_STAFF";
   const needsCourier = role === "COURIER";
   const isChanged =
     role !== user.role ||
-    storeId !== (user.storeId ?? "") ||
+    (needsStore && storeId !== (user.storeId ?? "")) ||
+    (needsCourier && courierCity !== (user.courierCity ?? "")) ||
     courierId !== (user.courierId ?? "") ||
     (needsCourier && name.trim() !== user.name) ||
     (needsCourier && (phone.trim() || "") !== (user.phone ?? ""));
@@ -173,7 +177,7 @@ function UserAccessRow({
             ? {
                 name: name.trim(),
                 phone: phone.trim() || null,
-                storeId: storeId || null,
+                courierCity: courierCity || null,
                 courierId: courierId || null,
               }
             : {}),
@@ -256,6 +260,27 @@ function UserAccessRow({
       ))}
     </select>
   );
+  // Motoboy é por cidade: recebe as entregas de todas as filiais dela.
+  const cities = [...new Set(stores.filter((store) => store.active).map((store) => store.city.trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const citySelect = (
+    <div className="min-w-0">
+    <select
+      className="filter-select w-full"
+      aria-label={`Cidade do motoboy ${user.email}`}
+      value={courierCity}
+      onChange={(event) => setCourierCity(event.target.value)}
+      data-testid={`select-courier-city-${user.id}`}
+    >
+      <option value="">Escolha a cidade</option>
+      {courierCity && !cities.includes(courierCity) && <option value={courierCity}>{courierCity}</option>}
+      {cities.map((city) => (
+        <option key={city} value={city}>{city}</option>
+      ))}
+    </select>
+    <CityStores stores={stores} city={courierCity} />
+    </div>
+  );
   const courierSelect = (
     <select
       className="filter-select w-full"
@@ -331,7 +356,7 @@ function UserAccessRow({
             maxLength={40}
             onChange={(event) => setPhone(event.target.value)}
           />
-          {storeSelect}
+          {citySelect}
           {courierSelect}
         </div>
       ) : needsStore ? (

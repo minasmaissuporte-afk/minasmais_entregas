@@ -23,12 +23,14 @@ import {
   type Delivery,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
+import { supportWhatsAppUrl } from "@/lib/support";
+import { paymentLabel } from "@/lib/payment";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
-import { Bell, BellOff, Check, WifiOff, CheckCircle2, Clock3, Hand, History, House, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, Navigation, PackageCheck, Phone, Route as RouteIcon, TrendingUp, Wallet } from "lucide-react";
+import { Bell, BellOff, Check, ChevronRight, CircleHelp, WifiOff, CheckCircle2, Clock3, Hand, History, House, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, Navigation, PackageCheck, Phone, Route as RouteIcon, TrendingUp, Wallet } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
@@ -60,20 +62,20 @@ const periodNames: Record<Period, string> = {
 };
 const OFFER_POLL_MS = 5000;
 const ACTIVE_DELIVERY_STATUSES = ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"];
-// Aceitar já significa "indo para a loja": o próximo toque é a chegada (ACCEPTED → AT_STORE é
-// permitido pela API), sem o passo extra "Iniciar ida à loja".
+// Aceitar já significa "indo para a loja". Chegar e retirar viraram um toque só:
+// ACCEPTED → IN_TRANSIT ("Retirei o pedido na loja").
 const nextCourierStatus: Record<string, string> = {
   OFFERED: "ACCEPTED",
-  ACCEPTED: "AT_STORE",
-  TO_STORE: "AT_STORE",
+  ACCEPTED: "IN_TRANSIT",
+  TO_STORE: "IN_TRANSIT",
   AT_STORE: "IN_TRANSIT",
   IN_TRANSIT: "COMPLETED",
 };
 const nextStatusLabel: Record<string, string> = {
   OFFERED: "Aceitar entrega",
-  ACCEPTED: "Cheguei na loja",
-  TO_STORE: "Cheguei na loja",
-  AT_STORE: "Peguei o pedido, sair para entrega",
+  ACCEPTED: "Retirei o pedido na loja",
+  TO_STORE: "Retirei o pedido na loja",
+  AT_STORE: "Retirei o pedido na loja",
   IN_TRANSIT: "Confirmar entrega concluída",
 };
 const statusLabel: Record<string, string> = {
@@ -199,6 +201,14 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   const [refreshGps, setRefreshGps] = useState<() => void>(() => undefined);
   const [nativePushStatusReady, setNativePushStatusReady] = useState(!isNativeApp);
   const [actionError, setActionError] = useState<{ deliveryId: string; text: string } | null>(null);
+  // Aviso fora do cartão: quando o aceite falha (ex.: outro motoboy aceitou antes), a oferta some da
+  // lista junto com o cartão, e a mensagem dentro dele nunca chegaria a aparecer.
+  const [offerNotice, setOfferNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!offerNotice) return;
+    const timeout = window.setTimeout(() => setOfferNotice(null), 8000);
+    return () => window.clearTimeout(timeout);
+  }, [offerNotice]);
   const [pushMessage, setPushMessage] = useState("");
   const changeActiveTab = useCallback((value: string) => {
     if (!["deliveries", "map", "history", "earnings"].includes(value)) return;
@@ -725,7 +735,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
         queryClient.invalidateQueries({ queryKey: getListCourierRoutesQueryKey() }),
       ]);
     } catch {
-      setDeclineError({ deliveryId, text: courierActionErrorText("Não foi possível recusar esta oferta. Tente novamente.") });
+      setDeclineError({ deliveryId, text: courierActionErrorText("Não foi possível dispensar esta oferta. Tente novamente.") });
     }
   };
   const returningDeliveries = useMemo(
@@ -735,6 +745,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   );
   const updateDelivery = async (deliveryId: string, status: string, evidencePath?: string, prescriptionCollected?: boolean) => {
     setActionError(null);
+    setOfferNotice(null);
     if (["ACCEPTED", "TO_STORE", "IN_TRANSIT"].includes(status) && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         ({ coords, timestamp }) => {
@@ -771,9 +782,15 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
         queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period: "month" }) }),
         queryClient.invalidateQueries({ queryKey: getGetCourierDeliveryNavigationQueryKey(deliveryId) }),
       ]);
-    } catch {
-      const text = courierActionErrorText("Não foi possível atualizar esta entrega. Tente novamente.");
+    } catch (error) {
+      // Ex.: "Outro motoboy aceitou esta entrega primeiro." — a oferta some da lista.
+      const apiMessage = (error as { data?: { error?: string } } | null)?.data?.error;
+      const text = apiMessage ?? courierActionErrorText("Não foi possível atualizar esta entrega. Tente novamente.");
       setActionError({ deliveryId, text });
+      if (status === "ACCEPTED") {
+        setOfferNotice(text);
+        void queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
+      }
       // The photo flow shows this message next to its own button and keeps the photo for a retry.
       throw new Error(status === "COMPLETED" ? `${text} A foto continua aqui.` : text);
     }
@@ -828,7 +845,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                   </div>
                   <dl className="mt-4 divide-y divide-[#e9e4dc] rounded-2xl bg-white px-4">
                     <div className="py-3"><dt className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Telefone</dt><dd className={`mt-1 text-sm ${profile.phone ? "" : "text-muted-foreground"}`}>{profile.phone || "Não informado — fale com o administrador"}</dd></div>
-                    <div className="py-3"><dt className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Filial</dt><dd className={`mt-1 text-sm ${profile.storeName ? "" : "text-muted-foreground"}`}>{profile.storeName || "Não informado — fale com o administrador"}</dd></div>
+                    <div className="py-3"><dt className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Cidade</dt><dd className={`mt-1 text-sm ${profile.courierCity ? "" : "text-muted-foreground"}`}>{profile.courierCity || "Não informada — fale com o administrador"}</dd></div>
                     <div className="py-3"><dt className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Conta</dt><dd className="mt-1 text-sm">{profile.email}</dd></div>
                   </dl>
                   <div className="mt-4 space-y-2">
@@ -844,6 +861,21 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
                     <Link href="/account" onClick={() => setMenuOpen(false)} className="button-secondary min-h-12 w-full justify-start" data-testid="link-courier-password">
                       <KeyRound size={17} /> Alterar senha
                     </Link>
+                    <a
+                      href={supportWhatsAppUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setMenuOpen(false)}
+                      className="button-secondary min-h-14 w-full justify-start gap-3 py-2 text-left"
+                      data-testid="link-courier-support"
+                    >
+                      <CircleHelp size={17} className="shrink-0" aria-hidden="true" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold">Ajuda e Suporte</span>
+                        <span className="block text-xs font-normal text-muted-foreground">Entre em contato com nossa equipe</span>
+                      </span>
+                      <ChevronRight size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+                    </a>
                     <button type="button" className="button-secondary min-h-12 w-full justify-start !border-[#ead0d2] !text-[#a91d2a]" onClick={() => void handleSignOut()} data-testid="button-courier-sign-out">
                       <LogOut size={17} /> Sair da conta
                     </button>
@@ -873,6 +905,12 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       <div className={activeTab === "map" ? "h-full w-full" : "courier-content-shell mx-auto w-full max-w-2xl px-3 sm:px-5"}>
         <Tabs value={activeTab} onValueChange={changeActiveTab}>
           <TabsContent value="deliveries" forceMount aria-hidden={activeTab !== "deliveries"} className={`courier-tab-panel courier-tab-panel--deliveries ${activeTab === "deliveries" ? "mt-0" : ""} ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`} data-transitioning={tabTransitioning ? "true" : "false"}>
+            {offerNotice && (
+              <div className="mb-3 mt-3 flex items-start gap-2 rounded-xl border border-[#edc9c4] bg-[#fff1ed] px-4 py-3 text-sm font-semibold text-[#94382e]" role="alert" data-testid="alert-courier-offer-notice">
+                <span className="min-w-0 flex-1">{offerNotice}</span>
+                <button type="button" className="shrink-0 text-xs underline" onClick={() => setOfferNotice(null)}>Fechar</button>
+              </div>
+            )}
             {notificationsNeedAttention && !hasActiveWork && pendingOffers === 0 && (
               <section className="courier-device-notice" role="status" data-testid="alert-courier-device">
                 <BellOff size={15} aria-hidden="true" />
@@ -903,22 +941,22 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
             />
             {!hasActiveWork && pendingOffers === 0 && isOnline && <button type="button" className="courier-daily-summary mt-3 w-full text-left" onClick={() => changeActiveTab("earnings")} data-testid="button-courier-daily-summary">
               <span className="courier-summary-icon"><TrendingUp size={17} /></span>
-              <span className="min-w-0 flex-1"><span className="block text-sm font-extrabold">Seu dia está rendendo</span><span className="mt-1 block text-sm font-bold">{dailyEarnings.isLoading ? "Atualizando seus totais…" : `Hoje: ${dailyEarnings.data?.completedDeliveries ?? "—"} ${(dailyEarnings.data?.completedDeliveries ?? 0) === 1 ? "entrega" : "entregas"} · ${money(dailyEarnings.data?.amountToReceive ?? 0)}`}</span></span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-extrabold">Suas entregas de hoje</span><span className="mt-1 block text-sm font-bold">{dailyEarnings.isLoading ? "Atualizando seus totais…" : `${dailyEarnings.data?.completedDeliveries ?? "—"} ${(dailyEarnings.data?.completedDeliveries ?? 0) === 1 ? "entrega feita" : "entregas feitas"}`}</span></span>
             </button>}
             {!hasActiveWork && pendingOffers === 0 && isOnline && <p className="courier-keep-open-note">Mantenha o app aberto para não perder pedidos.</p>}
           </TabsContent>
 
           <TabsContent value="history" forceMount aria-hidden={activeTab !== "history"} className={`courier-tab-panel courier-tab-panel--deliveries ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
             <div className="courier-page-heading"><div className="eyebrow">SUAS ATIVIDADES</div><h1>Histórico</h1><p>Entregas concluídas e não realizadas.</p></div>
-            <div className="courier-activity-switch" role="tablist" aria-label="Histórico e ganhos">
+            <div className="courier-activity-switch" role="tablist" aria-label="Histórico e totais">
               <button type="button" role="tab" aria-selected="true" onClick={() => changeActiveTab("history")} data-testid="tab-courier-history">Histórico</button>
-              <button type="button" role="tab" aria-selected="false" onClick={() => changeActiveTab("earnings")} data-testid="tab-courier-earnings-page">Ganhos</button>
+              <button type="button" role="tab" aria-selected="false" onClick={() => changeActiveTab("earnings")} data-testid="tab-courier-earnings-page">Totais</button>
             </div>
             <div className="courier-period-switch mt-3" role="tablist" aria-label="Período do histórico">
               {(["day", "week", "month"] as const).map((option) => <button key={option} type="button" role="tab" aria-selected={period === option} onClick={() => setPeriod(option)} data-testid={`tab-history-period-${option}`}>{periodNames[option]}</button>)}
             </div>
             <section className="courier-total-strip courier-total-strip--selected" aria-label="Totais do período">
-              <div className="courier-total-cell"><span>{periodNames[period]}</span><strong>{earnings.isLoading ? "—" : `${earnings.data?.completedDeliveries ?? "—"} ${earnings.data?.completedDeliveries === 1 ? "entrega" : "entregas"}`}</strong><b>{earnings.isLoading ? "—" : money(earnings.data?.amountToReceive ?? 0)}</b></div>
+              <div className="courier-total-cell"><span>{periodNames[period]}</span><strong>{earnings.isLoading ? "—" : `${earnings.data?.completedDeliveries ?? "—"} ${earnings.data?.completedDeliveries === 1 ? "entrega" : "entregas"}`}</strong></div>
             </section>
             <div className="mt-5 flex items-center justify-between gap-2">
               <h2 className="text-base font-extrabold">Entregas recentes</h2>
@@ -935,19 +973,18 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           </TabsContent>
 
           <TabsContent value="earnings" forceMount aria-hidden={activeTab !== "earnings"} className={`courier-tab-panel courier-tab-panel--deliveries ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
-            <div className="courier-page-heading"><div className="eyebrow">SEU DESEMPENHO</div><h1>Ganhos</h1><p>Totais informados pela Central.</p></div>
-            <div className="courier-activity-switch" role="tablist" aria-label="Histórico e ganhos">
+            <div className="courier-page-heading"><div className="eyebrow">SEU DESEMPENHO</div><h1>Entregas feitas</h1><p>Quantas entregas você concluiu em cada período.</p></div>
+            <div className="courier-activity-switch" role="tablist" aria-label="Histórico e totais">
               <button type="button" role="tab" aria-selected="false" onClick={() => changeActiveTab("history")} data-testid="tab-courier-history">Histórico</button>
-              <button type="button" role="tab" aria-selected="true" onClick={() => changeActiveTab("earnings")} data-testid="tab-courier-earnings-page">Ganhos</button>
+              <button type="button" role="tab" aria-selected="true" onClick={() => changeActiveTab("earnings")} data-testid="tab-courier-earnings-page">Totais</button>
             </div>
-            <div className="courier-period-switch" role="tablist" aria-label="Período dos ganhos">
+            <div className="courier-period-switch" role="tablist" aria-label="Período">
               {(["day", "week", "month"] as const).map((option) => <button key={option} type="button" role="tab" aria-selected={period === option} onClick={() => setPeriod(option)} data-testid={`tab-earnings-${option}`}>{periodNames[option]}</button>)}
             </div>
-            {earnings.isError ? <div className="courier-state-card mt-3" role="alert"><p className="font-bold">Não foi possível consultar seus ganhos.</p><button type="button" className="button-secondary mt-3" onClick={() => void earnings.refetch()}>Tentar novamente</button></div>
+            {earnings.isError ? <div className="courier-state-card mt-3" role="alert"><p className="font-bold">Não foi possível consultar suas entregas.</p><button type="button" className="button-secondary mt-3" onClick={() => void earnings.refetch()}>Tentar novamente</button></div>
               : <section className="courier-earnings-hero mt-3" aria-live="polite" data-testid="summary-courier-earnings">
-                <span className="courier-summary-icon"><TrendingUp size={18} /></span><p className="mt-4 text-xs font-semibold text-white/75">A receber · {periodNames[period].toLocaleLowerCase("pt-BR")}</p>
-                <strong className="mt-1 block text-3xl font-extrabold tracking-tight">{earnings.isLoading ? "—" : money(earnings.data?.amountToReceive ?? 0)}</strong>
-                <div className="mt-4 flex items-center justify-between border-t border-white/20 pt-3 text-xs"><span className="text-white/75">Entregas concluídas</span><b>{earnings.isLoading ? "—" : `${earnings.data?.completedDeliveries ?? "—"} ${earnings.data?.completedDeliveries === 1 ? "entrega concluída" : "entregas concluídas"}`}</b></div>
+                <span className="courier-summary-icon"><TrendingUp size={18} /></span><p className="mt-4 text-xs font-semibold text-white/75">Entregas concluídas · {periodNames[period].toLocaleLowerCase("pt-BR")}</p>
+                <strong className="mt-1 block text-3xl font-extrabold tracking-tight">{earnings.isLoading ? "—" : `${earnings.data?.completedDeliveries ?? 0} ${earnings.data?.completedDeliveries === 1 ? "entrega" : "entregas"}`}</strong>
               </section>}
             <button type="button" className="button-secondary mt-4 min-h-12 w-full justify-center" onClick={() => changeActiveTab("history")}><History size={16} /> Ver histórico de entregas</button>
           </TabsContent>
@@ -965,7 +1002,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           <span className="courier-nav-icon"><House size={19} /></span><span>Início</span>{pendingOffers > 0 && <i className="courier-offer-badge">{pendingOffers}</i>}
         </button>
         <button type="button" className="courier-nav-map" onClick={() => changeActiveTab("map")} aria-label="Abrir mapa" data-testid="nav-courier-map"><span><MapIcon size={22} /></span><small>Mapa</small></button>
-        <button type="button" className={activeTab === "history" || activeTab === "earnings" ? "active" : ""} onClick={() => changeActiveTab("earnings")} aria-current={activeTab === "history" || activeTab === "earnings" ? "page" : undefined} data-testid="nav-courier-history"><span className="courier-nav-icon"><Wallet size={19} aria-hidden="true" /></span><span>Ganhos</span></button>
+        <button type="button" className={activeTab === "history" || activeTab === "earnings" ? "active" : ""} onClick={() => changeActiveTab("history")} aria-current={activeTab === "history" || activeTab === "earnings" ? "page" : undefined} data-testid="nav-courier-history"><span className="courier-nav-icon"><History size={19} aria-hidden="true" /></span><span>Histórico</span></button>
       </nav>
     </main>
   );
@@ -1054,7 +1091,7 @@ function CourierIndividualDeliveryCard({
           <span>
             {[delivery.distanceKm != null ? `${Number(delivery.distanceKm).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km` : null, delivery.estimatedMinutes != null ? `${delivery.estimatedMinutes} min` : null].filter(Boolean).join(" · ")}
           </span>
-          <strong>{money(delivery.deliveryAmount)}</strong>
+          <strong>{paymentLabel(delivery) ?? ""}</strong>
         </div>
         <a
           className="button-primary courier-navigate-button min-h-12 w-full justify-center"
@@ -1154,7 +1191,7 @@ function CourierIndividualDeliveryCard({
           <span>
             {[delivery.distanceKm != null ? `${Number(delivery.distanceKm).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km` : null, delivery.estimatedMinutes != null ? `${delivery.estimatedMinutes} min` : null].filter(Boolean).join(" · ")}
           </span>
-          <strong>{money(delivery.deliveryAmount)}</strong>
+          <strong>{paymentLabel(delivery) ?? ""}</strong>
         </div>
       )}
       {delivery.status !== "OFFERED" && (delivery.estimatedMinutes != null || delivery.distanceKm != null) && (
@@ -1199,7 +1236,7 @@ function CourierIndividualDeliveryCard({
         </a>
       )}
       <div className="courier-delivery-footer mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-        <span className="courier-delivery-amount">{money(delivery.deliveryAmount)}</span>
+        <span className="courier-delivery-amount">{paymentLabel(delivery) ?? ""}</span>
         {delivery.status === "IN_TRANSIT" && nextStatus ? (
           <div className="courier-delivery-evidence w-full space-y-2">
             <EvidencePhotoAction
@@ -1213,7 +1250,7 @@ function CourierIndividualDeliveryCard({
         ) : nextStatus ? (
           <div className="flex w-full flex-col gap-2">
             {nearStore && (
-              <p className="courier-near-store" role="status">Você está na loja? Confirme a chegada.</p>
+              <p className="courier-near-store" role="status">Está na loja? Confirme a retirada do pedido.</p>
             )}
             <button
               type="button"
@@ -1234,10 +1271,10 @@ function CourierIndividualDeliveryCard({
       {delivery.status === "OFFERED" && (
         <div className="mt-2">
           <CourierDeclineButton
-            label="Recusar oferta"
+            label="Dispensar oferta"
             busyLabel="Recusando oferta…"
-            question="Recusar esta entrega?"
-            detail="Ela volta para a fila da Central e pode ir para outro motoboy."
+            question="Dispensar esta entrega?"
+            detail="Ela some só para você e continua disponível para os outros motoboys."
             onConfirm={() => void onDecline(delivery.id)}
             busy={declining}
             disabled={busy}
