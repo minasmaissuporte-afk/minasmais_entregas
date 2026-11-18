@@ -13,7 +13,8 @@ export type MapMarker = MapCoordinate & {
   id: string;
   title: string;
   detail: string;
-  kind: "courier" | "stop" | "current" | "store";
+  /** "destination": endereço do cliente de uma entrega em andamento (não entra na linha de paradas). */
+  kind: "courier" | "stop" | "current" | "store" | "destination";
   sequence?: number;
   label?: string;
   completed?: boolean;
@@ -101,6 +102,7 @@ function markerLabel(marker: MapMarker) {
   if (marker.kind === "stop") return String(marker.sequence ?? "");
   // Por extenso: "F"/"E" confundiam com a inicial de nomes (ex.: motoboy Caio).
   if (marker.kind === "store") return "Loja";
+  if (marker.kind === "destination") return "Cliente";
   if (marker.kind === "courier" || marker.kind === "current") return "M";
   return "•";
 }
@@ -355,9 +357,12 @@ export default function LiveGoogleMap({
   interactive = true,
   routeColor,
   extraRoutes,
+  fitKey,
 }: {
   /** Rotas adicionais desenhadas no mapa (uma linha por motoboy). */
   extraRoutes?: MapRouteLine[];
+  /** Quando muda (ex.: um motoboy ficou online), o mapa reenquadra todos os marcadores. */
+  fitKey?: string;
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
   ariaLabel: string;
@@ -386,7 +391,8 @@ export default function LiveGoogleMap({
   const extraLinesRef = useRef(new Map<string, google.maps.Polyline>());
   const userLocationMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const syncMapDataRef = useRef<() => void>(() => {});
-  const currentDataRef = useRef({ markers, routeGeometry, extraRoutes });
+  const currentDataRef = useRef({ markers, routeGeometry, extraRoutes, fitKey });
+  const lastFitKeyRef = useRef<string | undefined>(undefined);
   const fitPaddingRef = useRef(fitPadding);
   const fitBehindBottomPanelRef = useRef(fitBehindBottomPanel);
   const autoFitOnGeometryChangeRef = useRef(autoFitOnGeometryChange);
@@ -401,7 +407,7 @@ export default function LiveGoogleMap({
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
   const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID?.trim() || DEFAULT_MAP_ID;
-  currentDataRef.current = { markers, routeGeometry, extraRoutes };
+  currentDataRef.current = { markers, routeGeometry, extraRoutes, fitKey };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -464,8 +470,10 @@ export default function LiveGoogleMap({
                   .map((point) => `${point.latitude.toFixed(6)},${point.longitude.toFixed(6)}`)
                   .join(";")
               : "";
+            const currentFitKey = currentDataRef.current.fitKey;
             const shouldFit =
               !initialViewSetRef.current ||
+              (currentFitKey !== undefined && currentFitKey !== lastFitKeyRef.current) ||
               (autoFitOnGeometryChangeRef.current &&
                 geometryKey !== lastFitGeometryRef.current);
             if (fitCoordinates.length && shouldFit) {
@@ -478,6 +486,7 @@ export default function LiveGoogleMap({
               );
               initialViewSetRef.current = true;
               lastFitGeometryRef.current = geometryKey;
+              lastFitKeyRef.current = currentFitKey;
             }
           } catch (error) {
             logMapError("Falha ao desenhar marcadores ou rota", error);
@@ -532,7 +541,7 @@ export default function LiveGoogleMap({
 
   useEffect(() => {
     if (mapRef.current) syncMapDataRef.current();
-  }, [markers, routeGeometry, extraRoutes]);
+  }, [markers, routeGeometry, extraRoutes, fitKey]);
 
   useEffect(() => {
     // O Google redimensiona o mapa sozinho; aqui só garantimos o primeiro enquadramento
