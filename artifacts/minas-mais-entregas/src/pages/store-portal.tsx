@@ -120,7 +120,38 @@ export default function StorePortal({
           : "sem horário"
       }`,
       kind: "courier",
+      color: "#b91e2c",
     }));
+  // Loja e cliente de cada entrega em andamento: início e fim do trajeto desenhado.
+  const activeDeliveries = (deliveries.data ?? []).filter((delivery) =>
+    ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status) &&
+    (!effectiveSelectedCourierId || delivery.courierId === effectiveSelectedCourierId));
+  const firstWithStore = activeDeliveries.find((delivery) => delivery.storeLatitude != null && delivery.storeLongitude != null);
+  const placeMarkers: MapMarker[] = [
+    ...(firstWithStore
+      ? [{
+          id: `store-${firstWithStore.storeId}`,
+          latitude: firstWithStore.storeLatitude!,
+          longitude: firstWithStore.storeLongitude!,
+          title: firstWithStore.storeName,
+          detail: firstWithStore.storeAddress ?? firstWithStore.storeName,
+          kind: "store" as const,
+          color: "#ffffff",
+          textColor: "#b91e2c",
+        }]
+      : []),
+    ...activeDeliveries
+      .filter((delivery) => delivery.customerLatitude != null && delivery.customerLongitude != null)
+      .map((delivery) => ({
+        id: `destination-${delivery.id}`,
+        latitude: delivery.customerLatitude!,
+        longitude: delivery.customerLongitude!,
+        title: `Cliente · ${delivery.customerName}`,
+        detail: `${delivery.code} · ${delivery.destination}`,
+        kind: "destination" as const,
+        color: "#b91e2c",
+      })),
+  ];
   const updateStatus = useUpdateDeliveryStatus();
   const [pendingDeliveryId, setPendingDeliveryId] = useState<string | null>(null);
   const [pickupFeedback, setPickupFeedback] = useState<{ deliveryId: string; feedback: FeedbackMessage } | null>(null);
@@ -222,7 +253,7 @@ export default function StorePortal({
             <div className="skeleton m-4 h-[280px]" />
           ) : trackingMarkers.length || routeLines.length ? (
             <LiveMap
-              markers={trackingMarkers}
+              markers={[...trackingMarkers, ...placeMarkers]}
               extraRoutes={routeLines}
               ariaLabel="Localização atual dos motoboys atendendo esta unidade"
             />

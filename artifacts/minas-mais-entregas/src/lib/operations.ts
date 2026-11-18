@@ -19,7 +19,7 @@ export const ACTIVE_STATUSES = new Set([
 export const PENDING_STATUSES = new Set(["REQUESTED", "AWAITING_COURIER", "OFFERED", "ACCEPTED", "TO_STORE", "AT_STORE"]);
 
 /** Same rule as the API (`/dashboard/summary`): a GPS fix in the last 2 minutes means online. */
-export const COURIER_ONLINE_MS = 120_000;
+export const COURIER_ONLINE_MS = 90_000;
 /** Design rule: GPS missing for 5 minutes during a delivery becomes an alert. */
 export const COURIER_SIGNAL_LOST_MS = 5 * 60_000;
 
@@ -140,6 +140,8 @@ export function courierAgeMs(courier: Courier, now: number) {
 }
 
 export function courierState(courier: Courier, now: number): CourierState {
+  // Desligou a chave "online" no app: offline na hora, mesmo com GPS recente.
+  if (courier.status === "OFFLINE") return "offline";
   const age = courierAgeMs(courier, now);
   const online = age != null && age <= COURIER_ONLINE_MS;
   if (!online) return "offline";

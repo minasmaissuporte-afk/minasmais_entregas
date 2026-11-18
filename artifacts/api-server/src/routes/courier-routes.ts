@@ -566,31 +566,48 @@ router.post(
 );
 
 /**
- * Trajeto fixo loja → cliente de cada entrega avulsa em andamento. Não muda durante a
- * entrega, então fica guardado em memória para não chamar o Google a cada atualização.
+ * Trajeto de cada entrega avulsa em andamento, como o motoboy vê no app:
+ * indo para a loja = motoboy → loja → cliente; já retirou = motoboy → cliente.
+ * Calculado pelo Google e guardado em memória; só recalcula quando o motoboy anda
+ * uns 150 m ou a etapa muda (sem chamar o Google a cada atualização do painel).
  */
 const individualRouteCache = new Map<string, Array<{ latitude: number; longitude: number }>>();
 
 async function individualRouteGeometry(row: {
   id: string;
+  status: string;
   storeLatitude: number | null;
   storeLongitude: number | null;
   customerLatitude: number | null;
   customerLongitude: number | null;
+  courierLatitude: number | null;
+  courierLongitude: number | null;
 }) {
-  const cached = individualRouteCache.get(row.id);
+  if (row.customerLatitude == null || row.customerLongitude == null) return null;
+  const customer = { latitude: row.customerLatitude, longitude: row.customerLongitude };
+  const store = row.storeLatitude != null && row.storeLongitude != null
+    ? { latitude: row.storeLatitude, longitude: row.storeLongitude }
+    : null;
+  const courier = row.courierLatitude != null && row.courierLongitude != null
+    ? { latitude: row.courierLatitude, longitude: row.courierLongitude }
+    : null;
+  const pickedUp = row.status === "IN_TRANSIT";
+  const points = [
+    ...(courier ? [courier] : []),
+    ...(!pickedUp && store ? [store] : []),
+    customer,
+  ];
+  if (points.length < 2) return null;
+  // ~150 m de grade na posição do motoboy.
+  const grid = (value: number) => (Math.round(value * 700) / 700).toFixed(4);
+  const key = `${row.id}:${pickedUp ? "cliente" : "loja"}:${courier ? `${grid(courier.latitude)},${grid(courier.longitude)}` : "sem-gps"}`;
+  const cached = individualRouteCache.get(key);
   if (cached) return cached;
-  if (row.storeLatitude == null || row.storeLongitude == null || row.customerLatitude == null || row.customerLongitude == null) {
-    return null;
-  }
   try {
-    const directions = await computeDrivingRoute([
-      { latitude: row.storeLatitude, longitude: row.storeLongitude },
-      { latitude: row.customerLatitude, longitude: row.customerLongitude },
-    ]);
+    const directions = await computeDrivingRoute(points);
     if (directions.geometry.length < 2) return null;
     if (individualRouteCache.size > 500) individualRouteCache.clear();
-    individualRouteCache.set(row.id, directions.geometry);
+    individualRouteCache.set(key, directions.geometry);
     return directions.geometry;
   } catch {
     return null;
@@ -636,8 +653,11 @@ router.get(
     const individual = await db
       .select({
         id: deliveriesTable.id,
+        status: deliveriesTable.status,
         courierId: deliveriesTable.courierId,
         storeId: deliveriesTable.storeId,
+        courierLatitude: couriersTable.currentLatitude,
+        courierLongitude: couriersTable.currentLongitude,
         customerLatitude: deliveriesTable.customerLatitude,
         customerLongitude: deliveriesTable.customerLongitude,
         storeLatitude: storesTable.latitude,

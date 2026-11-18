@@ -27,8 +27,10 @@ export default function LiveMap({
   interactive = true,
   routeColor,
   extraRoutes,
+  fitKey,
 }: {
   extraRoutes?: MapRouteLine[];
+  fitKey?: string;
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
   ariaLabel: string;
@@ -82,6 +84,7 @@ export default function LiveMap({
         interactive={interactive}
         routeColor={routeColor}
         extraRoutes={extraRoutes}
+        fitKey={fitKey}
       />
     </Suspense>
   );

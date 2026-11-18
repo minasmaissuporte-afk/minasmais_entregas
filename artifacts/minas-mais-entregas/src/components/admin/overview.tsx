@@ -65,13 +65,15 @@ import {
  * last data on screen when a refresh fails.
  */
 
-const REFRESH_MS = 15_000;
+// Painel ao vivo: o app do motoboy manda a posição a cada ~15 s.
+const REFRESH_MS = 10_000;
 const AUTO_REFRESH_KEY = "adm-auto-refresh";
 
+// Em entrega: vermelho, igual ao trajeto e ao marcador do cliente (como no app do motoboy).
 const MARKER = {
-  busy: "#456fad",
+  busy: "#b91e2c",
   available: "#1b6e46",
-  urgent: "#b91e2c",
+  urgent: "#7a0f1a",
   offline: "#98a2b3",
 };
 
@@ -383,7 +385,32 @@ export function OperationMap({
   const visibleRoutes = layers.route
     ? routes.filter((route) => !filters.courierId || route.courierId === filters.courierId)
     : [];
-  const markers = [...(layers.couriers ? courierMarkers : []), ...(layers.stores ? storeMarkers : [])];
+  // Destino (cliente) de cada entrega em andamento: fim do trajeto desenhado.
+  const destinationMarkers: MapMarker[] = deliveries
+    .filter((delivery) =>
+      ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status) &&
+      delivery.customerLatitude != null && delivery.customerLongitude != null &&
+      (!filters.courierId || delivery.courierId === filters.courierId) &&
+      (!filters.storeId || delivery.storeId === filters.storeId))
+    .map((delivery) => ({
+      id: `destination-${delivery.id}`,
+      latitude: delivery.customerLatitude!,
+      longitude: delivery.customerLongitude!,
+      title: `Cliente · ${delivery.customerName}`,
+      detail: `${delivery.code} · ${delivery.destination}`,
+      kind: "destination",
+      color: MARKER.busy,
+    }));
+  // Reenquadra o mapa quando um motoboy fica online/offline ou surge uma entrega em andamento.
+  const liveFitKey = [
+    ...couriers.filter((courier) => courier.currentLatitude != null && courierState(courier, now) !== "offline").map((courier) => courier.id),
+    ...destinationMarkers.map((marker) => marker.id),
+  ].sort().join("|");
+  const markers = [
+    ...(layers.couriers ? courierMarkers : []),
+    ...(layers.stores ? storeMarkers : []),
+    ...(layers.route ? destinationMarkers : []),
+  ];
   const routeLines = visibleRoutes.map((route) => ({ id: route.id, geometry: route.routeGeometry, color: MARKER.busy }));
   const latestAge = courierMarkers.reduce<number | null>((latest, marker) => {
     const courier = couriers.find((item) => item.id === marker.id);
@@ -444,6 +471,7 @@ export function OperationMap({
           <LiveMap
             markers={markers}
             extraRoutes={routeLines}
+            fitKey={liveFitKey}
             routeColor={MARKER.busy}
             ariaLabel="Mapa da operação com motoboys, filiais e rota ativa"
             showCenterControls
@@ -481,7 +509,7 @@ export function OperationMap({
             {[
               [MARKER.busy, "Em rota"],
               [MARKER.available, "Disponível"],
-              [MARKER.urgent, "Urgente"],
+              [MARKER.urgent, "Atrasada"],
               [MARKER.offline, "Offline"],
             ].map(([color, label]) => (
               <span key={label} className="inline-flex items-center gap-1.5"><span className="size-1.5 rounded-full" style={{ background: color }} />{label}</span>
