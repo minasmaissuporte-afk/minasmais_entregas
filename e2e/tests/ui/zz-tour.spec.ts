@@ -91,7 +91,7 @@ for (const [label, size] of [["desktop", { width: 1440, height: 900 }], ["celula
     await loginAs(page, "courier");
     await page.waitForTimeout(2000);
     await shot(page, `${label}-motoboy-home`);
-    // Barra inferior: Início / Mapa / Histórico ("Histórico" abre "Entregas feitas").
+    // Barra inferior: Início / Mapa / Histórico (total do período + lista).
     for (const id of ["nav-courier-map", "nav-courier-history"]) {
       const tab = page.getByTestId(id);
       if (await tab.isVisible().catch(() => false)) {

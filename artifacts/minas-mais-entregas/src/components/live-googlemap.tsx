@@ -99,7 +99,8 @@ function markerColor(marker: MapMarker) {
 function markerLabel(marker: MapMarker) {
   if (marker.label) return marker.label;
   if (marker.kind === "stop") return String(marker.sequence ?? "");
-  if (marker.kind === "store") return "F";
+  // Por extenso: "F"/"E" confundiam com a inicial de nomes (ex.: motoboy Caio).
+  if (marker.kind === "store") return "Loja";
   if (marker.kind === "courier" || marker.kind === "current") return "M";
   return "•";
 }
@@ -108,18 +109,20 @@ function styleMarkerElement(element: HTMLSpanElement, marker: MapMarker) {
   element.setAttribute("aria-label", marker.title);
   element.setAttribute("role", "img");
   element.dataset.mapMarker = marker.id;
-  element.textContent = markerLabel(marker);
+  const text = markerLabel(marker);
+  const pill = text.length > 2;
+  element.textContent = text;
   Object.assign(element.style, {
     display: "grid",
     placeItems: "center",
-    minWidth: `${marker.label ? 52 : 32}px`,
+    minWidth: `${pill ? 52 : 32}px`,
     height: "32px",
-    padding: marker.label ? "0 8px" : "0",
+    padding: pill ? "0 8px" : "0",
     border: "3px solid #fff",
     borderRadius: "18px",
     background: markerColor(marker),
     color: marker.textColor ?? "#fff",
-    font: `700 ${marker.label ? 11 : 13}px/1 system-ui`,
+    font: `700 ${pill ? 11 : 13}px/1 system-ui`,
     whiteSpace: "nowrap",
     boxShadow: "0 2px 8px #1115",
     cursor: marker.draggable ? "grab" : "pointer",
@@ -229,6 +232,39 @@ function syncRouteLine(
   return path;
 }
 
+export type MapRouteLine = { id: string; geometry: MapCoordinate[]; color?: string };
+
+/** Várias rotas ao mesmo tempo (ex.: painel com todos os motoboys em entrega). */
+function syncExtraRoutes(
+  map: google.maps.Map,
+  libraries: Libraries,
+  lines: Map<string, google.maps.Polyline>,
+  routes: MapRouteLine[] | undefined,
+) {
+  const wanted = new Map((routes ?? []).filter((route) => route.geometry.length >= 2).map((route) => [route.id, route]));
+  for (const [id, line] of lines) {
+    if (!wanted.has(id)) {
+      line.setMap(null);
+      lines.delete(id);
+    }
+  }
+  for (const [id, route] of wanted) {
+    const options: google.maps.PolylineOptions = {
+      path: route.geometry.map(toLatLng),
+      map,
+      strokeColor: route.color ?? "#b91c2c",
+      strokeOpacity: 0.85,
+      strokeWeight: 5,
+      clickable: false,
+      zIndex: 1,
+    };
+    const existing = lines.get(id);
+    if (existing) existing.setOptions(options);
+    else lines.set(id, new libraries.maps.Polyline(options));
+  }
+  return [...wanted.values()].flatMap((route) => route.geometry.map(toLatLng));
+}
+
 function syncMarkers(
   map: google.maps.Map,
   libraries: Libraries,
@@ -318,7 +354,10 @@ export default function LiveGoogleMap({
   singleAttribution: _singleAttribution = false,
   interactive = true,
   routeColor,
+  extraRoutes,
 }: {
+  /** Rotas adicionais desenhadas no mapa (uma linha por motoboy). */
+  extraRoutes?: MapRouteLine[];
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
   ariaLabel: string;
@@ -344,9 +383,10 @@ export default function LiveGoogleMap({
   const librariesRef = useRef<Libraries | null>(null);
   const markerEntriesRef = useRef(new Map<string, MarkerEntry>());
   const routeLineRef = useRef<google.maps.Polyline | null>(null);
+  const extraLinesRef = useRef(new Map<string, google.maps.Polyline>());
   const userLocationMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const syncMapDataRef = useRef<() => void>(() => {});
-  const currentDataRef = useRef({ markers, routeGeometry });
+  const currentDataRef = useRef({ markers, routeGeometry, extraRoutes });
   const fitPaddingRef = useRef(fitPadding);
   const fitBehindBottomPanelRef = useRef(fitBehindBottomPanel);
   const autoFitOnGeometryChangeRef = useRef(autoFitOnGeometryChange);
@@ -361,7 +401,7 @@ export default function LiveGoogleMap({
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
   const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID?.trim() || DEFAULT_MAP_ID;
-  currentDataRef.current = { markers, routeGeometry };
+  currentDataRef.current = { markers, routeGeometry, extraRoutes };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -414,6 +454,7 @@ export default function LiveGoogleMap({
               routeColorRef.current,
             );
             syncMarkers(map, libraries, currentMarkers, markerEntries);
+            syncExtraRoutes(map, libraries, extraLinesRef.current, currentDataRef.current.extraRoutes);
             const markerCoordinates = currentMarkers.map(toLatLng);
             const fitCoordinates = markerCoordinates.length
               ? [...markerCoordinates, ...lineCoordinates]
@@ -480,6 +521,8 @@ export default function LiveGoogleMap({
         const core = librariesRef.current.core;
         safely(() => core.event.clearInstanceListeners(map));
       }
+      for (const line of extraLinesRef.current.values()) safely(() => line.setMap(null));
+      extraLinesRef.current.clear();
       mapRef.current = null;
       syncMapDataRef.current = () => {};
       initialViewSetRef.current = false;
@@ -489,7 +532,7 @@ export default function LiveGoogleMap({
 
   useEffect(() => {
     if (mapRef.current) syncMapDataRef.current();
-  }, [markers, routeGeometry]);
+  }, [markers, routeGeometry, extraRoutes]);
 
   useEffect(() => {
     // O Google redimensiona o mapa sozinho; aqui só garantimos o primeiro enquadramento

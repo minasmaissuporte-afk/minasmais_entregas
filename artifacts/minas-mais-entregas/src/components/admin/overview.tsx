@@ -379,9 +379,12 @@ export function OperationMap({
       color: "#ffffff",
       textColor: "#b91e2c",
     }));
-  const selectedRoute = filters.courierId ? routes.find((route) => route.courierId === filters.courierId) : routes[0];
+  // Desenho fixo do trajeto de cada motoboy em entrega (ou só do motoboy filtrado).
+  const visibleRoutes = layers.route
+    ? routes.filter((route) => !filters.courierId || route.courierId === filters.courierId)
+    : [];
   const markers = [...(layers.couriers ? courierMarkers : []), ...(layers.stores ? storeMarkers : [])];
-  const routeGeometry = layers.route ? selectedRoute?.routeGeometry : undefined;
+  const routeLines = visibleRoutes.map((route) => ({ id: route.id, geometry: route.routeGeometry, color: MARKER.busy }));
   const latestAge = courierMarkers.reduce<number | null>((latest, marker) => {
     const courier = couriers.find((item) => item.id === marker.id);
     const age = courier ? courierAgeMs(courier, now) : null;
@@ -429,7 +432,7 @@ export function OperationMap({
           action={<ActionButton onClick={() => void data.refetchAll()}>Tentar novamente</ActionButton>}
           footnote={data.lastUpdatedAt ? `Última sincronização às ${formatClock(data.lastUpdatedAt)}` : undefined}
         />
-      ) : !markers.length && !routeGeometry?.length && onClearFilters && (filters.courierId || filters.storeId) ? (
+      ) : !markers.length && !routeLines.length && onClearFilters && (filters.courierId || filters.storeId) ? (
         <PanelState
           state="empty"
           title="Nenhuma posição por aqui"
@@ -440,7 +443,7 @@ export function OperationMap({
         <div className={`adm-map-frame relative border-t border-[var(--adm-border)] ${isTall ? "adm-map-frame--tall" : hero ? "adm-map-frame--hero" : ""}`}>
           <LiveMap
             markers={markers}
-            routeGeometry={routeGeometry}
+            extraRoutes={routeLines}
             routeColor={MARKER.busy}
             ariaLabel="Mapa da operação com motoboys, filiais e rota ativa"
             showCenterControls
@@ -602,7 +605,10 @@ export function ActiveCouriers({
   onRetry,
   full = false,
   bar = false,
+  focus,
 }: {
+  /** Pedido de foco vindo de um card do topo: abre a aba indicada. */
+  focus?: { tab: "busy" | "available"; nonce: number } | null;
   couriers: Courier[];
   deliveries: Delivery[];
   now: number;
@@ -614,6 +620,9 @@ export function ActiveCouriers({
   bar?: boolean;
 }) {
   const [tab, setTab] = useState<"busy" | "available" | "offline">("busy");
+  useEffect(() => {
+    if (focus) setTab(focus.tab);
+  }, [focus]);
   const stats = courierMetrics(couriers, now);
   const deliveryByCode = new Map(deliveries.map((delivery) => [delivery.code, delivery]));
   const lists = { busy: stats.busy, available: stats.available, offline: stats.offline };
@@ -625,7 +634,7 @@ export function ActiveCouriers({
   const rows = full ? lists[tab] : lists[tab].slice(0, bar ? 6 : 4);
 
   return (
-    <Card aria-labelledby="couriers-title">
+    <Card aria-labelledby="couriers-title" id="motoboys-ativos" className="scroll-mt-24">
       <div className="flex items-center justify-between px-5 pb-2 pt-4">
         <h2 id="couriers-title" className="text-[16px] font-semibold text-[var(--adm-ink)]">Motoboys ativos</h2>
         <span className="rounded-[6px] bg-[var(--adm-success-bg)] px-2.5 py-1.5 text-[11px] font-semibold leading-none text-[var(--adm-success)]">{stats.connected} online</span>

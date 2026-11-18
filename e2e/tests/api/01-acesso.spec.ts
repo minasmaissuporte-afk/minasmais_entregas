@@ -25,7 +25,7 @@ const endpoints: { method: "get" | "post" | "put" | "patch" | "delete"; path: st
   { method: "post", path: "/push/native-token", roles: ["COURIER", "ADMIN", "CENTRAL"] },
   { method: "delete", path: "/push/native-token", roles: ["COURIER", "ADMIN", "CENTRAL"] },
   { method: "get", path: "/dashboard/summary", roles: ["ADMIN", "CENTRAL"] },
-  { method: "get", path: "/operations/active-routes", roles: ["ADMIN", "CENTRAL"] },
+  { method: "get", path: "/operations/active-routes", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER"] },
   { method: "get", path: "/reports/analytics", roles: ["ADMIN", "CENTRAL"] },
   { method: "get", path: "/reports/store-accounting", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER"] },
   { method: "get", path: "/delivery-cancellation-reasons", roles: ["ADMIN", "CENTRAL", "COURIER"] },

@@ -943,6 +943,13 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
   const allCouriers = ops.couriers.data ?? [];
   const today = useMemo(() => deliveryMetrics(allDeliveries, 'today', now), [allDeliveries, now]);
   const courierStats = useMemo(() => courierMetrics(allCouriers, now), [allCouriers, now]);
+  // Cards do topo levam para a parte da página com os detalhes.
+  const [couriersFocus, setCouriersFocus] = useState<{ tab: 'busy' | 'available'; nonce: number } | null>(null);
+  const scrollToSection = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const showCouriers = (tab: 'busy' | 'available') => {
+    setCouriersFocus({ tab, nonce: Date.now() });
+    scrollToSection('motoboys-ativos');
+  };
   const refreshing = deliveries.isRefetching || ops.isFetching;
   const completedContext = today.completedChange == null
     ? 'Sem base de comparação'
@@ -966,10 +973,10 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
 
     {/* 2. Números do dia */}
     <section aria-label="Resumo de hoje" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
-      <Indicator label="Aguardando motoboy" value={today.pending} context={today.pending ? 'Na fila dos motoboys' : 'Nenhuma parada'} highlight={today.pending > 0} loading={metricsLoading}/>
-      <Indicator label="Em rota" value={today.inTransit} context={today.urgentAtRisk ? `${today.urgentAtRisk} urgente${today.urgentAtRisk > 1 ? 's' : ''} com risco de atraso` : 'A caminho do cliente'} contextTone={today.urgentAtRisk ? 'danger' : 'muted'} loading={metricsLoading}/>
-      <Indicator label="Concluídas hoje" value={today.completed} context={completedContext} contextTone={today.completedChange != null && today.completedChange >= 0 ? 'success' : 'muted'} loading={metricsLoading}/>
-      <Indicator label="Motoboys disponíveis" value={courierStats.available.length} context={`de ${courierStats.connected} conectados`} loading={ops.couriers.isLoading}/>
+      <Indicator label="Aguardando motoboy" onClick={() => scrollToSection('fila-entregas')} actionLabel="ver a fila" value={today.pending} context={today.pending ? 'Na fila dos motoboys' : 'Nenhuma parada'} highlight={today.pending > 0} loading={metricsLoading}/>
+      <Indicator label="Em rota" onClick={() => showCouriers('busy')} actionLabel="ver motoboys em rota" value={today.inTransit} context={today.urgentAtRisk ? `${today.urgentAtRisk} urgente${today.urgentAtRisk > 1 ? 's' : ''} com risco de atraso` : 'A caminho do cliente'} contextTone={today.urgentAtRisk ? 'danger' : 'muted'} loading={metricsLoading}/>
+      <Indicator label="Concluídas hoje" onClick={() => scrollToSection('fila-entregas')} actionLabel="ver a fila" value={today.completed} context={completedContext} contextTone={today.completedChange != null && today.completedChange >= 0 ? 'success' : 'muted'} loading={metricsLoading}/>
+      <Indicator label="Motoboys disponíveis" onClick={() => showCouriers('available')} actionLabel="ver motoboys disponíveis" value={courierStats.available.length} context={`de ${courierStats.connected} conectados`} loading={ops.couriers.isLoading}/>
       <Indicator label="Tempo médio" value={today.averageMinutes == null ? '—' : `${Math.round(today.averageMinutes)} min`} context={today.averageMinutes == null ? 'Sem entregas concluídas' : 'Do pedido à entrega'} loading={metricsLoading}/>
     </section>
 
@@ -984,7 +991,7 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
     <div className="min-w-0"><OperationMap data={ops} now={now} hero/></div>
 
     {/* 4. Fila de entregas, logo abaixo do mapa: acompanha as duas coisas juntas */}
-    <section className="panel overflow-hidden" aria-labelledby="queue-title">
+    <section className="panel scroll-mt-24 overflow-hidden" aria-labelledby="queue-title" id="fila-entregas">
       <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:px-5">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
@@ -1025,7 +1032,7 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
     </section>
 
     {/* 5. Motoboys (rotas e entregas) e alertas */}
-    <ActiveCouriers couriers={allCouriers} deliveries={allDeliveries} now={now} isLoading={ops.couriers.isLoading} isError={ops.couriers.isError && !ops.couriers.data} onRetry={() => void ops.couriers.refetch()} bar/>
+    <ActiveCouriers couriers={allCouriers} deliveries={allDeliveries} now={now} isLoading={ops.couriers.isLoading} isError={ops.couriers.isError && !ops.couriers.data} onRetry={() => void ops.couriers.refetch()} bar focus={couriersFocus}/>
     <div id="alertas" className="scroll-mt-24"><OperationAlerts deliveries={allDeliveries} couriers={allCouriers} occurrences={ops.cancellations.data?.length ?? 0} now={now} isLoading={ops.isLoading}/></div>
 
     {/* 6. Ocorrências dos motoboys: só para administradores */}
@@ -1108,7 +1115,7 @@ function DeliveryDetail() {
       list.push({ id: `store-${data.storeId}`, kind: 'store', latitude: data.storeLatitude, longitude: data.storeLongitude, title: data.storeName, detail: 'Retirada' });
     }
     if (data.customerLatitude != null && data.customerLongitude != null) {
-      list.push({ id: `customer-${data.id}`, kind: 'stop', label: 'E', latitude: data.customerLatitude, longitude: data.customerLongitude, title: data.customerName, detail: data.destination, completed: data.status === 'COMPLETED' });
+      list.push({ id: `customer-${data.id}`, kind: 'stop', label: 'Cliente', latitude: data.customerLatitude, longitude: data.customerLongitude, title: data.customerName, detail: data.destination, completed: data.status === 'COMPLETED' });
     }
     // Posição do motoboy só enquanto ele está com a entrega.
     if (assignedCourier?.currentLatitude != null && assignedCourier.currentLongitude != null && !CLOSED_DELIVERY_STATUSES.includes(data.status)) {
