@@ -30,7 +30,7 @@ import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
-import { Bell, BellOff, Check, ChevronRight, CircleHelp, WifiOff, CheckCircle2, Clock3, Hand, History, House, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, Navigation, PackageCheck, Phone, Route as RouteIcon, TrendingUp, Wallet } from "lucide-react";
+import { Banknote, Bell, BellOff, Check, CreditCard, QrCode, ChevronRight, CircleHelp, WifiOff, CheckCircle2, Clock3, Hand, History, House, KeyRound, LoaderCircle, LocateFixed, LogOut, Map as MapIcon, MapPin, MessageCircle, Navigation, PackageCheck, Phone, Route as RouteIcon, TrendingUp, Wallet } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import CourierDeliveryNavigation from "@/components/courier-delivery-navigation";
@@ -210,9 +210,11 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     return () => window.clearTimeout(timeout);
   }, [offerNotice]);
   const [pushMessage, setPushMessage] = useState("");
-  const changeActiveTab = useCallback((value: string) => {
-    if (!["deliveries", "map", "history", "earnings"].includes(value)) return;
-    const nextTab = value as "deliveries" | "map" | "history" | "earnings";
+  const changeActiveTab = useCallback((requested: string) => {
+    // A antiga tela de totais virou parte do Histórico.
+    const value = requested === "earnings" ? "history" : requested;
+    if (!["deliveries", "map", "history"].includes(value)) return;
+    const nextTab = value as "deliveries" | "map" | "history";
     if (activeTabRef.current === nextTab) return;
 
     const interruptedTransition = tabTransitioningRef.current;
@@ -248,6 +250,13 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     }
 
     setActiveTab(nextTab);
+    // Cada aba abre do topo (o painel da aba é quem rola, não a janela).
+    if (nextTab !== "map") {
+      window.requestAnimationFrame(() => {
+        const panel = document.querySelector<HTMLElement>(`[data-courier-tab="${nextTab}"]`);
+        if (panel) panel.scrollTop = 0;
+      });
+    }
     if (nextTab === "map") {
       const resizeDelay = skipMotion ? 0 : 200;
       mapResizeTimerRef.current = window.setTimeout(() => {
@@ -697,6 +706,14 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     }
     previousOfferCount.current = pendingOffers;
   }, [pendingOffers, routes.isLoading, deliveries.isLoading, routes.isError, deliveries.isError]);
+  // Início do período (dia, semana a partir de segunda, mês) no horário do aparelho.
+  const periodStart = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (period === "week") start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+    if (period === "month") start.setDate(1);
+    return start.getTime();
+  }, [period]);
   const historyDeliveries = useMemo(
     () =>
       (deliveries.data ?? [])
@@ -704,6 +721,14 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
         .slice()
         .sort((a, b) => new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime()),
     [deliveries.data],
+  );
+  const periodDeliveries = useMemo(
+    () => historyDeliveries.filter((delivery) => new Date(delivery.updatedAt ?? delivery.createdAt).getTime() >= periodStart),
+    [historyDeliveries, periodStart],
+  );
+  const periodNotDelivered = useMemo(
+    () => periodDeliveries.filter((delivery) => delivery.status === "NOT_DELIVERED").length,
+    [periodDeliveries],
   );
   const toggleAvailability = async () => {
     if (updateAvailability.isPending) return;
@@ -795,6 +820,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       throw new Error(status === "COMPLETED" ? `${text} A foto continua aqui.` : text);
     }
   };
+  const offeredDeliveryCount = individualDeliveries.filter((delivery) => delivery.status === "OFFERED").length;
   const renderIndividualDelivery = (delivery: Delivery) => (
     <CourierIndividualDeliveryCard
       delivery={delivery}
@@ -807,6 +833,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       onDecline={declineIndividualDelivery}
       onShowMap={() => changeActiveTab("map")}
       currentPosition={currentPosition}
+      compact={delivery.status === "OFFERED" && offeredDeliveryCount > 1}
       // Errors are shown inside the card, next to the button that failed.
       error={[actionError, declineError].find((item) => item?.deliveryId === delivery.id)?.text}
     />
@@ -904,7 +931,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
 
       <div className={activeTab === "map" ? "h-full w-full" : "courier-content-shell mx-auto w-full max-w-2xl px-3 sm:px-5"}>
         <Tabs value={activeTab} onValueChange={changeActiveTab}>
-          <TabsContent value="deliveries" forceMount aria-hidden={activeTab !== "deliveries"} className={`courier-tab-panel courier-tab-panel--deliveries ${activeTab === "deliveries" ? "mt-0" : ""} ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`} data-transitioning={tabTransitioning ? "true" : "false"}>
+          <TabsContent value="deliveries" data-courier-tab="deliveries" forceMount aria-hidden={activeTab !== "deliveries"} className={`courier-tab-panel courier-tab-panel--deliveries ${activeTab === "deliveries" ? "mt-0" : ""} ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`} data-transitioning={tabTransitioning ? "true" : "false"}>
             {offerNotice && (
               <div className="mb-3 mt-3 flex items-start gap-2 rounded-xl border border-[#edc9c4] bg-[#fff1ed] px-4 py-3 text-sm font-semibold text-[#94382e]" role="alert" data-testid="alert-courier-offer-notice">
                 <span className="min-w-0 flex-1">{offerNotice}</span>
@@ -939,54 +966,38 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
               onGpsStatusChange={handleGpsStatusChange}
               renderIndividualDelivery={renderIndividualDelivery}
             />
-            {!hasActiveWork && pendingOffers === 0 && isOnline && <button type="button" className="courier-daily-summary mt-3 w-full text-left" onClick={() => changeActiveTab("earnings")} data-testid="button-courier-daily-summary">
+            {!hasActiveWork && pendingOffers === 0 && isOnline && <button type="button" className="courier-daily-summary mt-3 w-full text-left" onClick={() => changeActiveTab("history")} data-testid="button-courier-daily-summary">
               <span className="courier-summary-icon"><TrendingUp size={17} /></span>
               <span className="min-w-0 flex-1"><span className="block text-sm font-extrabold">Suas entregas de hoje</span><span className="mt-1 block text-sm font-bold">{dailyEarnings.isLoading ? "Atualizando seus totais…" : `${dailyEarnings.data?.completedDeliveries ?? "—"} ${(dailyEarnings.data?.completedDeliveries ?? 0) === 1 ? "entrega feita" : "entregas feitas"}`}</span></span>
             </button>}
             {!hasActiveWork && pendingOffers === 0 && isOnline && <p className="courier-keep-open-note">Mantenha o app aberto para não perder pedidos.</p>}
           </TabsContent>
 
-          <TabsContent value="history" forceMount aria-hidden={activeTab !== "history"} className={`courier-tab-panel courier-tab-panel--deliveries ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
-            <div className="courier-page-heading"><div className="eyebrow">SUAS ATIVIDADES</div><h1>Histórico</h1><p>Entregas concluídas e não realizadas.</p></div>
-            <div className="courier-activity-switch" role="tablist" aria-label="Histórico e totais">
-              <button type="button" role="tab" aria-selected="true" onClick={() => changeActiveTab("history")} data-testid="tab-courier-history">Histórico</button>
-              <button type="button" role="tab" aria-selected="false" onClick={() => changeActiveTab("earnings")} data-testid="tab-courier-earnings-page">Totais</button>
-            </div>
-            <div className="courier-period-switch mt-3" role="tablist" aria-label="Período do histórico">
+          {/* Histórico unificado: período, total do período e a lista das entregas dele. */}
+          <TabsContent value="history" data-courier-tab="history" forceMount aria-hidden={activeTab !== "history"} className={`courier-tab-panel courier-tab-panel--deliveries ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
+            <div className="courier-page-heading"><div className="eyebrow">SUAS ATIVIDADES</div><h1>Histórico</h1><p>Suas entregas concluídas e não realizadas.</p></div>
+            <div className="courier-period-switch" role="tablist" aria-label="Período do histórico">
               {(["day", "week", "month"] as const).map((option) => <button key={option} type="button" role="tab" aria-selected={period === option} onClick={() => setPeriod(option)} data-testid={`tab-history-period-${option}`}>{periodNames[option]}</button>)}
-            </div>
-            <section className="courier-total-strip courier-total-strip--selected" aria-label="Totais do período">
-              <div className="courier-total-cell"><span>{periodNames[period]}</span><strong>{earnings.isLoading ? "—" : `${earnings.data?.completedDeliveries ?? "—"} ${earnings.data?.completedDeliveries === 1 ? "entrega" : "entregas"}`}</strong></div>
-            </section>
-            <div className="mt-5 flex items-center justify-between gap-2">
-              <h2 className="text-base font-extrabold">Entregas recentes</h2>
-              <button type="button" className="button-quiet min-h-12" onClick={() => { void deliveries.refetch(); }} data-testid="button-history-refresh">Atualizar</button>
-            </div>
-            {deliveries.isLoading ? <div className="mt-3 space-y-3" role="status" aria-label="Carregando histórico"><div className="skeleton h-24 w-full rounded-2xl" /><div className="skeleton h-24 w-full rounded-2xl" /></div>
-              : deliveries.isError ? <div className="courier-state-card mt-3" role="alert"><p className="font-bold">Não foi possível carregar o histórico.</p><button type="button" className="button-secondary mt-3" onClick={() => void deliveries.refetch()}>Tentar novamente</button></div>
-                : historyDeliveries.length === 0 ? <div className="courier-state-card mt-3"><span className="courier-awaiting-icon"><History size={19} /></span><h2 className="mt-3 font-bold">Ainda sem entregas no histórico</h2><p className="mt-1 text-sm text-muted-foreground">Entregas concluídas ou não realizadas aparecerão aqui.</p></div>
-                  : <div className="mt-3 space-y-2.5">{historyDeliveries.map((delivery) => <article className="courier-history-row" key={delivery.id} data-testid={`history-delivery-${delivery.id}`}>
-                    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-mono text-xs font-bold text-[#a51b26]">{delivery.code}</p><h3 className="mt-1 truncate text-sm font-bold">{delivery.customerName}</h3></div><span className={`courier-history-status ${delivery.status === "COMPLETED" ? "completed" : "not-delivered"}`}>{delivery.status === "COMPLETED" ? "Concluída" : "Não realizada"}</span></div>
-                    <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{delivery.destination}</p>
-                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#eee9e3] pt-2.5 text-xs"><span className="truncate text-muted-foreground">{delivery.storeName}{delivery.createdAt ? ` · Criada ${new Date(delivery.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}` : ""}</span></div>
-                  </article>)}</div>}
-          </TabsContent>
-
-          <TabsContent value="earnings" forceMount aria-hidden={activeTab !== "earnings"} className={`courier-tab-panel courier-tab-panel--deliveries ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
-            <div className="courier-page-heading"><div className="eyebrow">SEU DESEMPENHO</div><h1>Entregas feitas</h1><p>Quantas entregas você concluiu em cada período.</p></div>
-            <div className="courier-activity-switch" role="tablist" aria-label="Histórico e totais">
-              <button type="button" role="tab" aria-selected="false" onClick={() => changeActiveTab("history")} data-testid="tab-courier-history">Histórico</button>
-              <button type="button" role="tab" aria-selected="true" onClick={() => changeActiveTab("earnings")} data-testid="tab-courier-earnings-page">Totais</button>
-            </div>
-            <div className="courier-period-switch" role="tablist" aria-label="Período">
-              {(["day", "week", "month"] as const).map((option) => <button key={option} type="button" role="tab" aria-selected={period === option} onClick={() => setPeriod(option)} data-testid={`tab-earnings-${option}`}>{periodNames[option]}</button>)}
             </div>
             {earnings.isError ? <div className="courier-state-card mt-3" role="alert"><p className="font-bold">Não foi possível consultar suas entregas.</p><button type="button" className="button-secondary mt-3" onClick={() => void earnings.refetch()}>Tentar novamente</button></div>
               : <section className="courier-earnings-hero mt-3" aria-live="polite" data-testid="summary-courier-earnings">
-                <span className="courier-summary-icon"><TrendingUp size={18} /></span><p className="mt-4 text-xs font-semibold text-white/75">Entregas concluídas · {periodNames[period].toLocaleLowerCase("pt-BR")}</p>
+                <span className="courier-summary-icon"><TrendingUp size={18} /></span>
+                <p className="mt-4 text-xs font-semibold text-white/80">Entregas feitas · {periodNames[period].toLocaleLowerCase("pt-BR")}</p>
                 <strong className="mt-1 block text-3xl font-extrabold tracking-tight">{earnings.isLoading ? "—" : `${earnings.data?.completedDeliveries ?? 0} ${earnings.data?.completedDeliveries === 1 ? "entrega" : "entregas"}`}</strong>
+                {periodNotDelivered > 0 && <p className="mt-3 border-t border-white/20 pt-3 text-xs text-white/85">{periodNotDelivered} {periodNotDelivered === 1 ? "não realizada" : "não realizadas"} no período</p>}
               </section>}
-            <button type="button" className="button-secondary mt-4 min-h-12 w-full justify-center" onClick={() => changeActiveTab("history")}><History size={16} /> Ver histórico de entregas</button>
+            <div className="mt-5 flex items-center justify-between gap-2">
+              <h2 className="text-base font-extrabold">Entregas do período</h2>
+              <button type="button" className="button-quiet min-h-12" onClick={() => { void deliveries.refetch(); void earnings.refetch(); }} data-testid="button-history-refresh">Atualizar</button>
+            </div>
+            {deliveries.isLoading ? <div className="mt-3 space-y-3" role="status" aria-label="Carregando histórico"><div className="skeleton h-24 w-full rounded-2xl" /><div className="skeleton h-24 w-full rounded-2xl" /></div>
+              : deliveries.isError ? <div className="courier-state-card mt-3" role="alert"><p className="font-bold">Não foi possível carregar o histórico.</p><button type="button" className="button-secondary mt-3" onClick={() => void deliveries.refetch()}>Tentar novamente</button></div>
+                : periodDeliveries.length === 0 ? <div className="courier-state-card courier-history-empty mt-3"><span className="courier-awaiting-icon"><History size={19} /></span><h2 className="mt-3 font-bold">Nenhuma entrega {period === "day" ? "hoje" : period === "week" ? "nesta semana" : "neste mês"}</h2><p className="mt-1 text-sm text-muted-foreground">As entregas concluídas ou não realizadas aparecem aqui.</p></div>
+                  : <div className="mt-3 space-y-2.5">{periodDeliveries.map((delivery) => <article className="courier-history-row" key={delivery.id} data-testid={`history-delivery-${delivery.id}`}>
+                    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-mono text-xs font-bold text-[#a51b26]">{delivery.code}</p><h3 className="mt-1 truncate text-sm font-bold">{delivery.customerName}</h3></div><span className={`courier-history-status ${delivery.status === "COMPLETED" ? "completed" : "not-delivered"}`}>{delivery.status === "COMPLETED" ? "Concluída" : "Não realizada"}</span></div>
+                    <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{delivery.destination}</p>
+                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#eee9e3] pt-2.5 text-xs"><span className="truncate text-muted-foreground">{delivery.storeName}</span><span className="shrink-0 text-muted-foreground">{new Date(delivery.updatedAt ?? delivery.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span></div>
+                  </article>)}</div>}
           </TabsContent>
 
           <TabsContent value="map" forceMount aria-hidden={activeTab !== "map"} data-transitioning={tabTransitioning ? "true" : "false"} className={`courier-tab-panel courier-tab-panel--map fixed inset-0 z-50 m-0 h-[100dvh] overflow-hidden ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
@@ -1030,6 +1041,19 @@ function courierActionErrorText(fallback: string) {
     : fallback;
 }
 
+/** Forma de pagamento do cliente: selo compacto, sempre no mesmo lugar do cartão. */
+function PaymentBadge({ delivery }: { delivery: Delivery }) {
+  const text = paymentLabel(delivery);
+  if (!text) return null;
+  const Icon = delivery.paymentMethod === "CARD" ? CreditCard : delivery.paymentMethod === "PIX" ? QrCode : Banknote;
+  return (
+    <p className="courier-payment-badge" data-testid={`payment-${delivery.id}`}>
+      <Icon size={16} aria-hidden="true" />
+      <span>{text}</span>
+    </p>
+  );
+}
+
 function CourierIndividualDeliveryCard({
   delivery,
   active,
@@ -1042,8 +1066,11 @@ function CourierIndividualDeliveryCard({
   onShowMap,
   currentPosition,
   error,
+  compact = false,
 }: {
   delivery: Delivery;
+  /** Várias ofertas ao mesmo tempo: cartão enxuto (sem mapa) para comparar e aceitar rápido. */
+  compact?: boolean;
   active: boolean;
   busy: boolean;
   declining: boolean;
@@ -1056,6 +1083,7 @@ function CourierIndividualDeliveryCard({
   error?: string;
 }) {
   const isReturning = delivery.status === "RETURNING_TO_STORE";
+  const isOffer = delivery.status === "OFFERED";
   const store = coordinate(delivery.storeLatitude, delivery.storeLongitude);
   const customer = coordinate(delivery.customerLatitude, delivery.customerLongitude);
   const storeToCustomerKm = store && customer ? approximateRoadKm(store, customer) : null;
@@ -1081,18 +1109,20 @@ function CourierIndividualDeliveryCard({
         <h3 className="courier-active-delivery__customer">{delivery.customerName}</h3>
         <p className="courier-active-delivery__status">A caminho do cliente</p>
         <p className="courier-active-delivery__destination" title={delivery.destination}>{delivery.destination}</p>
+        <PaymentBadge delivery={delivery} />
         {delivery.notes && (
           <p className="courier-active-delivery__notes">
             <MessageCircle size={16} aria-hidden="true" />
             <span>Observação: {delivery.notes}</span>
           </p>
         )}
-        <div className="courier-active-delivery__details">
-          <span>
-            {[delivery.distanceKm != null ? `${Number(delivery.distanceKm).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km` : null, delivery.estimatedMinutes != null ? `${delivery.estimatedMinutes} min` : null].filter(Boolean).join(" · ")}
-          </span>
-          <strong>{paymentLabel(delivery) ?? ""}</strong>
-        </div>
+        {(delivery.distanceKm != null || delivery.estimatedMinutes != null) && (
+          <div className="courier-active-delivery__details">
+            <span>
+              {[delivery.distanceKm != null ? `${Number(delivery.distanceKm).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km` : null, delivery.estimatedMinutes != null ? `${delivery.estimatedMinutes} min` : null].filter(Boolean).join(" · ")}
+            </span>
+          </div>
+        )}
         <a
           className="button-primary courier-navigate-button min-h-12 w-full justify-center"
           href={customerNavigationUrl}
@@ -1144,7 +1174,12 @@ function CourierIndividualDeliveryCard({
           <PackageCheck size={20} />
         </span>
       </div>
-      {delivery.storeLatitude != null && delivery.storeLongitude != null &&
+      {/* Oferta: só o essencial para decidir rápido. Pagamento, receita, mapa e observações vêm depois do aceite. */}
+      {!isOffer && <PaymentBadge delivery={delivery} />}
+      {!isOffer && delivery.requiresPrescription && (
+        <p className="courier-prescription-badge">Pegar a receita com o cliente</p>
+      )}
+      {!isOffer && !compact && delivery.storeLatitude != null && delivery.storeLongitude != null &&
         delivery.customerLatitude != null && delivery.customerLongitude != null && (
         <div className="courier-map-preview courier-delivery-map mt-3 overflow-hidden rounded-xl border border-[#e9e3da]" data-testid={`map-preview-${delivery.id}`}>
           <LiveMap
@@ -1156,7 +1191,7 @@ function CourierIndividualDeliveryCard({
                 title: `Filial · ${delivery.storeName}`,
                 detail: delivery.storeAddress ?? delivery.storeName,
                 kind: "store",
-                label: "F",
+                label: "Loja",
               },
               {
                 id: `destination-${delivery.id}`,
@@ -1175,24 +1210,23 @@ function CourierIndividualDeliveryCard({
           />
         </div>
       )}
-      <div className="courier-delivery-locations">
-        <p><MapPin size={15} aria-hidden="true" /><span><b>Retirada:</b> {delivery.storeName}{delivery.storeAddress ? ` · ${delivery.storeAddress}` : ""}</span></p>
-        <p><MapPin size={15} aria-hidden="true" /><span><b>Destino:</b> {delivery.destination}</span></p>
-      </div>
-      {delivery.notes && <p className="mt-2 rounded-lg bg-[#f6f4f1] p-3 text-xs">Observações: {delivery.notes}</p>}
+      {isOffer ? (
+        <div className="courier-offer-summary">
+          <p className="courier-offer-summary__destination"><MapPin size={18} aria-hidden="true" /><span>{delivery.destination}</span></p>
+          <p className="courier-offer-summary__store">Retirada na {delivery.storeName}</p>
+        </div>
+      ) : (
+        <div className="courier-delivery-locations">
+          <p><MapPin size={15} aria-hidden="true" /><span><b>Retirada:</b> {delivery.storeName}{delivery.storeAddress ? ` · ${delivery.storeAddress}` : ""}</span></p>
+          <p><MapPin size={15} aria-hidden="true" /><span><b>Destino:</b> {delivery.destination}</span></p>
+        </div>
+      )}
+      {!isOffer && delivery.notes && <p className="mt-2 rounded-lg bg-[#f6f4f1] p-3 text-xs">Observações: {delivery.notes}</p>}
       {delivery.status === "OFFERED" && (meToStoreKm != null || storeToCustomerKm != null) && (
         <p className="courier-offer-distances" data-testid={`offer-distances-${delivery.id}`}>
           {meToStoreKm != null && <span><b>Até a loja:</b> ≈ {formatKm(meToStoreKm)}</span>}
           {storeToCustomerKm != null && <span><b>Loja → cliente:</b> ≈ {formatKm(storeToCustomerKm)} · ~{estimateMinutes(storeToCustomerKm)} min</span>}
         </p>
-      )}
-      {delivery.status === "OFFERED" && (delivery.estimatedMinutes != null || delivery.distanceKm != null || delivery.deliveryAmount != null) && (
-        <div className="courier-offer-estimate" aria-label="Estimativa da entrega">
-          <span>
-            {[delivery.distanceKm != null ? `${Number(delivery.distanceKm).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km` : null, delivery.estimatedMinutes != null ? `${delivery.estimatedMinutes} min` : null].filter(Boolean).join(" · ")}
-          </span>
-          <strong>{paymentLabel(delivery) ?? ""}</strong>
-        </div>
       )}
       {delivery.status !== "OFFERED" && (delivery.estimatedMinutes != null || delivery.distanceKm != null) && (
         <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-[#5f564f]" aria-label="Estimativa da entrega">
@@ -1236,7 +1270,6 @@ function CourierIndividualDeliveryCard({
         </a>
       )}
       <div className="courier-delivery-footer mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-        <span className="courier-delivery-amount">{paymentLabel(delivery) ?? ""}</span>
         {delivery.status === "IN_TRANSIT" && nextStatus ? (
           <div className="courier-delivery-evidence w-full space-y-2">
             <EvidencePhotoAction

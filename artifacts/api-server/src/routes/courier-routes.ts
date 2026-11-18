@@ -565,15 +565,51 @@ router.post(
   },
 );
 
+/**
+ * Trajeto fixo loja → cliente de cada entrega avulsa em andamento. Não muda durante a
+ * entrega, então fica guardado em memória para não chamar o Google a cada atualização.
+ */
+const individualRouteCache = new Map<string, Array<{ latitude: number; longitude: number }>>();
+
+async function individualRouteGeometry(row: {
+  id: string;
+  storeLatitude: number | null;
+  storeLongitude: number | null;
+  customerLatitude: number | null;
+  customerLongitude: number | null;
+}) {
+  const cached = individualRouteCache.get(row.id);
+  if (cached) return cached;
+  if (row.storeLatitude == null || row.storeLongitude == null || row.customerLatitude == null || row.customerLongitude == null) {
+    return null;
+  }
+  try {
+    const directions = await computeDrivingRoute([
+      { latitude: row.storeLatitude, longitude: row.storeLongitude },
+      { latitude: row.customerLatitude, longitude: row.customerLongitude },
+    ]);
+    if (directions.geometry.length < 2) return null;
+    if (individualRouteCache.size > 500) individualRouteCache.clear();
+    individualRouteCache.set(row.id, directions.geometry);
+    return directions.geometry;
+  } catch {
+    return null;
+  }
+}
+
 router.get(
   "/operations/active-routes",
-  requireRole("ADMIN", "CENTRAL"),
+  // Gerente acompanha o trajeto dos motoboys com entregas da filial dele.
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
   async (_req, res): Promise<void> => {
+    const profile = res.locals.appUser as AppUserProfile;
+    const managerStore = profile.role === "STORE_MANAGER" ? profile.storeId ?? "__none__" : null;
     const routes = await db
       .select({
         id: deliveryRoutesTable.id,
         courierId: deliveryRoutesTable.courierId,
         routeGeometry: deliveryRoutesTable.routeGeometry,
+        deliveryIds: deliveryRoutesTable.deliveryIds,
         courierName: couriersTable.name,
         courierEmail: linkedCourierEmail,
       })
@@ -583,9 +619,62 @@ router.get(
         eq(deliveryRoutesTable.courierId, couriersTable.id),
       )
       .where(eq(deliveryRoutesTable.status, "ACCEPTED"));
+    const routedIds = new Set(routes.flatMap((route) => route.deliveryIds));
+    let visibleRoutes = routes;
+    if (managerStore) {
+      const routeStores = routedIds.size
+        ? await db
+            .select({ id: deliveriesTable.id, storeId: deliveriesTable.storeId })
+            .from(deliveriesTable)
+            .where(inArray(deliveriesTable.id, [...routedIds]))
+        : [];
+      const storeOf = new Map(routeStores.map((row) => [row.id, row.storeId]));
+      visibleRoutes = routes.filter((route) => route.deliveryIds.some((id) => storeOf.get(id) === managerStore));
+    }
+
+    // Entregas avulsas em andamento (fora de rota agrupada): trajeto loja → cliente.
+    const individual = await db
+      .select({
+        id: deliveriesTable.id,
+        courierId: deliveriesTable.courierId,
+        storeId: deliveriesTable.storeId,
+        customerLatitude: deliveriesTable.customerLatitude,
+        customerLongitude: deliveriesTable.customerLongitude,
+        storeLatitude: storesTable.latitude,
+        storeLongitude: storesTable.longitude,
+        courierName: couriersTable.name,
+        courierEmail: linkedCourierEmail,
+      })
+      .from(deliveriesTable)
+      .innerJoin(storesTable, eq(deliveriesTable.storeId, storesTable.id))
+      .innerJoin(couriersTable, eq(deliveriesTable.courierId, couriersTable.id))
+      .where(
+        and(
+          inArray(deliveriesTable.status, ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"]),
+          managerStore ? eq(deliveriesTable.storeId, managerStore) : undefined,
+        ),
+      );
+    const individualRoutes = (
+      await Promise.all(
+        individual
+          .filter((row) => !routedIds.has(row.id))
+          .map(async (row) => {
+            const geometry = await individualRouteGeometry(row);
+            return geometry
+              ? [{
+                  id: `delivery-${row.id}`,
+                  courierId: row.courierId!,
+                  courierFirstName: getCourierFirstName(row.courierName, row.courierEmail),
+                  routeGeometry: geometry,
+                }]
+              : [];
+          }),
+      )
+    ).flat();
+
     res.json(
-      ListActiveRoutesResponse.parse(
-        routes.flatMap((route) =>
+      ListActiveRoutesResponse.parse([
+        ...visibleRoutes.flatMap((route) =>
           route.routeGeometry
             ? [{
                 id: route.id,
@@ -598,7 +687,8 @@ router.get(
               }]
             : [],
         ),
-      ),
+        ...individualRoutes,
+      ]),
     );
   },
 );

@@ -1,8 +1,8 @@
 import { lazy, Suspense } from "react";
-import type { MapCoordinate, MapMarker, MapSize } from "./live-googlemap";
+import type { MapCoordinate, MapMarker, MapRouteLine, MapSize } from "./live-googlemap";
 import "./live-map-frame.css";
 
-export type { MapCoordinate, MapMarker, MapSize } from "./live-googlemap";
+export type { MapCoordinate, MapMarker, MapRouteLine, MapSize } from "./live-googlemap";
 
 const GoogleMap = lazy(() => import("./live-googlemap"));
 
@@ -26,7 +26,9 @@ export default function LiveMap({
   singleAttribution = false,
   interactive = true,
   routeColor,
+  extraRoutes,
 }: {
+  extraRoutes?: MapRouteLine[];
   markers: MapMarker[];
   routeGeometry?: MapCoordinate[] | null;
   ariaLabel: string;
@@ -79,6 +81,7 @@ export default function LiveMap({
         singleAttribution={singleAttribution}
         interactive={interactive}
         routeColor={routeColor}
+        extraRoutes={extraRoutes}
       />
     </Suspense>
   );

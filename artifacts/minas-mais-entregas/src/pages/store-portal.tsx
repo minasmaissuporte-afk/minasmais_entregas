@@ -1,8 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type ComponentType } from "react";
 import {
+  getListActiveRoutesQueryKey,
   getListCouriersQueryKey,
   getListDeliveriesQueryKey,
+  useListActiveRoutes,
   useListCouriers,
   useListDeliveries,
   useUpdateDeliveryStatus,
@@ -81,6 +83,14 @@ export default function StorePortal({
   const couriers = useListCouriers(undefined, {
     query: { queryKey: getListCouriersQueryKey(), refetchInterval: 15000 },
   });
+  // Trajeto de cada entrega em andamento da filial (loja → cliente), como no app do motoboy.
+  const activeRoutes = useListActiveRoutes({ query: { queryKey: getListActiveRoutesQueryKey(), refetchInterval: 30000 } });
+  const routeLines = useMemo(
+    () => (activeRoutes.data ?? [])
+      .filter((route) => !selectedCourierId || route.courierId === selectedCourierId)
+      .map((route) => ({ id: route.id, geometry: route.routeGeometry, color: "#b91e2c" })),
+    [activeRoutes.data, selectedCourierId],
+  );
   const activeCouriers = useMemo(
     () => (couriers.data ?? []).filter((courier) => courier.status === "BUSY"),
     [couriers.data],
@@ -100,6 +110,7 @@ export default function StorePortal({
       latitude: courier.currentLatitude!,
       longitude: courier.currentLongitude!,
       title: courier.name,
+      label: courier.name.split(" ")[0],
       detail: `Entrega ${courier.currentDeliveryCode ?? ""} · posição recebida ${
         courier.lastLocationAt
           ? new Date(courier.lastLocationAt).toLocaleTimeString("pt-BR", {
@@ -209,9 +220,10 @@ export default function StorePortal({
           </div>
           {couriers.isLoading ? (
             <div className="skeleton m-4 h-[280px]" />
-          ) : trackingMarkers.length ? (
+          ) : trackingMarkers.length || routeLines.length ? (
             <LiveMap
               markers={trackingMarkers}
+              extraRoutes={routeLines}
               ariaLabel="Localização atual dos motoboys atendendo esta unidade"
             />
           ) : (

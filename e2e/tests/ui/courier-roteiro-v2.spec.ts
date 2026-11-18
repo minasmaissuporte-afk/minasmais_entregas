@@ -60,7 +60,8 @@ test("4.4b Celular pequeno (375×667): o menu do perfil rola e 'Sair da conta' �
   await shot(page, "04-perfil-pequeno");
 });
 
-test("5.2 Oferta: retirada, destino, distância, tempo e pagamento em destaque, sem valor em R$ da entrega", async ({ page }) => {
+// Oferta enxuta: endereço, loja de retirada, distância e o botão de aceitar. Pagamento e o resto vêm após o aceite.
+test("5.2 Oferta: destino, loja de retirada, distância e Aceitar em destaque; sem pagamento nem R$ antes do aceite", async ({ page }) => {
   await wipeDeliveries();
   await courierOnline(await Api.as("courier"));
   const d = await create({ paymentMethod: "CASH", changeFor: 50 });
@@ -70,11 +71,12 @@ test("5.2 Oferta: retirada, destino, distância, tempo e pagamento em destaque, 
   await shot(page, "05-oferta");
   const text = (await card.innerText()).replace(/ /g, " ");
   note("oferta", text.replace(/\s+/g, " ").slice(0, 400));
-  expect(text).toMatch(/Retirada/);
-  expect(text).toMatch(/Destino/);
+  expect(text).toMatch(/Retirada na/);
+  expect(text).toContain(d.destination.split(",")[0]);
   expect(text).toMatch(/\d\s?(m|km)\b/);
   expect(text).toMatch(/min/);
-  expect(text).toMatch(/Dinheiro/);
+  expect(text, "pagamento só depois do aceite").not.toMatch(/Dinheiro/);
+  await expect(card.getByRole("button", { name: /Aceitar entrega/ })).toBeVisible();
   expect(text, "a oferta mostra o valor da entrega (R$ 8,50)").not.toContain("R$ 8,50");
   const decline = card.getByRole("button", { name: /Dispensar|Recusar/ }).first();
   note("botão de dispensar", (await decline.innerText()).trim());

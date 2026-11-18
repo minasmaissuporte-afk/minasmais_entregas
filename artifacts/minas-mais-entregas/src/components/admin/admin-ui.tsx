@@ -33,6 +33,8 @@ export function Indicator({
   contextTone = "muted",
   highlight = false,
   loading = false,
+  onClick,
+  actionLabel,
 }: {
   label: string;
   value: ReactNode;
@@ -40,10 +42,33 @@ export function Indicator({
   contextTone?: "muted" | "success" | "danger";
   highlight?: boolean;
   loading?: boolean;
+  /** Card clicável: leva para a parte da página com os detalhes. */
+  onClick?: () => void;
+  actionLabel?: string;
 }) {
   const toneClass = contextTone === "success" ? "text-[var(--adm-success)]" : contextTone === "danger" ? "text-[var(--adm-primary)]" : "text-[var(--adm-muted)]";
+  const className = `adm-card flex min-h-[100px] flex-col px-4 pb-3 pt-3.5 text-left ${highlight ? "border-[#f0ccd1]" : ""} ${onClick ? "cursor-pointer transition-[border-color,box-shadow] hover:border-[#d9b6b8] hover:shadow-[0_4px_14px_rgba(26,38,51,0.08)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f2329]" : ""}`;
+  const content = (
+    <>
+      <span className="text-[12px] font-medium text-[var(--adm-muted)]">{label}</span>
+      {loading ? (
+        <span className="adm-skeleton mt-2 h-8 w-16" aria-hidden="true" />
+      ) : (
+        <strong className="mt-1 text-[29px] font-semibold leading-[1.2] tracking-[-0.01em] text-[var(--adm-ink)] tabular-nums">{value}</strong>
+      )}
+      <span className={`mt-auto pt-1 text-[11px] ${toneClass}`}>{loading ? " " : context}</span>
+      {onClick && actionLabel && <span className="sr-only"> ({actionLabel})</span>}
+    </>
+  );
+  if (onClick) {
+    return (
+      <button type="button" className={className} onClick={onClick} title={actionLabel ? `Clique para ${actionLabel}` : undefined}>
+        {content}
+      </button>
+    );
+  }
   return (
-    <div className={`adm-card flex min-h-[100px] flex-col px-4 pb-3 pt-3.5 ${highlight ? "border-[#f0ccd1]" : ""}`}>
+    <div className={className}>
       <span className="text-[12px] font-medium text-[var(--adm-muted)]">{label}</span>
       {loading ? (
         <span className="adm-skeleton mt-2 h-8 w-16" aria-hidden="true" />

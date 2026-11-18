@@ -2607,3 +2607,31 @@ textarea { resize:vertical; }
 .support-fab__trigger svg { color: #b91e2c; }
 .support-fab__panel { width: min(300px, calc(100vw - 32px)); border: 1px solid #e7e6e3; border-radius: 14px; background: #fff; padding: 16px; box-shadow: 0 18px 44px rgb(36 39 45 / 18%); }
 @media (prefers-reduced-motion: reduce) { .support-fab__trigger { transition: none; } }
+/* Histórico do motoboy: estado vazio centralizado (ícone pequeno, sem círculo gigante). */
+.courier-pwa .courier-state-card.courier-history-empty { display: flex; flex-direction: column; align-items: center; padding: 22px 18px; text-align: center; }
+.courier-pwa .courier-state-card.courier-history-empty .courier-awaiting-icon { width: 52px; height: 52px; border-radius: 16px; }
+/* Cartões do motoboy: pagamento e receita como selos à esquerda (antes ficavam soltos à direita). */
+.courier-pwa .courier-payment-badge {
+  display: inline-flex; max-width: 100%; align-items: center; gap: 8px;
+  margin: 10px 6px 0 0; border-radius: 10px; background: #fff0f1; padding: 8px 12px;
+  color: #a3141f; font-size: 15px; font-weight: 800; line-height: 1.25;
+}
+.courier-pwa .courier-payment-badge svg { flex: none; }
+.courier-pwa .courier-payment-badge span { min-width: 0; overflow-wrap: anywhere; }
+.courier-pwa .courier-active-delivery .courier-payment-badge { margin: 8px 0 4px; }
+.courier-pwa .courier-prescription-badge {
+  display: inline-flex; margin: 8px 0 0; border-radius: 10px; background: #eef4ff;
+  padding: 8px 12px; color: #1d4f91; font-size: 13px; font-weight: 700;
+}
+
+/* Oferta ao motoboy: endereço em destaque e "Aceitar entrega" grande, fácil de tocar. */
+.courier-pwa .courier-offer-summary { margin-top: 10px; }
+.courier-pwa .courier-offer-summary__destination { display: flex; align-items: flex-start; gap: 8px; color: #24272d; font-size: 16px; font-weight: 700; line-height: 1.35; }
+.courier-pwa .courier-offer-summary__destination svg { flex: none; margin-top: 2px; color: #d8112b; }
+.courier-pwa .courier-offer-summary__store { margin: 4px 0 0 26px; color: #6b6660; font-size: 13px; }
+.courier-pwa .courier-delivery-card[data-delivery-status="OFFERED"] .courier-delivery-footer { margin-top: 12px; border-top: 0; padding-top: 0; }
+.courier-pwa .courier-delivery-card[data-delivery-status="OFFERED"] .courier-delivery-footer .button-primary {
+  min-height: 58px; border-radius: 999px; font-size: 18px; font-weight: 800; letter-spacing: -.01em;
+  box-shadow: 0 8px 20px rgb(216 17 43 / 28%);
+}
+.courier-pwa .courier-delivery-card[data-delivery-status="OFFERED"] .courier-offer-distances { margin-top: 10px; }
