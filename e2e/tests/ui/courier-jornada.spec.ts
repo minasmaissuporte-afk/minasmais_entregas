@@ -140,9 +140,8 @@ test("Entrega individual: do celular bloqueado até a entrega concluída", async
   });
   await shot(page, "02-online");
 
-  // 3. Central despacha; quanto tempo a oferta leva para aparecer no celular?
+  // 3. A loja registra; a entrega já nasce oferecida aos motoboys da cidade. Quanto tempo leva para aparecer no celular?
   const d = await createDelivery(central, { storeId: stores.a.id, customerName: "E2E Dona Conceição", customerPhone: "(31) 98877-6655" });
-  await central.post(`/deliveries/${d.id}/dispatch`, { mode: "single", courierId: "e2e-courier-1" });
   await timed("Oferta chegar no celular (sem notificação push)", 0, async () => {
     await expect(page.getByTestId(`card-delivery-${d.id}`).or(page.getByText("Aceitar entrega").first()).first()).toBeVisible({ timeout: 30_000 });
   });
@@ -155,31 +154,28 @@ test("Entrega individual: do celular bloqueado até a entrega concluída", async
     await waitStatus(d.id, "ACCEPTED");
   });
   await shot(page, "04-aceita");
-  await audit(page, "aceita", "Cheguei na loja");
+  await audit(page, "aceita", "Retirei o pedido na loja");
   // Atalho: navegação até a loja já no cartão (1 toque).
   const navStore = page.getByTestId(`button-navigate-${d.id}`);
   await expect(navStore, "botão Navegar até a loja").toBeVisible();
   expect(await navStore.getAttribute("href")).toContain(`destination=${stores.a.lat},${stores.a.lng}`);
   steps.push({ etapa: "Abrir navegação até a loja", toques: 1, ms: 0, obs: "botão no cartão" });
   // Distâncias na oferta foram mostradas? (checado na captura 03; aqui só o registro)
-  // Perto da loja (GPS em BH a ~80 m da filial E2E): o botão de chegada fica em destaque.
+  // Perto da loja (GPS em BH a ~80 m da filial E2E): o botão de retirada fica em destaque.
   const attention = await page.locator(".courier-action-attention").count();
-  steps.push({ etapa: "Botão 'Cheguei na loja' em destaque perto da filial", toques: 0, ms: 0, obs: attention ? "sim" : "não" });
+  steps.push({ etapa: "Botão 'Retirei o pedido na loja' em destaque perto da filial", toques: 0, ms: 0, obs: attention ? "sim" : "não" });
+  // "Cheguei na loja" saiu: chegada e retirada são um toque só (ACCEPTED → IN_TRANSIT).
+  await expect(page.getByRole("button", { name: /Cheguei na loja/ })).toHaveCount(0);
 
-  // 5-6. Chegada e saída (o passo "Iniciar ida à loja" saiu)
-  for (const [label, status, file, next] of [
-    ["Cheguei na loja", "AT_STORE", "06-na-loja", "Peguei o pedido"],
-    ["Peguei o pedido, sair para entrega", "IN_TRANSIT", "07-em-entrega", "Navegar até o cliente"],
-  ] as const) {
-    await timed(label, 1, async () => {
-      const button = page.getByRole("button", { name: new RegExp(label) }).first();
-      await button.scrollIntoViewIfNeeded();
-      await button.click();
-      await waitStatus(d.id, status);
-    });
-    await shot(page, file);
-    await audit(page, file, next);
-  }
+  // 5. Retirada na loja
+  await timed("Retirei o pedido na loja", 1, async () => {
+    const button = page.getByRole("button", { name: /Retirei o pedido na loja/ }).first();
+    await button.scrollIntoViewIfNeeded();
+    await button.click();
+    await waitStatus(d.id, "IN_TRANSIT");
+  });
+  await shot(page, "07-em-entrega");
+  await audit(page, "07-em-entrega", "Navegar até o cliente");
 
   // 8. Navegar até o cliente (1 toque, direto no cartão)
   const nav = page.getByTestId(`button-navigate-${d.id}`);
@@ -230,14 +226,11 @@ test("Rota agrupada: 2 pedidos da mesma loja", async ({ page, context, baseURL }
   });
   await page.waitForTimeout(1000);
   await shot(page, "11-rota-aceita");
-  await audit(page, "rota-aceita", "Registrar chegada à loja");
+  await audit(page, "rota-aceita", "Retirei os pedidos na loja");
 
-  await timed("Registrar chegada à loja (rota)", 1, async () => {
-    await page.getByRole("button", { name: /Registrar chegada à loja/ }).click();
-    await expect(page.getByRole("button", { name: /Confirmar saída da loja/ })).toBeVisible({ timeout: 15_000 });
-  });
-  await timed("Confirmar saída da loja (os 2 pedidos)", 1, async () => {
-    await page.getByRole("button", { name: /Confirmar saída da loja/ }).click();
+  // Chegada e retirada na loja são um toque só para os 2 pedidos da rota.
+  await timed("Retirei os pedidos na loja (rota)", 1, async () => {
+    await page.getByRole("button", { name: /Retirei os pedidos na loja/ }).click();
     await waitStatus(d1.id, "IN_TRANSIT");
     await waitStatus(d2.id, "IN_TRANSIT");
   });

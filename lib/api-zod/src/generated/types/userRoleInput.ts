@@ -21,6 +21,11 @@ export interface UserRoleInput {
   phone?: string | null;
   /** @nullable */
   storeId?: string | null;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  courierCity?: string | null;
   /** @nullable */
   courierId?: string | null;
 }

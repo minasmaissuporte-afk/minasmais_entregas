@@ -9,6 +9,7 @@ import {
 } from "@workspace/api-client-react";
 import {
   AlertCircle,
+  ArrowLeft,
   Bike,
   CalendarDays,
   ChartNoAxesCombined,
@@ -19,6 +20,9 @@ import {
   RefreshCw,
   Store,
   Wallet,
+  XCircle,
+  Hand,
+  PackageOpen,
 } from "lucide-react";
 import {
   Bar,
@@ -39,18 +43,22 @@ const CHART_COLORS = {
   courier: "#E98E2E",
 };
 
+// Filtro de status: as quatro etapas principais e os encerramentos.
 const STATUS_LABELS: Record<string, string> = {
-  REQUESTED: "Solicitada",
-  AWAITING_COURIER: "Aguardando motoboy",
-  OFFERED: "Oferta enviada",
+  OFFERED: "Solicitada",
+  AWAITING_COURIER: "Devolvida pelo motoboy",
   ACCEPTED: "Aceita",
-  TO_STORE: "A caminho da loja",
-  AT_STORE: "Na loja",
-  IN_TRANSIT: "Em entrega",
+  IN_TRANSIT: "Retirada",
   COMPLETED: "Concluída",
-  CANCELLED: "Cancelado pela Central",
-  RETURNING_TO_STORE: "Retornando à filial",
+  CANCELLED: "Cancelada",
+  RETURNING_TO_STORE: "Voltando para a loja",
   NOT_DELIVERED: "Não entregue",
+};
+const STAGE_OF: Record<string, string> = {
+  REQUESTED: "Solicitada", OFFERED: "Solicitada", AWAITING_COURIER: "Solicitada",
+  ACCEPTED: "Aceita", TO_STORE: "Aceita", AT_STORE: "Aceita",
+  IN_TRANSIT: "Retirada", RETURNING_TO_STORE: "Retirada",
+  COMPLETED: "Concluída", CANCELLED: "Cancelada", NOT_DELIVERED: "Cancelada",
 };
 
 const money = (value: number) =>
@@ -65,8 +73,13 @@ const dateLabel = (value: string) =>
   });
 const stamp = (value?: string | null) =>
   value ? new Date(value).toLocaleString("pt-BR") : "—";
-const minutesLabel = (value: number) =>
-  value > 0 ? `${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} min` : "—";
+const minutesLabel = (value: number) => {
+  if (!(value > 0)) return "—";
+  if (value < 60) return `${value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} min`;
+  const hours = Math.floor(value / 60);
+  const rest = Math.round(value % 60);
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
+};
 
 function localDateValue(date: Date) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
@@ -111,7 +124,12 @@ function fillMissingDays(
   });
 }
 
-export default function ReportsDashboard() {
+/**
+ * Relatórios. `scope="store"`: gerente da filial (só a filial dele, com o financeiro da loja).
+ * `scope="central"`: admin, com o macro de todas as filiais em cards.
+ */
+export default function ReportsDashboard({ scope = "central" }: { scope?: "central" | "store" }) {
+  const isStore = scope === "store";
   const initialRange = useMemo(() => {
     const end = new Date();
     const start = new Date(end);
@@ -143,7 +161,7 @@ export default function ReportsDashboard() {
   });
   const stores = useListStores({ query: { queryKey: getListStoresQueryKey() } });
   const couriers = useListCouriers(undefined, {
-    query: { queryKey: getListCouriersQueryKey() },
+    query: { queryKey: getListCouriersQueryKey(), enabled: !isStore },
   });
   const data = analytics.data;
   const dailyData = useMemo(
@@ -163,10 +181,11 @@ export default function ReportsDashboard() {
   const statusData = useMemo(() => {
     const counts = new Map<string, number>();
     for (const delivery of data?.deliveries ?? []) {
-      counts.set(delivery.status, (counts.get(delivery.status) ?? 0) + 1);
+      const stage = STAGE_OF[delivery.status] ?? delivery.status;
+      counts.set(stage, (counts.get(stage) ?? 0) + 1);
     }
     return [...counts.entries()]
-      .map(([key, total]) => ({ name: STATUS_LABELS[key] ?? key, total }))
+      .map(([key, total]) => ({ name: key, total }))
       .sort((a, b) => b.total - a.total);
   }, [data?.deliveries]);
   const cancellationReasonCounts = useMemo(() => {
@@ -265,12 +284,17 @@ export default function ReportsDashboard() {
     <div className="soft-enter space-y-5">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <div className="eyebrow">CENTRAL · DADOS DAS ENTREGAS</div>
+          {isStore && (
+            <Link href="/" className="back-link mb-3"><ArrowLeft size={15} />Voltar para as entregas</Link>
+          )}
+          <div className="eyebrow">{isStore ? "SUA FILIAL · FINANCEIRO E ENTREGAS" : "CENTRAL · DADOS DAS ENTREGAS"}</div>
           <h1 className="mt-2 text-[28px] font-bold tracking-[-.045em] sm:text-[34px]">
-            Relatórios e indicadores
+            {isStore ? "Relatórios da filial" : "Relatórios e indicadores"}
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Desempenho, prazos, volume diário e produção por motoboy, calculados a partir das entregas registradas.
+            {isStore
+              ? "Quantas entregas a loja fez, em que etapa estão e quanto elas somam no período."
+              : "Visão de todas as filiais, etapas das entregas, prazos e volume diário."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -297,7 +321,7 @@ export default function ReportsDashboard() {
         </div>
       </header>
 
-      <section className="panel grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5" aria-label="Filtros do relatório">
+      <section className={`panel grid gap-3 p-4 sm:grid-cols-2 ${isStore ? "xl:grid-cols-3" : "xl:grid-cols-5"}`} aria-label="Filtros do relatório">
         <label className="field-label">
           De
           <input
@@ -316,7 +340,7 @@ export default function ReportsDashboard() {
             data-testid="filter-report-to"
           />
         </label>
-        <label className="field-label">
+        {!isStore && <label className="field-label">
           Filial
           <select
             className="filter-select w-full"
@@ -331,8 +355,8 @@ export default function ReportsDashboard() {
               </option>
             ))}
           </select>
-        </label>
-        <label className="field-label">
+        </label>}
+        {!isStore && <label className="field-label">
           Motoboy
           <select
             className="filter-select w-full"
@@ -347,7 +371,7 @@ export default function ReportsDashboard() {
               </option>
             ))}
           </select>
-        </label>
+        </label>}
         <label className="field-label">
           Status
           <select
@@ -403,8 +427,98 @@ export default function ReportsDashboard() {
         </section>
       ) : data ? (
         <>
+          <section aria-label="Etapas das entregas" data-testid="report-stage-cards">
+            <div className="mb-2 flex items-end justify-between gap-2">
+              <div>
+                <div className="eyebrow">ETAPAS DAS ENTREGAS</div>
+                <h2 className="mt-1 font-bold">Onde estão as entregas do período</h2>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+              <ReportMetric label="Solicitadas" value={number(data.summary.requested)} note="Esperando um motoboy aceitar" icon={<PackageOpen size={17} />} />
+              <ReportMetric label="Aceitas" value={number(data.summary.accepted)} note="Motoboy indo para a loja" icon={<Hand size={17} />} />
+              <ReportMetric label="Retiradas" value={number(data.summary.pickedUp)} note="Saíram da loja, a caminho" icon={<Bike size={17} />} />
+              <ReportMetric label="Concluídas" value={number(data.summary.completed)} note={completionRate == null ? "Sem entregas no recorte" : `${completionRate}% do total`} icon={<CheckCircle2 size={17} />} />
+              <ReportMetric label="Canceladas" value={number(data.summary.cancelled)} note="Canceladas ou não entregues" icon={<XCircle size={17} />} />
+            </div>
+          </section>
+
+          <section aria-label="Tempo médio" data-testid="report-time-cards">
+            <div className="mb-2">
+              <div className="eyebrow">DESEMPENHO</div>
+              <h2 className="mt-1 font-bold">Tempo médio de cada etapa</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {data.summary.completed
+                  ? `Calculado com ${number(data.summary.completed)} ${data.summary.completed === 1 ? "entrega concluída" : "entregas concluídas"} no período.`
+                  : "Os tempos aparecem quando houver entregas concluídas no período."}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <ReportMetric label="Até um motoboy aceitar" value={minutesLabel(data.summary.averageAcceptMinutes)} note="Do registro ao aceite" icon={<Hand size={17} />} />
+              <ReportMetric label="Aceite até a retirada" value={minutesLabel(data.summary.averageStoreMinutes)} note="Motoboy vai à loja e retira" icon={<Store size={17} />} />
+              <ReportMetric label="Retirada até o cliente" value={minutesLabel(data.summary.averageDeliveryMinutes)} note="Da loja até a entrega" icon={<Bike size={17} />} />
+              <ReportMetric label="Tempo total" value={minutesLabel(data.summary.averageTotalMinutes)} note="Do registro à conclusão" icon={<Clock3 size={17} />} />
+            </div>
+          </section>
+
+          {!isStore && !storeId && data.stores.length > 0 && (
+            <section aria-label="Todas as filiais" data-testid="report-store-cards">
+              <div className="mb-2">
+                <div className="eyebrow">MACRO DAS FILIAIS</div>
+                <h2 className="mt-1 font-bold">Todas as filiais</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">Clique numa filial para ver os detalhes dela.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {data.stores.map((store) => (
+                  <button
+                    key={store.storeId}
+                    type="button"
+                    className="panel group p-4 text-left transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1f2329]"
+                    onClick={() => { setStoreId(store.storeId); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    data-testid={`report-store-card-${store.storeId}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-bold">{store.storeName}</div>
+                        <div className="text-xs text-muted-foreground">{store.city}</div>
+                      </div>
+                      <span className="text-right">
+                        <span className="block text-lg font-bold">{number(store.total)}</span>
+                        <span className="block text-[11px] text-muted-foreground">entregas</span>
+                      </span>
+                    </div>
+                    <dl className="mt-3 grid grid-cols-4 gap-1 text-center">
+                      {[["Solicit.", store.requested], ["Aceitas", store.accepted], ["Retiradas", store.pickedUp], ["Concl.", store.completed]].map(([label, value]) => (
+                        <div key={String(label)} className="rounded-md bg-[#f7f6f4] px-1 py-1.5">
+                          <dt className="text-[10px] text-muted-foreground">{label}</dt>
+                          <dd className="text-sm font-bold">{number(Number(value))}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    <div className="mt-3 grid grid-cols-2 gap-1 text-[11px]">
+                      <span className="rounded-md bg-[#f7f6f4] px-2 py-1.5"><span className="block text-muted-foreground">Tempo médio total</span><strong className="text-sm">{minutesLabel(store.averageTotalMinutes)}</strong></span>
+                      <span className="rounded-md bg-[#f7f6f4] px-2 py-1.5"><span className="block text-muted-foreground">Até aceitar</span><strong className="text-sm">{minutesLabel(store.averageAcceptMinutes)}</strong></span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-xs">
+                      <span className="text-muted-foreground">{store.cancelled ? `${number(store.cancelled)} canceladas` : "Sem cancelamentos"}</span>
+                      <strong>{money(store.amount)}</strong>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+          {!isStore && storeId && (
+            <div className="panel flex flex-wrap items-center justify-between gap-2 p-3">
+              <span className="text-sm">Detalhes de <strong>{data.stores.find((store) => store.storeId === storeId)?.storeName ?? (stores.data ?? []).find((store) => store.id === storeId)?.name ?? "filial"}</strong></span>
+              <button type="button" className="button-secondary min-h-9" onClick={() => setStoreId("")} data-testid="button-report-all-stores">
+                <ArrowLeft size={14} /> Ver todas as filiais
+              </button>
+            </div>
+          )}
+
           <section
-            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6"
+            className="grid grid-cols-2 gap-3"
             aria-label="Indicadores do período"
             data-testid="report-kpi-grid"
           >
@@ -415,33 +529,9 @@ export default function ReportsDashboard() {
               icon={<PackageCheck size={17} />}
             />
             <ReportMetric
-              label="Entregas concluídas"
-              value={number(data.summary.completed)}
-              note={completionRate == null ? "Sem entregas no recorte" : `${completionRate}% do total`}
-              icon={<CheckCircle2 size={17} />}
-            />
-            <ReportMetric
-              label="Tempo total médio"
-              value={minutesLabel(data.summary.averageTotalMinutes)}
-              note="Do registro à conclusão"
-              icon={<Clock3 size={17} />}
-            />
-            <ReportMetric
-              label="Tempo médio na loja"
-              value={minutesLabel(data.summary.averageStoreMinutes)}
-              note="Chegada até a saída da filial"
-              icon={<Store size={17} />}
-            />
-            <ReportMetric
-              label="Tempo médio de entrega"
-              value={minutesLabel(data.summary.averageDeliveryMinutes)}
-              note="Saída da filial até a conclusão"
-              icon={<Bike size={17} />}
-            />
-            <ReportMetric
-              label="Repasses contabilizados"
+              label={isStore ? "Custo das entregas da loja" : "Valor das entregas concluídas"}
               value={money(data.summary.courierAmount)}
-              note="Entregas concluídas no recorte"
+              note="Soma das tarifas das entregas concluídas"
               icon={<Wallet size={17} />}
             />
           </section>
@@ -586,7 +676,7 @@ export default function ReportsDashboard() {
                 <ChartPanel
                   eyebrow="PRODUÇÃO"
                   title="Entregas concluídas por motoboy"
-                  description="Volume concluído e repasse registrado no período"
+                  description="Quantidade de entregas concluídas no período"
                   testId="chart-deliveries-couriers"
                 >
                   {courierData.length ? (
@@ -630,7 +720,7 @@ export default function ReportsDashboard() {
                 <section className="panel overflow-hidden" data-testid="report-courier-details">
                   <div className="border-b border-border px-4 py-4 sm:px-5">
                     <div className="eyebrow">RESUMO INDIVIDUAL</div>
-                    <h2 className="mt-1 font-bold">Produção e repasses</h2>
+                    <h2 className="mt-1 font-bold">Entregas feitas por motoboy</h2>
                   </div>
                   {courierData.length ? (
                     <ul className="divide-y divide-border">
@@ -646,17 +736,17 @@ export default function ReportsDashboard() {
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-sm font-semibold">{courier.courierName}</div>
                             <div className="mt-1 text-xs text-muted-foreground">
-                              {number(courier.completedDeliveries)} concluídas · média total {minutesLabel(courier.averageTotalMinutes)}
+                              Retirada {minutesLabel(courier.averagePickupMinutes)} · até o cliente {minutesLabel(courier.averageDeliveryMinutes)} · total {minutesLabel(courier.averageTotalMinutes)}
                             </div>
                           </div>
                           <strong className="whitespace-nowrap text-sm">
-                            {money(courier.courierAmount)}
+                            {number(courier.completedDeliveries)} {courier.completedDeliveries === 1 ? "entrega" : "entregas"}
                           </strong>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <ChartEmptyState message="Os valores por motoboy aparecerão quando houver entregas concluídas atribuídas." />
+                    <ChartEmptyState message="As entregas por motoboy aparecerão quando houver entregas concluídas." />
                   )}
                 </section>
               </section>

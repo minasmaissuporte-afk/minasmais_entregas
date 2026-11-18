@@ -42,6 +42,17 @@ export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
 }
 
+let _authTokenRefresher: AuthTokenGetter | null = null;
+
+/**
+ * Register a function that renews the session and returns a fresh token.
+ * When an authenticated request comes back 401 (token expired while the
+ * device slept or the tab was idle), the request is retried once with it.
+ */
+export function setAuthTokenRefresher(refresher: AuthTokenGetter | null): void {
+  _authTokenRefresher = refresher;
+}
+
 function isRequest(input: RequestInfo | URL): input is Request {
   return typeof Request !== "undefined" && input instanceof Request;
 }
@@ -358,7 +369,16 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  let response = await fetch(input, { ...init, method, headers });
+
+  // Token vencido depois de um tempo parado: renova a sessão e tenta mais uma vez.
+  if (response.status === 401 && _authTokenRefresher && headers.has("authorization") && !isRequest(input)) {
+    const fresh = await Promise.resolve(_authTokenRefresher()).catch(() => null);
+    if (fresh) {
+      headers.set("authorization", `Bearer ${fresh}`);
+      response = await fetch(input, { ...init, method, headers });
+    }
+  }
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

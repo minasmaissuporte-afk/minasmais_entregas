@@ -21,12 +21,13 @@ test.beforeAll(async () => {
   await wipeDeliveries();
   const central = await Api.as("central");
   const courier = await Api.as("courier");
-  await createDelivery(central, { storeId: stores.a.id, customerName: "E2E Maria Aparecida", priority: "urgent" });
+  await createDelivery(central, { storeId: stores.a.id, customerName: "E2E Maria Aparecida", requiresPrescription: true });
   await createDelivery(central, { storeId: stores.b.id, customerName: "E2E José Conceição" });
   await courierOnline(courier);
+  // A entrega já nasce oferecida aos motoboys da cidade: o motoboy aceita e retira (sem "Cheguei na loja").
   const d = await createDelivery(central, { storeId: stores.a.id, customerName: "E2E Ana Lúcia" });
-  await central.post(`/deliveries/${d.id}/dispatch`, { mode: "single", courierId: "e2e-courier-1" });
-  for (const s of ["ACCEPTED", "AT_STORE", "IN_TRANSIT"]) await setStatus(central, d.id, s);
+  await setStatus(courier, d.id, "ACCEPTED");
+  await setStatus(central, d.id, "IN_TRANSIT");
   detailId = d.id;
   await setCourierStatus("e2e-courier-2", "AVAILABLE");
 });
@@ -45,7 +46,8 @@ for (const [label, size] of [["desktop", { width: 1440, height: 900 }], ["celula
     await page.setViewportSize(size);
     await loginAs(page, "central");
     await shot(page, `${label}-central-home`);
-    for (const [name, path] of [["entregas", "/entregas"], ["mapa", "/mapa"], ["motoboys", "/motoboys"], ["detalhe", `/deliveries/${detailId}`], ["relatorios", "/reports"], ["conta", "/account"]]) {
+    // A aba "Mapa em tempo real" (/mapa) saiu: o mapa está na página inicial (Entregas).
+    for (const [name, path] of [["entregas", "/entregas"], ["motoboys", "/motoboys"], ["detalhe", `/deliveries/${detailId}`], ["relatorios", "/reports"], ["conta", "/account"]]) {
       await page.goto(path);
       await page.waitForLoadState("networkidle").catch(() => undefined);
       await page.waitForTimeout(1500);
@@ -72,6 +74,11 @@ for (const [label, size] of [["desktop", { width: 1440, height: 900 }], ["celula
     await loginAs(page, "manager");
     await page.waitForTimeout(1500);
     await shot(page, `${label}-loja-home`);
+    // Gerente não tem relatório geral: /reports mostra a "Contabilidade da filial".
+    await page.goto("/reports");
+    await page.waitForLoadState("networkidle").catch(() => undefined);
+    await page.waitForTimeout(1000);
+    await shot(page, `${label}-loja-contabilidade`);
     await page.evaluate(() => localStorage.clear());
     await loginAs(page, "pending");
     await shot(page, `${label}-pendente-home`);
@@ -84,6 +91,7 @@ for (const [label, size] of [["desktop", { width: 1440, height: 900 }], ["celula
     await loginAs(page, "courier");
     await page.waitForTimeout(2000);
     await shot(page, `${label}-motoboy-home`);
+    // Barra inferior: Início / Mapa / Histórico ("Histórico" abre "Entregas feitas").
     for (const id of ["nav-courier-map", "nav-courier-history"]) {
       const tab = page.getByTestId(id);
       if (await tab.isVisible().catch(() => false)) {

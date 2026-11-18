@@ -13,6 +13,21 @@ export interface RouteDeliverySummary {
   /** @nullable */
   customerPhone: string | null;
   requiresPrescription?: boolean;
+  /**
+     * Forma de pagamento do cliente: CARD, PIX ou CASH
+     * @nullable
+     */
+  paymentMethod?: string | null;
+  /**
+     * Dinheiro: troco para quanto (valor com que o cliente vai pagar)
+     * @nullable
+     */
+  changeFor?: number | null;
+  /**
+     * Cartão: levar a maquininha
+     * @nullable
+     */
+  bringCardMachine?: boolean | null;
   destination: string;
   /** @nullable */
   notes: string | null;

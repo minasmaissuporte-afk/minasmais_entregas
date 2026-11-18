@@ -8,10 +8,21 @@
 
 export interface DeliveryAnalyticsSummary {
   total: number;
+  /** Solicitadas aguardando um motoboy aceitar */
+  requested: number;
+  /** Aceitas */
+  accepted: number;
+  /** Retiradas na loja */
+  pickedUp: number;
   completed: number;
   cancelled: number;
+  /** Registro até um motoboy aceitar */
+  averageAcceptMinutes: number;
+  /** Registro até a conclusão */
   averageTotalMinutes: number;
+  /** Aceite até a retirada na loja */
   averageStoreMinutes: number;
+  /** Retirada até a conclusão */
   averageDeliveryMinutes: number;
   courierAmount: number;
 }

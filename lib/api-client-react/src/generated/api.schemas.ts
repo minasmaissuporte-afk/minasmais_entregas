@@ -33,6 +33,21 @@ export interface Delivery {
      * @nullable
      */
   routeId?: string | null;
+  /**
+     * Forma de pagamento do cliente: CARD, PIX ou CASH
+     * @nullable
+     */
+  paymentMethod?: string | null;
+  /**
+     * Dinheiro: troco para quanto (valor com que o cliente vai pagar)
+     * @nullable
+     */
+  changeFor?: number | null;
+  /**
+     * Cartão: levar a maquininha
+     * @nullable
+     */
+  bringCardMachine?: boolean | null;
   destination: string;
   orderNumber?: string;
   /** @nullable */
@@ -79,6 +94,15 @@ export const DeliveryInputPriority = {
   urgent: 'urgent',
 } as const;
 
+export type DeliveryInputPaymentMethod = typeof DeliveryInputPaymentMethod[keyof typeof DeliveryInputPaymentMethod];
+
+
+export const DeliveryInputPaymentMethod = {
+  CARD: 'CARD',
+  PIX: 'PIX',
+  CASH: 'CASH',
+} as const;
+
 export interface DeliveryInput {
   /** @minLength 2 */
   customerName: string;
@@ -103,6 +127,15 @@ export interface DeliveryInput {
   storeId: string;
   priority: DeliveryInputPriority;
   requiresPrescription?: boolean;
+  paymentMethod?: DeliveryInputPaymentMethod;
+  /**
+     * @minimum 0
+     * @maximum 100000
+     * @nullable
+     */
+  changeFor?: number | null;
+  /** @nullable */
+  bringCardMachine?: boolean | null;
   /**
      * Deprecated; server uses the selected branch's configured fee
      * @minimum 0
@@ -116,6 +149,15 @@ export type DeliveryUpdateInputPriority = typeof DeliveryUpdateInputPriority[key
 export const DeliveryUpdateInputPriority = {
   normal: 'normal',
   urgent: 'urgent',
+} as const;
+
+export type DeliveryUpdateInputPaymentMethod = typeof DeliveryUpdateInputPaymentMethod[keyof typeof DeliveryUpdateInputPaymentMethod];
+
+
+export const DeliveryUpdateInputPaymentMethod = {
+  CARD: 'CARD',
+  PIX: 'PIX',
+  CASH: 'CASH',
 } as const;
 
 export interface DeliveryUpdateInput {
@@ -143,6 +185,15 @@ export interface DeliveryUpdateInput {
   notes?: string | null;
   priority?: DeliveryUpdateInputPriority;
   requiresPrescription?: boolean;
+  paymentMethod?: DeliveryUpdateInputPaymentMethod;
+  /**
+     * @minimum 0
+     * @maximum 100000
+     * @nullable
+     */
+  changeFor?: number | null;
+  /** @nullable */
+  bringCardMachine?: boolean | null;
 }
 
 export type DispatchInputMode = typeof DispatchInputMode[keyof typeof DispatchInputMode];
@@ -345,12 +396,41 @@ export interface ActiveOperationsRoute {
   routeGeometry: RouteCoordinate[];
 }
 
-export interface DeliveryAnalyticsSummary {
+export interface DeliveryAnalyticsStore {
+  storeId: string;
+  storeName: string;
+  city: string;
   total: number;
+  requested: number;
+  accepted: number;
+  pickedUp: number;
   completed: number;
   cancelled: number;
+  /** Valor das entregas concluídas (custo da filial) */
+  amount: number;
+  averageAcceptMinutes: number;
+  averagePickupMinutes: number;
+  averageDeliveryMinutes: number;
   averageTotalMinutes: number;
+}
+
+export interface DeliveryAnalyticsSummary {
+  total: number;
+  /** Solicitadas aguardando um motoboy aceitar */
+  requested: number;
+  /** Aceitas */
+  accepted: number;
+  /** Retiradas na loja */
+  pickedUp: number;
+  completed: number;
+  cancelled: number;
+  /** Registro até um motoboy aceitar */
+  averageAcceptMinutes: number;
+  /** Registro até a conclusão */
+  averageTotalMinutes: number;
+  /** Aceite até a retirada na loja */
   averageStoreMinutes: number;
+  /** Retirada até a conclusão */
   averageDeliveryMinutes: number;
   courierAmount: number;
 }
@@ -367,6 +447,10 @@ export interface DeliveryAnalyticsCourier {
   completedDeliveries: number;
   courierAmount: number;
   averageTotalMinutes: number;
+  /** Aceite até a retirada na loja */
+  averagePickupMinutes: number;
+  /** Retirada até a conclusão */
+  averageDeliveryMinutes: number;
 }
 
 export interface DeliveryAnalyticsRow {
@@ -407,11 +491,69 @@ export interface DeliveryAnalyticsCancellation {
 }
 
 export interface DeliveryAnalytics {
+  stores: DeliveryAnalyticsStore[];
   summary: DeliveryAnalyticsSummary;
   daily: DeliveryAnalyticsDay[];
   couriers: DeliveryAnalyticsCourier[];
   deliveries: DeliveryAnalyticsRow[];
   cancellations: DeliveryAnalyticsCancellation[];
+}
+
+export interface StoreAccountingCourier {
+  courierId: string;
+  courierName: string;
+  completedDeliveries: number;
+  amountTotal: number;
+  amountPaid: number;
+  amountToPay: number;
+}
+
+export interface StoreAccountingDelivery {
+  id: string;
+  code: string;
+  orderNumber: string;
+  customerName: string;
+  /** @nullable */
+  courierId: string | null;
+  /** @nullable */
+  courierName: string | null;
+  status: string;
+  amount: number;
+  createdAt: string;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  paidAt: string | null;
+}
+
+export interface StoreAccounting {
+  storeId: string;
+  storeName: string;
+  /** Pedidos registrados no período */
+  totalDeliveries: number;
+  completedDeliveries: number;
+  cancelledDeliveries: number;
+  /** Valor das entregas concluídas */
+  amountTotal: number;
+  /** Já pago aos motoboys */
+  amountPaid: number;
+  /** A pagar aos motoboys */
+  amountToPay: number;
+  couriers: StoreAccountingCourier[];
+  deliveries: StoreAccountingDelivery[];
+}
+
+export interface PayCourierInput {
+  courierId: string;
+  /** Só para o admin; o gerente usa a própria filial */
+  storeId?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface PayCourierResult {
+  paidDeliveries: number;
+  amount: number;
 }
 
 export interface DeliveryCancellationReason {
@@ -626,6 +768,11 @@ export interface AppUser {
   phone?: string | null;
   /** @nullable */
   storeName?: string | null;
+  /**
+     * Cidade em que o motoboy recebe entregas
+     * @nullable
+     */
+  courierCity?: string | null;
   /** @nullable */
   courierStatus?: string | null;
   role: AppUserRole;
@@ -655,6 +802,11 @@ export interface AccessInviteInput {
   role: AccessInviteInputRole;
   /** @nullable */
   storeId?: string | null;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  courierCity?: string | null;
   /**
      * @maxLength 30
      * @nullable
@@ -693,6 +845,11 @@ export interface UserRoleInput {
   phone?: string | null;
   /** @nullable */
   storeId?: string | null;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  courierCity?: string | null;
   /** @nullable */
   courierId?: string | null;
 }
@@ -838,6 +995,21 @@ export interface RouteDeliverySummary {
   /** @nullable */
   customerPhone: string | null;
   requiresPrescription?: boolean;
+  /**
+     * Forma de pagamento do cliente: CARD, PIX ou CASH
+     * @nullable
+     */
+  paymentMethod?: string | null;
+  /**
+     * Dinheiro: troco para quanto (valor com que o cliente vai pagar)
+     * @nullable
+     */
+  changeFor?: number | null;
+  /**
+     * Cartão: levar a maquininha
+     * @nullable
+     */
+  bringCardMachine?: boolean | null;
   destination: string;
   /** @nullable */
   notes: string | null;
@@ -943,6 +1115,12 @@ export interface CourierRoutePreview {
   /** @nullable */
   estimatedMinutes: number | null;
 }
+
+export type GetStoreAccountingParams = {
+from?: string;
+to?: string;
+storeId?: string;
+};
 
 export type GetDeliveryAnalyticsParams = {
 from?: string;

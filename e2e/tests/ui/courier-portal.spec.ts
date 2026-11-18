@@ -41,31 +41,37 @@ test.describe("PWA do motoboy (celular)", () => {
     }, { timeout: 15_000 }).toBe("OFFLINE");
   });
 
-  test("Navegação inferior: início, mapa, ganhos e histórico", async ({ page }) => {
+  // A barra inferior agora é Início / Mapa / Histórico; a antiga tela "Ganhos" virou "Entregas feitas" (aba Totais).
+  test("Navegação inferior: início, mapa e histórico (Entregas feitas e Histórico)", async ({ page }) => {
     await loginAs(page, "courier");
     await page.getByTestId("nav-courier-history").click();
-    await expect(page.locator("h1:visible").filter({ hasText: /^Ganhos$/ })).toBeVisible();
-    await page.getByRole("tab", { name: "Histórico" }).filter({ visible: true }).first().click();
     await expect(page.locator("h1:visible").filter({ hasText: /^Histórico$/ })).toBeVisible();
+    await page.getByRole("tab", { name: "Totais" }).filter({ visible: true }).first().click();
+    await expect(page.locator("h1:visible").filter({ hasText: /^Entregas feitas$/ })).toBeVisible();
     await page.getByTestId("nav-courier-map").click();
     await page.getByTestId("nav-courier-home").click();
     await expect(page.getByTestId("toggle-courier-availability")).toBeVisible();
   });
 
-  test("Aba de ganhos mostra o resumo em R$", async ({ page }) => {
+  test("Aba Totais mostra só a quantidade de entregas, sem valores em R$", async ({ page }) => {
     await loginAs(page, "courier");
     await page.getByTestId("nav-courier-history").click();
-    await page.getByRole("tab", { name: "Ganhos" }).first().click();
-    await expect(page.locator("h1:visible, h2:visible").filter({ hasText: /^Ganhos$/ }).first()).toBeVisible();
-    await expect(page.getByText(/R\$\s?\d/).filter({ visible: true }).first()).toBeVisible();
+    await page.getByRole("tab", { name: "Totais" }).filter({ visible: true }).first().click();
+    await expect(page.locator("h1:visible").filter({ hasText: /^Entregas feitas$/ })).toBeVisible();
+    const summary = page.getByTestId("summary-courier-earnings");
+    await expect(summary).toBeVisible();
+    await expect(summary).toContainText(/\d+ entregas?/);
+    await expect(summary).not.toContainText(/R\$/);
+    await expect(page.getByRole("tab", { name: "Ganhos" })).toHaveCount(0);
   });
 
-  test("Botão 'Ganhos' da barra inferior abre a tela de Ganhos", async ({ page }) => {
+  test("Botão 'Histórico' da barra inferior abre o histórico de entregas", async ({ page }) => {
     await loginAs(page, "courier");
     const nav = page.getByTestId("nav-courier-history");
-    await expect(nav).toHaveText(/Ganhos/);
+    await expect(nav).toHaveText(/Histórico/);
+    await expect(nav).not.toHaveText(/Ganhos/);
     await nav.click();
-    await expect(page.getByRole("heading", { level: 1, name: "Ganhos", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Histórico", exact: true })).toBeVisible();
   });
 
   test("Oferta enviada pela Central aparece no celular do motoboy online", async ({ page }) => {

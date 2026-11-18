@@ -120,10 +120,14 @@ test.describe("Busca de endereço (Google Maps)", () => {
     const list = await json(res);
     expect(list.length).toBeGreaterThan(0);
     for (const item of list) {
-      expect(item.latitude).toBeGreaterThanOrEqual(-90);
-      expect(item.longitude).toBeLessThanOrEqual(180);
-      expect(typeof item.formatted).toBe("string");
+      expect(typeof item.placeId).toBe("string");
+      expect(typeof item.text).toBe("string");
     }
-    expect(list.some((item: any) => item.stateCode === "MG" || /Belo Horizonte/.test(item.formatted))).toBe(true);
+    expect(list.some((item: any) => /Belo Horizonte|MG/.test(item.text))).toBe(true);
+    // As coordenadas vêm do segundo passo (detalhes do endereço escolhido).
+    const detail = await json(await api.get(`/enderecos/detalhes?placeId=${encodeURIComponent(list[0].placeId)}&numero=1000`));
+    expect(detail.latitude).toBeGreaterThanOrEqual(-90);
+    expect(detail.longitude).toBeLessThanOrEqual(180);
+    expect(typeof detail.formatted).toBe("string");
   });
 });

@@ -26,6 +26,10 @@ const addresses: { label: string; text: string; expect: { latitude: number; long
   { label: "sem acentos e minúsculas", text: "rua claudio manoel 500 belo horizonte", expect: { latitude: -19.9335, longitude: -43.9321 }, toleranceKm: 1, city: /Belo Horizonte/ },
 ];
 
+// Fluxo atual em dois passos: /enderecos/autocomplete devolve sugestões (placeId + texto) e
+// /enderecos/detalhes devolve o endereço completo e a posição (com o número, quando houver).
+const houseNumberOf = (text: string) => text.match(/(?:,\s*|\s)(\d{1,5})(?=\s*(?:,|$|\s[a-zà-ú]))/i)?.[1];
+
 test.describe("Endereços (Google Places/Geocoding)", () => {
   for (const a of addresses) {
     test(`Sugestão de endereço: ${a.label}`, async () => {
@@ -37,16 +41,34 @@ test.describe("Endereços (Google Places/Geocoding)", () => {
       const list = await json(res);
       expect(list.length, `nenhuma sugestão para "${a.text}"`).toBeGreaterThan(0);
       const first = list[0];
-      const dist = km(first, a.expect);
-      test.info().annotations.push({ type: "resultado", description: `"${a.text}" → "${first.formatted}" a ${dist.toFixed(2)} km do esperado, ${ms} ms, ${list.length} sugestões` });
-      expect(first.formatted + " " + (first.city ?? ""), "cidade da 1ª sugestão").toMatch(a.city);
+      expect(typeof first.placeId).toBe("string");
+      expect(first.text, "cidade da 1ª sugestão").toMatch(a.city);
       for (const item of list) {
-        expect(item.formatted, "sugestão com complemento de outro estabelecimento").not.toMatch(/ - (sala|loja|conj\.?|bloco|apto?\.?)\s|\d+°\s?andar/i);
+        expect(item.text, "sugestão com complemento de outro estabelecimento").not.toMatch(/ - (sala|loja|conj\.?|bloco|apto?\.?)\s|\d+°\s?andar/i);
       }
-      expect(dist, `1ª sugestão "${first.formatted}" longe do esperado`).toBeLessThan(a.toleranceKm);
       expect(ms, "busca de endereço lenta").toBeLessThan(3000);
+
+      const numero = /^\d{5}-?\d{3}$/.test(a.text.trim()) ? undefined : houseNumberOf(a.text);
+      const detailRes = await api.get(`/enderecos/detalhes?placeId=${encodeURIComponent(first.placeId)}${numero ? `&numero=${numero}` : ""}`);
+      expect(detailRes.status(), await describe(detailRes)).toBe(200);
+      const detail = await json(detailRes);
+      const dist = km(detail, a.expect);
+      test.info().annotations.push({ type: "resultado", description: `"${a.text}" → "${detail.formatted}" a ${dist.toFixed(2)} km do esperado, ${ms} ms, ${list.length} sugestões` });
+      expect(`${detail.formatted} ${detail.city ?? ""}`).toMatch(a.city);
+      expect(dist, `endereço "${detail.formatted}" longe do esperado`).toBeLessThan(a.toleranceKm);
     });
   }
+
+  test("Rua sem número não traz CEP de outro lugar; com o número o CEP vem certo", async () => {
+    const api = await Api.as("central");
+    const list = await json(await api.get(`/enderecos/autocomplete?texto=${encodeURIComponent("Rua Pernambuco, Belo Horizonte")}`));
+    const street = list.find((item: { text: string }) => /Pernambuco/.test(item.text) && /Belo Horizonte/.test(item.text));
+    expect(street, "sugestão da Rua Pernambuco em BH").toBeTruthy();
+    const withoutNumber = await json(await api.get(`/enderecos/detalhes?placeId=${encodeURIComponent(street.placeId)}`));
+    expect(withoutNumber.postcode ?? null, "sem número não deve vir CEP").toBeNull();
+    const withNumber = await json(await api.get(`/enderecos/detalhes?placeId=${encodeURIComponent(street.placeId)}&numero=1000`));
+    expect(withNumber.postcode).toMatch(/^30\d{3}-?\d{3}$/);
+  });
 
   test("Endereço inexistente devolve lista vazia (não erro 500)", async () => {
     const res = await (await Api.as("central")).get(`/enderecos/autocomplete?texto=${encodeURIComponent("Rua Inexistente Xyzwq 99999 Planeta Marte")}`);

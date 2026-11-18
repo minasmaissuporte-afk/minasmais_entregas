@@ -12,4 +12,8 @@ export interface DeliveryAnalyticsCourier {
   completedDeliveries: number;
   courierAmount: number;
   averageTotalMinutes: number;
+  /** Aceite até a retirada na loja */
+  averagePickupMinutes: number;
+  /** Retirada até a conclusão */
+  averageDeliveryMinutes: number;
 }

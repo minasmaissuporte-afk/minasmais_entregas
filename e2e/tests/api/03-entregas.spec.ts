@@ -7,12 +7,12 @@ import { query, setCourierStatus, wipeDeliveries } from "../../support/db.ts";
 test.describe("Entregas: criação e validação", () => {
   test.beforeAll(wipeDeliveries);
 
-  test("Central cria entrega: código MM-XXXXXX, status REQUESTED, valor = tarifa da filial, evento inicial", async () => {
+  test("Central cria entrega: código MM-XXXXXX, já vai para a fila dos motoboys (OFFERED), valor = tarifa da filial", async () => {
     const central = await Api.as("central");
     const delivery = await createDelivery(central, { storeId: stores.a.id, deliveryAmount: 999 });
-    expect(delivery.code).toMatch(/^MM-d{6,}$/);
+    expect(delivery.code).toMatch(/^MM-\d{6,}$/);
     expect(delivery).toMatchObject({
-      status: "REQUESTED",
+      status: "OFFERED",
       storeId: stores.a.id,
       storeName: stores.a.name,
       deliveryAmount: stores.a.feeCents / 100, // ignora o deliveryAmount enviado
@@ -112,8 +112,9 @@ test.describe("Entregas: visibilidade, busca e filtros", () => {
     expect(filtered).toEqual([]);
   });
 
-  test("Motoboy não vê entrega que não é dele", async () => {
+  test("Motoboy não vê entrega que já ficou com outro motoboy", async () => {
     const courier = await Api.as("courier");
+    await query(`update deliveries set status = 'ACCEPTED', courier_id = 'e2e-courier-2' where id = $1`, [fromA.id]);
     await expectError(await courier.get(`/deliveries/${fromA.id}`), 403);
     const list = await json(await courier.get("/deliveries"));
     expect(list.map((d: any) => d.id)).not.toContain(fromA.id);
@@ -189,13 +190,14 @@ test.describe("Entregas: transições de status", () => {
     expect((await setStatus(central, d.id, "AT_STORE")).status()).toBe(200);
   });
 
+  // Entrega nova já nasce na fila (OFFERED). Aceitar é só do motoboy.
   const illegal: [string, string][] = [
-    ["REQUESTED", "ACCEPTED"],
-    ["REQUESTED", "IN_TRANSIT"],
-    ["REQUESTED", "COMPLETED"],
-    ["REQUESTED", "AWAITING_COURIER"],
-    ["REQUESTED", "NOT_DELIVERED"],
-    ["REQUESTED", "RETURNING_TO_STORE"],
+    ["OFFERED", "ACCEPTED"],
+    ["OFFERED", "IN_TRANSIT"],
+    ["OFFERED", "COMPLETED"],
+    ["OFFERED", "AWAITING_COURIER"],
+    ["OFFERED", "NOT_DELIVERED"],
+    ["OFFERED", "RETURNING_TO_STORE"],
   ];
   for (const [from, to] of illegal) {
     test(`Transição proibida ${from} → ${to} é recusada (4xx)`, async () => {
@@ -226,13 +228,15 @@ test.describe("Entregas: transições de status", () => {
     await expectStatus(central, d.id, "CANCELLED");
   });
 
-  test("Só Admin/Central cancelam: gerente, atendente e motoboy recebem 403", async () => {
+  test("Atendente e motoboy não cancelam (403); gerente cancela entrega da filial ainda sem motoboy", async () => {
     const central = await Api.as("central");
     const d = await createDelivery(central, { storeId: stores.a.id });
-    for (const role of ["manager", "staff", "courier"] as const) {
+    for (const role of ["staff", "courier"] as const) {
       await expectError(await setStatus(await Api.as(role), d.id, "CANCELLED"), 403);
     }
-    await expectStatus(central, d.id, "REQUESTED");
+    await expectStatus(central, d.id, "OFFERED");
+    expect((await setStatus(await Api.as("manager"), d.id, "CANCELLED")).status()).toBe(200);
+    await expectStatus(central, d.id, "CANCELLED");
   });
 
   test("Loja só pode marcar IN_TRANSIT (retirada) — outros status são recusados", async () => {

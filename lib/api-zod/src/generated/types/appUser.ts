@@ -17,6 +17,11 @@ export interface AppUser {
   phone?: string | null;
   /** @nullable */
   storeName?: string | null;
+  /**
+     * Cidade em que o motoboy recebe entregas
+     * @nullable
+     */
+  courierCity?: string | null;
   /** @nullable */
   courierStatus?: string | null;
   role: AppUserRole;

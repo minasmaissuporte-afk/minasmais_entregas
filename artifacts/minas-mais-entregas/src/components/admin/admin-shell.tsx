@@ -16,6 +16,7 @@ import {
   KeyRound,
   LayoutGrid,
   LogOut,
+  CircleHelp,
   Menu,
   Package,
   PanelLeft,
@@ -25,6 +26,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { supportWhatsAppUrl } from "@/lib/support";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
@@ -357,6 +359,15 @@ function AdminHeader({
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/account" className="flex cursor-pointer items-center gap-2"><KeyRound size={15} aria-hidden="true" /> Minha conta e senha</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <a href={supportWhatsAppUrl} target="_blank" rel="noopener noreferrer" className="flex cursor-pointer items-start gap-2" data-testid="link-admin-support">
+                <CircleHelp size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block">Ajuda e Suporte</span>
+                  <span className="block text-[11px] text-[var(--adm-muted)]">Entre em contato com nossa equipe</span>
+                </span>
+              </a>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={onSignOut} className="flex cursor-pointer items-center gap-2 text-[var(--adm-primary)]">
               <LogOut size={15} aria-hidden="true" /> Sair

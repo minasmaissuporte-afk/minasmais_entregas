@@ -1642,7 +1642,7 @@
 .filter-select { min-height:35px; max-width:100%; border:1px solid #e4e2df; border-radius:7px; background:white; padding:0 10px; color:#55595f; font-size:11px; }
 .filter-select:focus,input:focus,textarea:focus,select:focus { border-color:#b0505a; box-shadow:0 0 0 3px #bd293633; outline:none; }
 .filter-select:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible { outline:2px solid hsl(var(--ring)); outline-offset:1px; }
-input:not(.search-box input),textarea { width:100%; border:1px solid #e2e0dd; border-radius:7px; background:#fff; padding:9px 10px; color:#32353a; font-size:12px; }
+input:not(.search-box input):not([type="checkbox"]):not([type="radio"]),textarea { width:100%; border:1px solid #e2e0dd; border-radius:7px; background:#fff; padding:9px 10px; color:#32353a; font-size:12px; }
 input::placeholder,textarea::placeholder { color:#a1a1a3; }
 /* Selects dos formulários em modal com o mesmo visual dos inputs (antes ficavam sem borda). */
 .modal-card select { width:100%; border:1px solid #e2e0dd; border-radius:7px; background-color:#fff; padding:9px 10px; color:#32353a; font-size:12px; }
@@ -1653,7 +1653,7 @@ input::placeholder,textarea::placeholder { color:#a1a1a3; }
 textarea { resize:vertical; }
 .cancellation-reason-row > input[type="checkbox"] { width:20px; min-width:20px; height:20px; flex:0 0 20px; padding:0; }
 .cancellation-reason-row > input[type="text"] { width:0; min-width:0; height:48px; flex:1 1 auto; padding:0 12px; font-size:14px; }
-.field-label { display:flex; flex-direction:column; gap:6px; color:#777a80; font-size:11px; font-weight:600; }
+.field-label { display:flex; flex-direction:column; gap:6px; color:#5f6268; font-size:11px; font-weight:600; }
 .skeleton { border-radius:6px; background:linear-gradient(90deg,#f1f0ee,#f8f7f5,#f1f0ee); background-size:200% 100%; animation:skeleton-shift 1.4s ease infinite; }
 @keyframes skeleton-shift { to { background-position:-200% 0; } }
 .modal-backdrop { position:fixed; z-index:9999; top:0; left:0; display:flex; width:100vw; height:100dvh; align-items:center; justify-content:center; overflow:hidden; overscroll-behavior:contain; padding:16px; background:rgba(28,29,32,.42); backdrop-filter:blur(3px); }
@@ -1845,10 +1845,19 @@ textarea { resize:vertical; }
 }
 .courier-pwa .courier-online-card > div > div > span:last-child { font-size: 16px; }
 .courier-pwa .courier-online-card p { margin-top: 2px; font-size: 12px; }
+/* Chave online/offline no padrão de switch: trilho 52×30 com a bolinha de 24px dentro dele
+   (3px de folga em volta), centralizada na vertical. A área de toque continua 60×48. */
 .courier-pwa .courier-online-toggle { width: 60px; min-width: 60px; height: 48px; flex-basis: 60px; }
-.courier-pwa .courier-online-toggle::before { inset: 11px 0; }
-.courier-pwa .courier-online-knob { width: 28px; height: 28px; margin-left: 3px; }
-.courier-pwa .courier-online-knob.is-online { transform: translateX(26px); }
+.courier-pwa .courier-online-toggle::before { inset: 9px 4px; }
+.courier-pwa .courier-online-knob {
+  width: 24px;
+  height: 24px;
+  margin-left: 7px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 22%), 0 0 0 0.5px rgb(0 0 0 / 6%);
+}
+.courier-pwa .courier-online-knob svg { width: 13px; height: 13px; stroke-width: 3; }
+.courier-pwa .courier-online-knob.is-online { transform: translateX(22px); }
+.courier-pwa .courier-online-toggle:focus-visible { outline: 3px solid #bc1d2a; outline-offset: 2px; border-radius: 999px; }
 .courier-pwa .courier-content-shell { padding-inline: 16px; }
 .courier-pwa .courier-tab-panel:not(.courier-tab-panel--map) {
   padding-top: 0;
@@ -2590,3 +2599,11 @@ textarea { resize:vertical; }
 @media (max-width: 639px) { .adm-map-frame--hero .live-map-frame { height: 440px; min-height: 380px; } }
 /* Entrega com receita: aviso para o motoboy no painel do mapa. */
 .courier-route-map-screen__prescription { margin: 6px 0 0; display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; background: #fff0f1; padding: 5px 10px; color: #a3141f; font-size: 13px; font-weight: 700; }
+/* Suporte via WhatsApp: botão flutuante compacto, só nas telas públicas do site. */
+.support-fab { position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.support-fab__trigger { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px; border: 1px solid #e3e1de; border-radius: 999px; background: #fff; color: #42464d; font-size: 13px; font-weight: 700; box-shadow: 0 6px 18px rgb(36 39 45 / 12%); transition: border-color .16s, box-shadow .16s, transform .16s; }
+.support-fab__trigger:hover { border-color: #cfcbc6; box-shadow: 0 8px 22px rgb(36 39 45 / 16%); }
+.support-fab__trigger:focus-visible { outline: 3px solid #1f2329; outline-offset: 2px; }
+.support-fab__trigger svg { color: #b91e2c; }
+.support-fab__panel { width: min(300px, calc(100vw - 32px)); border: 1px solid #e7e6e3; border-radius: 14px; background: #fff; padding: 16px; box-shadow: 0 18px 44px rgb(36 39 45 / 18%); }
+@media (prefers-reduced-motion: reduce) { .support-fab__trigger { transition: none; } }

@@ -547,7 +547,7 @@ export default function CourierRoutesSection({
       await declineRoute.mutateAsync({ routeId: route.id });
       await refreshRouteData();
     } catch (error) {
-      showRouteError(route.id, error, "Não foi possível recusar esta rota.");
+      showRouteError(route.id, error, "Não foi possível dispensar esta rota.");
     } finally {
       setBusyRouteId(null);
       setBusyRouteAction(null);
@@ -772,10 +772,10 @@ function CourierRouteOfferCard({
           <Map size={16} /> {previewOpen ? "Ocultar prévia" : "Prévia da rota"}
         </button>
         <CourierDeclineButton
-          label="Recusar"
+          label="Dispensar"
           busyLabel="Recusando…"
-          question="Recusar esta rota?"
-          detail="Todas as entregas dela voltam para a fila da Central."
+          question="Dispensar esta rota?"
+          detail="Ela some para você e as entregas continuam disponíveis para os outros motoboys."
           onConfirm={onDecline}
           busy={busyAction === "decline"}
           disabled={busy}
@@ -820,7 +820,7 @@ function CourierRouteOfferCard({
               </ol>
               <div className="courier-route-offer-total" aria-label="Estimativa total da rota">
                 <span>{[preview.data.distanceKm != null ? `${Number(preview.data.distanceKm).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km` : null, preview.data.estimatedMinutes != null ? `${preview.data.estimatedMinutes} min` : null].filter(Boolean).join(" · ")}</span>
-                <strong>{money(route.amountToReceive)}</strong>
+                <strong>{route.deliveryCount} {route.deliveryCount === 1 ? "entrega" : "entregas"}</strong>
               </div>
             </>
           ) : null}
@@ -880,10 +880,6 @@ function ActiveRouteCard({
           <div className="text-xs font-semibold uppercase tracking-[.08em] text-white/85">Rota aceita · sequência travada</div>
           <h3 className="mt-1 text-xl font-bold">{route.deliveryCount} {route.deliveryCount === 1 ? "entrega" : "entregas"}</h3>
         </div>
-        <div className="text-right">
-          <div className="text-xs font-semibold uppercase tracking-[.08em] text-white/85">A receber</div>
-          <div className="mt-1 text-lg font-bold">{money(route.amountToReceive)}</div>
-        </div>
       </header>
 
       <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/90">
@@ -910,7 +906,6 @@ function ActiveRouteCard({
               <div className="mt-1 text-sm font-bold">{nextStop.kind === "pickup" ? `${nextStop.storeName} · ${nextGroup?.codes.length === 1 ? "1 pedido" : `${nextGroup?.codes.length} pedidos`}` : `${nextStop.code} · ${nextStop.storeName}`}</div>
               <div className="mt-1 text-xs text-muted-foreground">{nextStop.kind === "pickup" ? nextGroup?.codes.join(", ") : nextStop.customerName}</div>
             </div>
-            {nextStop.kind === "delivery" && <span className="shrink-0 text-sm font-bold">{money(nextStop.deliveryAmount)}</span>}
           </div>
           <div className="mt-3 flex items-start gap-2 text-xs leading-relaxed">
             <MapPin size={15} className="mt-0.5 shrink-0 text-primary" />
@@ -940,19 +935,8 @@ function ActiveRouteCard({
                   className="sm:col-span-2"
                 />
               </>
-            ) : !hasArrivedAtNextStore ? (
-              <button
-                className="button-primary min-h-12 justify-center"
-                type="button"
-                disabled={busy}
-                onClick={() => onArrive(nextStop.id)}
-                aria-busy={busy}
-              >
-                {busy
-                  ? <><LoaderCircle size={15} className="animate-spin" /> Registrando chegada…</>
-                  : <><MapPin size={15} /> Registrar chegada à loja</>}
-              </button>
             ) : (
+              // Chegada e retirada são um toque só.
               <button
                 className="button-primary min-h-12 justify-center"
                 type="button"
@@ -961,8 +945,8 @@ function ActiveRouteCard({
                 aria-busy={busy}
               >
                 {busy
-                  ? <><LoaderCircle size={15} className="animate-spin" /> Confirmando saída…</>
-                  : <><Check size={15} /> Confirmar saída da loja</>}
+                  ? <><LoaderCircle size={15} className="animate-spin" /> Confirmando retirada…</>
+                  : <><Check size={15} /> Retirei {nextGroup && nextGroup.codes.length > 1 ? "os pedidos" : "o pedido"} na loja</>}
               </button>
             )}
           </div>

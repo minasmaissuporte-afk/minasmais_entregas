@@ -26,7 +26,7 @@ export function inviteErrorMessage(error: unknown) {
 export function useSendInvite() {
   const queryClient = useQueryClient();
   const invite = useInviteAccessUser();
-  const send = (data: { email: string; name: string; role: InviteRole; storeId?: string | null; phone?: string | null }) =>
+  const send = (data: { email: string; name: string; role: InviteRole; storeId?: string | null; courierCity?: string | null; phone?: string | null }) =>
     invite.mutateAsync({ data: { ...data, redirectTo: appUrl("/aceitar-convite") } }).then((user) => {
       void queryClient.invalidateQueries({ queryKey: getListAccessUsersQueryKey() });
       void queryClient.invalidateQueries({ queryKey: getListCouriersQueryKey() });
@@ -39,6 +39,28 @@ export function useSendInvite() {
  * Convite por e-mail: o admin informa e-mail, nome e perfil; a pessoa recebe um
  * link, escolhe a senha e já entra com o perfil certo (sem passar por aprovação).
  */
+/** Filiais da cidade escolhida: o motoboy recebe as entregas de todas elas. */
+export function CityStores({ stores, city }: { stores: { id: string; name: string; city: string; active: boolean }[]; city: string }) {
+  if (!city) {
+    return <span className="mt-1 block text-xs font-normal text-muted-foreground">Escolha a cidade para ver as filiais que ele vai atender.</span>;
+  }
+  const list = stores.filter((store) => store.active && store.city.trim().toLocaleLowerCase("pt-BR") === city.trim().toLocaleLowerCase("pt-BR"));
+  return (
+    <span className="mt-1.5 block text-xs font-normal text-muted-foreground" data-testid="text-city-stores">
+      {list.length ? (
+        <>
+          Recebe as entregas de {list.length === 1 ? "1 filial" : `${list.length} filiais`}:
+          <span className="mt-1 flex flex-wrap gap-1">
+            {list.map((store) => (
+              <span key={store.id} className="rounded-md bg-[#f3f1ef] px-2 py-0.5 font-semibold text-[#4b4f56]">{store.name}</span>
+            ))}
+          </span>
+        </>
+      ) : "Nenhuma filial ativa nesta cidade."}
+    </span>
+  );
+}
+
 export default function AccessInvitePanel({
   stores,
 }: {
@@ -49,9 +71,12 @@ export default function AccessInvitePanel({
   const [name, setName] = useState("");
   const [role, setRole] = useState<InviteRole>("COURIER");
   const [storeId, setStoreId] = useState("");
+  const [courierCity, setCourierCity] = useState("");
   const [phone, setPhone] = useState("");
   const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
   const activeStores = stores.filter((store) => store.active);
+  // Motoboy atende uma cidade: recebe as entregas de todas as filiais dela.
+  const cities = [...new Set(activeStores.map((store) => store.city.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -60,12 +85,17 @@ export default function AccessInvitePanel({
       setFeedback({ kind: "error", text: "Escolha a filial do gerente." });
       return;
     }
+    if (role === "COURIER" && !courierCity) {
+      setFeedback({ kind: "error", text: "Escolha a cidade em que o motoboy vai atender." });
+      return;
+    }
     try {
       const user: AppUser = await send({
         email: email.trim(),
         name: name.trim(),
         role,
-        storeId: role === "ADMIN" ? null : storeId || null,
+        storeId: role === "STORE_MANAGER" ? storeId || null : null,
+        courierCity: role === "COURIER" ? courierCity : null,
         phone: role === "COURIER" ? phone.trim() || null : null,
       });
       setFeedback({
@@ -143,6 +173,17 @@ export default function AccessInvitePanel({
             </select>
           </label>
         ) : role === "COURIER" ? (
+          <>
+          <label className="field-label">
+            Cidade
+            <select required value={courierCity} onChange={(event) => setCourierCity(event.target.value)} data-testid="select-invite-city">
+              <option value="">Escolha a cidade</option>
+              {cities.map((city) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </select>
+            <CityStores stores={activeStores} city={courierCity} />
+          </label>
           <label className="field-label">
             Telefone (opcional)
             <input
@@ -153,6 +194,7 @@ export default function AccessInvitePanel({
               data-testid="input-invite-phone"
             />
           </label>
+          </>
         ) : (
           <div className="hidden xl:block" aria-hidden="true" />
         )}

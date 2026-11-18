@@ -47,6 +47,10 @@ import AccessManagement from '@/pages/access-management';
 import CourierPortal from '@/pages/courier-portal';
 import LiveMap, { type MapMarker } from '@/components/live-map';
 import DeliveryAddressFields from '@/components/delivery-address-fields';
+import PaymentFields, { emptyPayment, paymentPayload, type PaymentFormValue } from '@/components/payment-fields';
+import { paymentLabel } from '@/lib/payment';
+import DeliveryProgress from '@/components/delivery-progress';
+import RequeueButton, { REQUEUE_STATUSES } from '@/components/requeue-button';
 import CourierAccessPage from '@/pages/courier-access';
 import StorePortal from '@/pages/store-portal';
 import StoreManagement from '@/pages/store-management';
@@ -64,6 +68,8 @@ import NativeCourierSetupGate from '@/components/native-courier-setup';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { AcceptInvitePage, ForgotPasswordPage, InviteLinkRedirect, PasswordRecoveryRedirect, ResetPasswordPage, SignInPage, SignUpPage } from '@/pages/auth-pages';
 import AdminShell from '@/components/admin/admin-shell';
+import { PublicSupportButton } from '@/components/support-button';
+import StoreAccountingPage from '@/pages/store-accounting';
 import { CouriersPage } from '@/components/admin/admin-pages';
 
 const queryClient = new QueryClient();
@@ -131,14 +137,18 @@ function HomeRedirect() {
   if (!isLoaded) return <ProfileLoading />;
   return isSignedIn ? <UserPortalRoute /> : <LandingPage />;
 }
+// Aceitar é sempre do motoboy (quem aceitar primeiro leva). Chegada e retirada são um passo só.
 const statusOptions: Record<string, string[]> = {
   REQUESTED: [],
-  OFFERED: ['ACCEPTED'],
-  ACCEPTED: ['TO_STORE', 'AT_STORE'],
-  TO_STORE: ['AT_STORE'],
+  OFFERED: [],
+  ACCEPTED: ['IN_TRANSIT'],
+  TO_STORE: ['IN_TRANSIT'],
   AT_STORE: ['IN_TRANSIT'],
   IN_TRANSIT: ['COMPLETED'],
 };
+/** Entrega esperando um motoboy aceitar (pode entrar numa rota agrupada). */
+const waitingForCourier = (d: { status: string; courierId?: string | null; routeId?: string | null }) =>
+  !d.routeId && (d.status === 'REQUESTED' || d.status === 'AWAITING_COURIER' || (d.status === 'OFFERED' && !d.courierId));
 const fmtTime = (value?: string | null) => value ? new Date(value).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 const timeAgo = (value?: string | null) => {
   if (!value) return 'Localização indisponível';
@@ -168,6 +178,7 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   const [customerCoordinates, setCustomerCoordinates] = useState<{ latitude: number | null; longitude: number | null }>({ latitude: null, longitude: null });
   const [form, setForm] = useState({ customerName: '', customerPhone: '', destination: '', orderNumber: '', notes: '', storeId: '', priority: 'normal' });
   const [requiresPrescription, setRequiresPrescription] = useState(false);
+  const [payment, setPayment] = useState<PaymentFormValue>(emptyPayment);
   const selectedStore = (storesQuery.data ?? []).find(store => store.id === form.storeId);
   // Gerente (ou operação com uma filial só): a unidade já vem escolhida.
   const activeStores = (storesQuery.data ?? []).filter(store => store.active);
@@ -195,20 +206,24 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   useModalBehavior(requestClose);
   const submit = (e: FormEvent) => {
     e.preventDefault(); setError('');
-    create.mutate({ data: { ...form, requiresPrescription, customerLatitude: customerCoordinates.latitude, customerLongitude: customerCoordinates.longitude, priority: form.priority as 'normal' | 'urgent' } }, {
+    if (!payment.paymentMethod) { setError('Escolha a forma de pagamento: cartão, Pix ou dinheiro.'); return; }
+    create.mutate({ data: { ...form, ...paymentPayload(payment), requiresPrescription, customerLatitude: customerCoordinates.latitude, customerLongitude: customerCoordinates.longitude, priority: form.priority as 'normal' | 'urgent' } }, {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
         void qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
         void qc.invalidateQueries({ queryKey: getGetDeliveryAnalyticsQueryKey() });
         onClose();
       },
-      onError: () => setError('Não foi possível registrar. Confira os dados e tente novamente.'),
+      onError: (mutationError) => {
+        const apiError = mutationError as Error & { data?: { error?: string } };
+        setError(apiError.data?.error ?? 'Não foi possível registrar. Confira os dados e tente novamente.');
+      },
     });
   };
   return createPortal(
     <div className="modal-backdrop" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) requestClose(); }}>
     <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="new-delivery-title" data-modal-active="true">
-      <div className="modal-header flex items-start justify-between gap-3 border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div className="min-w-0"><div className="eyebrow">NOVO PEDIDO</div><h2 id="new-delivery-title" className="mt-1 text-xl font-bold tracking-tight">Registrar entrega</h2><p className="mt-1 text-sm text-muted-foreground">Inclua os dados recebidos da unidade.</p></div><button type="button" className="icon-button modal-close-button" onClick={requestClose} aria-label="Fechar" disabled={create.isPending}><X size={18}/></button></div>
+      <div className="modal-header flex items-start justify-between gap-3 border-b border-border px-5 py-4 sm:px-6 sm:py-5"><div className="min-w-0"><div className="eyebrow">NOVO PEDIDO</div><h2 id="new-delivery-title" className="mt-1 text-xl font-bold tracking-tight">Registrar entrega</h2><p className="mt-1 text-sm text-muted-foreground">Ao registrar, a entrega vai direto para os motoboys da cidade. Quem aceitar primeiro leva.</p></div><button type="button" className="icon-button modal-close-button" onClick={requestClose} aria-label="Fechar" disabled={create.isPending}><X size={18}/></button></div>
       <form onSubmit={submit} className="modal-form">
         <div className="modal-fields space-y-4 px-5 py-4 sm:px-6 sm:py-5">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -225,14 +240,16 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
         />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Número do pedido"><input required value={form.orderNumber} onChange={e => update('orderNumber', e.target.value)} placeholder="Ex.: 48271" data-testid="input-order-number"/></Field>
-          <Field label="Unidade"><select required value={form.storeId} onChange={e => update('storeId', e.target.value)} data-testid="select-store"><option value="">Selecione uma unidade</option>{(storesQuery.data ?? []).filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name} · {s.city}</option>)}</select></Field>
+          <Field label="Unidade">{onlyStoreId && selectedStore
+            ? <input readOnly aria-readonly="true" className="bg-[#f7f6f4]" value={`${selectedStore.name} · ${selectedStore.city}`} data-testid="text-store-fixed"/>
+            : <select required value={form.storeId} onChange={e => update('storeId', e.target.value)} data-testid="select-store"><option value="">Selecione uma unidade</option>{(storesQuery.data ?? []).filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name} · {s.city}</option>)}</select>}</Field>
         </div>
         <Field label="Tarifa da filial (R$)"><input type="text" readOnly value={selectedStore ? selectedStore.deliveryFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Selecione uma filial'} aria-label="Tarifa definida pela filial" data-testid="text-delivery-fee"/></Field>
         {storesQuery.isLoading && <p className="text-xs text-muted-foreground">Carregando unidades disponíveis…</p>}
         {storesQuery.isError && <p className="text-xs text-destructive">Não foi possível carregar as unidades. Reabra o formulário para tentar novamente.</p>}
+        <PaymentFields idPrefix="new-delivery" value={payment} onChange={setPayment} />
         <Field label="Observações"><textarea rows={2} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Referências úteis para a entrega" data-testid="input-notes"/></Field>
-        <Field label="Prioridade"><select value={form.priority} onChange={e => update('priority', e.target.value)} data-testid="select-priority"><option value="normal">Normal</option><option value="urgent">Urgente</option></select></Field>
-        <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-lg border border-border bg-[#faf9f7] px-3 py-3"><input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-[#b91e2c]" checked={requiresPrescription} onChange={e => setRequiresPrescription(e.target.checked)} data-testid="checkbox-requires-prescription"/><span><span className="block text-sm font-semibold text-[#2b2e33]">Medicamento com receita</span><span className="mt-0.5 block text-xs text-muted-foreground">O motoboy precisa pegar a receita com o cliente e confirmar no app antes de concluir.</span></span></label>
+        <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-lg border border-border bg-[#faf9f7] px-3 py-3"><input type="checkbox" className="mt-0.5 !h-5 !min-h-0 !w-5 shrink-0 !p-0 accent-[#b91e2c]" checked={requiresPrescription} onChange={e => setRequiresPrescription(e.target.checked)} data-testid="checkbox-requires-prescription"/><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-[#2b2e33]">Medicamento com receita</span><span className="mt-0.5 block text-xs text-muted-foreground">O motoboy precisa pegar a receita com o cliente e confirmar no app antes de concluir.</span></span></label>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         </div>
         <div className="modal-form-actions flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6"><button type="button" className="button-secondary" onClick={requestClose} disabled={create.isPending}>Cancelar</button><button type="submit" className="button-primary" disabled={create.isPending || storesQuery.isLoading || !storesQuery.data?.some(s => s.active)}><Plus size={16}/>{create.isPending ? 'Registrando…' : 'Registrar pedido'}</button></div>
@@ -250,7 +267,7 @@ function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery;
   const save = useUpdateDelivery();
   const [error, setError] = useState('');
   // O endereço entra no cálculo da rota: só muda enquanto nenhum motoboy pegou a entrega.
-  const addressEditable = delivery.status === 'REQUESTED' && !delivery.courierId;
+  const addressEditable = ['REQUESTED', 'OFFERED', 'AWAITING_COURIER'].includes(delivery.status) && !delivery.courierId && !delivery.routeId;
   const initial = {
     customerName: delivery.customerName,
     customerPhone: delivery.customerPhone ?? '',
@@ -263,8 +280,16 @@ function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery;
   const [coordinates, setCoordinates] = useState<{ latitude: number | null; longitude: number | null }>({ latitude: delivery.customerLatitude, longitude: delivery.customerLongitude });
   const destinationChanged = form.destination.trim() !== delivery.destination;
   const [requiresPrescription, setRequiresPrescription] = useState(delivery.requiresPrescription === true);
+  const initialPayment: PaymentFormValue = {
+    paymentMethod: (delivery.paymentMethod as PaymentFormValue['paymentMethod']) ?? '',
+    changeFor: delivery.changeFor ? String(delivery.changeFor).replace('.', ',') : '',
+    bringCardMachine: delivery.bringCardMachine !== false,
+  };
+  const [payment, setPayment] = useState<PaymentFormValue>(initialPayment);
+  const paymentChanged = JSON.stringify(paymentPayload(payment)) !== JSON.stringify(paymentPayload(initialPayment));
   const hasChanges = (Object.keys(initial) as (keyof typeof initial)[]).some(key => form[key].trim() !== String(initial[key]).trim())
-    || requiresPrescription !== (delivery.requiresPrescription === true);
+    || requiresPrescription !== (delivery.requiresPrescription === true)
+    || paymentChanged;
   const update = (key: keyof typeof initial, value: string) => {
     setForm(prev => ({ ...prev, [key]: value }));
   };
@@ -287,6 +312,7 @@ function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery;
         notes: form.notes.trim() || null,
         priority: form.priority as 'normal' | 'urgent',
         requiresPrescription,
+        ...(paymentChanged ? paymentPayload(payment) : {}),
         ...(addressEditable && destinationChanged
           ? { destination: form.destination, customerLatitude: coordinates.latitude, customerLongitude: coordinates.longitude }
           : {}),
@@ -326,11 +352,11 @@ function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery;
         )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Número do pedido"><input required value={form.orderNumber} onChange={e => update('orderNumber', e.target.value)} data-testid="input-edit-order-number"/></Field>
-          <Field label="Prioridade"><select value={form.priority} onChange={e => update('priority', e.target.value)} data-testid="select-edit-priority"><option value="normal">Normal</option><option value="urgent">Urgente</option></select></Field>
         </div>
         <div>
-          <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-lg border border-border bg-[#faf9f7] px-3 py-3"><input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-[#b91e2c]" checked={requiresPrescription} onChange={e => setRequiresPrescription(e.target.checked)} data-testid="checkbox-edit-requires-prescription"/><span><span className="block text-sm font-semibold text-[#2b2e33]">Medicamento com receita</span><span className="mt-0.5 block text-xs text-muted-foreground">O motoboy precisa pegar a receita com o cliente e confirmar no app antes de concluir.</span></span></label>
+          <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-lg border border-border bg-[#faf9f7] px-3 py-3"><input type="checkbox" className="mt-0.5 !h-5 !min-h-0 !w-5 shrink-0 !p-0 accent-[#b91e2c]" checked={requiresPrescription} onChange={e => setRequiresPrescription(e.target.checked)} data-testid="checkbox-edit-requires-prescription"/><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-[#2b2e33]">Medicamento com receita</span><span className="mt-0.5 block text-xs text-muted-foreground">O motoboy precisa pegar a receita com o cliente e confirmar no app antes de concluir.</span></span></label>
         </div>
+        <PaymentFields idPrefix="edit-delivery" value={payment} onChange={setPayment} />
         <Field label="Observações"><textarea rows={2} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Referências úteis para a entrega" data-testid="input-edit-notes"/></Field>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}
         </div>
@@ -497,7 +523,7 @@ function GroupRouteModal({ deliveryIds, onClose, onCreated }: { deliveryIds: str
         {!couriersQuery.isLoading && available.length === 0 && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Nenhum motoboy disponível agora. A rota pode ser oferecida a todos e fica esperando alguém ficar online.</div>}
         <p className="rounded-lg bg-[#f7f6f4] p-3 text-xs leading-relaxed text-muted-foreground">
           {courierId
-            ? 'Só este motoboy recebe a oferta. Se ele recusar, as entregas voltam para a fila como novas e você é avisado.'
+            ? 'Só este motoboy recebe a oferta. Se ele dispensar, as entregas voltam para a fila dos motoboys da cidade e você é avisado.'
             : 'Todos os motoboys disponíveis recebem a oferta; o primeiro que aceitar leva a rota.'}
         </p>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}
@@ -940,7 +966,7 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
 
     {/* 2. Números do dia */}
     <section aria-label="Resumo de hoje" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
-      <Indicator label="Aguardando motoboy" value={today.pending} context={today.pending ? 'Despache na fila abaixo' : 'Nenhuma parada'} highlight={today.pending > 0} loading={metricsLoading}/>
+      <Indicator label="Aguardando motoboy" value={today.pending} context={today.pending ? 'Na fila dos motoboys' : 'Nenhuma parada'} highlight={today.pending > 0} loading={metricsLoading}/>
       <Indicator label="Em rota" value={today.inTransit} context={today.urgentAtRisk ? `${today.urgentAtRisk} urgente${today.urgentAtRisk > 1 ? 's' : ''} com risco de atraso` : 'A caminho do cliente'} contextTone={today.urgentAtRisk ? 'danger' : 'muted'} loading={metricsLoading}/>
       <Indicator label="Concluídas hoje" value={today.completed} context={completedContext} contextTone={today.completedChange != null && today.completedChange >= 0 ? 'success' : 'muted'} loading={metricsLoading}/>
       <Indicator label="Motoboys disponíveis" value={courierStats.available.length} context={`de ${courierStats.connected} conectados`} loading={ops.couriers.isLoading}/>
@@ -986,14 +1012,14 @@ function Dashboard({ canCancel, canDelete }: { canCancel: boolean; canDelete: bo
           <div className="overflow-x-auto"><table className="delivery-table w-full min-w-[980px]">
             <thead><tr><th><span className="sr-only">Selecionar para rota</span>Rota</th><th>Entrega</th><th>Cliente / destino</th><th>Filial</th><th>Status</th><th>Motoboy</th><th>Atualizada</th><th className="text-right">Ação</th></tr></thead>
             <tbody>{deliveries.data.map(d => <tr className="row-hover" key={d.id} data-testid={`row-delivery-${d.id}`}>
-              <td>{d.status === 'REQUESTED' ? <input type="checkbox" aria-label={`Selecionar ${d.code} para uma rota`} checked={selectedDeliveryIds.includes(d.id)} disabled={!selectedDeliveryIds.includes(d.id) && selectedDeliveryIds.length >= 10} onChange={e => toggleRouteDelivery(d.id, e.target.checked)} className="h-4 w-4 accent-[#b91e2c]"/> : <span className="text-xs text-muted-foreground">—</span>}</td>
+              <td>{waitingForCourier(d) ? <input type="checkbox" aria-label={`Selecionar ${d.code} para uma rota`} checked={selectedDeliveryIds.includes(d.id)} disabled={!selectedDeliveryIds.includes(d.id) && selectedDeliveryIds.length >= 10} onChange={e => toggleRouteDelivery(d.id, e.target.checked)} className="h-4 w-4 accent-[#b91e2c]"/> : <span className="text-xs text-muted-foreground">—</span>}</td>
               <td><Link href={`/deliveries/${d.id}`} className="table-code" data-testid={`link-delivery-${d.id}`}>{d.code}<span>Pedido {d.orderNumber || '—'}</span></Link>{d.priority === 'urgent' && <span className="priority-tag">URGENTE</span>}{d.requiresPrescription && <span className="priority-tag !bg-[#eef4ff] !text-[#1d4f91]">RECEITA</span>}{d.routeId && <span className="priority-tag !bg-[#f3f1ef] !text-[#4b4f56]">EM ROTA</span>}</td>
               <td><div className="font-semibold">{d.customerName}</div><div className="mt-1 flex max-w-[235px] items-center gap-1 text-xs text-muted-foreground" title={d.destination}><MapPin size={12} className="shrink-0"/><span className="min-w-0 truncate">{d.destination}</span></div></td>
               <td><div className="text-sm font-medium">{d.storeName}</div></td>
               <td><StatusBadge status={d.status}/></td>
               <td>{d.courierName ? <div className="flex items-center gap-2"><span className="avatar">{d.courierInitials || d.courierName.slice(0,2).toUpperCase()}</span><div><div className="text-xs font-semibold">{d.courierName}</div><div className="text-[10px] text-muted-foreground">{timeAgo(lastKnownLocationAt(d, allCouriers))}</div></div></div> : <span className="text-xs text-muted-foreground">Sem motoboy</span>}</td>
               <td className="text-xs text-muted-foreground">{fmtTime(d.updatedAt || d.createdAt)}</td>
-              <td className="text-right"><div className="flex justify-end gap-1.5">{d.routeId && <button className="button-small button-red-outline" type="button" onClick={() => setRemoveTarget({ id: d.id, code: d.code, routeId: d.routeId!, status: d.status })} data-testid={`button-remove-route-${d.id}`}>Tirar da rota</button>}{!d.routeId && ['REQUESTED','AWAITING_COURIER'].includes(d.status) && <button className="button-small button-red-outline" onClick={() => setDispatchId(d.id)} data-testid={`button-dispatch-${d.id}`}>Despachar</button>}{canCancel && !d.routeId && !['COMPLETED','CANCELLED'].includes(d.status) && <button className="button-small button-red-outline" type="button" onClick={() => { setCancelFeedback(null); setCancelTarget({ id: d.id, code: d.code }); }} aria-label={`Cancelar pedido ${d.code}`} title="Cancelar pedido" data-testid={`button-cancel-${d.id}`}><X size={14}/>Cancelar</button>}{canDelete && <button className="button-small button-red-outline" type="button" onClick={() => { setDeleteFeedback(null); setDeleteTarget({ id: d.id, code: d.code }); }} aria-label={`Excluir definitivamente ${d.code}`} title="Excluir definitivamente" data-testid={`button-delete-delivery-${d.id}`}><Trash2 size={14}/>Excluir</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
+              <td className="text-right"><div className="flex justify-end gap-1.5">{d.routeId && <button className="button-small button-red-outline" type="button" onClick={() => setRemoveTarget({ id: d.id, code: d.code, routeId: d.routeId!, status: d.status })} data-testid={`button-remove-route-${d.id}`}>Tirar da rota</button>}{!d.routeId && REQUEUE_STATUSES.includes(d.status) && <RequeueButton deliveryId={d.id} code={d.code} className="button-small button-red-outline" onDone={text => setRouteFeedback({ kind: 'success', text })}/>}{canCancel && !d.routeId && !['COMPLETED','CANCELLED'].includes(d.status) && <button className="button-small button-red-outline" type="button" onClick={() => { setCancelFeedback(null); setCancelTarget({ id: d.id, code: d.code }); }} aria-label={`Cancelar pedido ${d.code}`} title="Cancelar pedido" data-testid={`button-cancel-${d.id}`}><X size={14}/>Cancelar</button>}{canDelete && <button className="button-small button-red-outline" type="button" onClick={() => { setDeleteFeedback(null); setDeleteTarget({ id: d.id, code: d.code }); }} aria-label={`Excluir definitivamente ${d.code}`} title="Excluir definitivamente" data-testid={`button-delete-delivery-${d.id}`}><Trash2 size={14}/>Excluir</button>}<Link href={`/deliveries/${d.id}`} className="icon-button-sm" aria-label={`Abrir ${d.code}`}><ArrowRight size={15}/></Link></div></td>
             </tr>)}</tbody>
           </table></div>}
     </section>
@@ -1096,7 +1122,7 @@ function DeliveryDetail() {
       <>
         <div className="mt-5 flex flex-col justify-between gap-4 md:flex-row md:items-start">
           <div><div className="eyebrow">DETALHE DA SOLICITAÇÃO</div><div className="mt-1 flex flex-wrap items-center gap-3"><h1 className="text-[30px] font-bold tracking-[-.05em]">{data.code}</h1><StatusBadge status={data.status}/>{data.priority === 'urgent' && <span className="priority-tag">URGENTE</span>}</div><p className="mt-1 text-sm text-muted-foreground">Pedido {data.orderNumber || '—'} <span className="mx-1.5">·</span> Criado {fmtTime(data.createdAt)}</p></div>
-          <div className="flex flex-wrap gap-2">{!CLOSED_DELIVERY_STATUSES.includes(data.status) && <button className="button-secondary" onClick={() => setEditOpen(true)} data-testid="button-edit-delivery"><Pencil size={15}/>Editar</button>}{['REQUESTED','AWAITING_COURIER'].includes(data.status) && <button className="button-primary" onClick={() => setDispatchOpen(true)}><Truck size={16}/>Despachar</button>}
+          <div className="flex flex-wrap gap-2">{!CLOSED_DELIVERY_STATUSES.includes(data.status) && <button className="button-secondary" onClick={() => setEditOpen(true)} data-testid="button-edit-delivery"><Pencil size={15}/>Editar</button>}{REQUEUE_STATUSES.includes(data.status) && !data.routeId && <RequeueButton deliveryId={data.id} code={data.code} onDone={() => refresh()}/>}
             <select className="filter-select" value={nextStatus} onChange={e => setNextStatus(e.target.value)} aria-label="Novo status"><option value="">Atualizar status</option>{(statusOptions[data.status] ?? []).map(s => <option key={s} value={s}>{statusNames[s]}</option>)}</select>
             {nextStatus !== "COMPLETED" && <button className="button-secondary" disabled={!nextStatus || updateStatus.isPending} onClick={applyStatus}>{updateStatus.isPending ? 'Salvando…' : 'Aplicar'}</button>}
           </div>
@@ -1113,14 +1139,13 @@ function DeliveryDetail() {
               <div className="mb-4 flex items-center justify-between"><div><div className="eyebrow">PEDIDO E DESTINO</div><h2 className="mt-1 font-bold">Informações da entrega</h2></div><span className="rounded-md bg-[#f6f4f1] p-2 text-primary"><PackageCheck size={18}/></span></div>
               <div className="info-grid">
                 <Info label="Cliente" value={data.customerName}/><Info label="Telefone" value={data.customerPhone || 'Não informado'} icon={data.customerPhone ? <Phone size={13}/> : undefined}/>
-                <Info label="Valor do motoboy" value={data.deliveryAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/>
+                <Info label="Pagamento do cliente" value={paymentLabel(data) ?? 'Não informado'}/>
+                <Info label="Valor da entrega (filial)" value={data.deliveryAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/>
                 <Info label="Endereço de entrega" value={data.destination} wide icon={<MapPin size={14}/>}/><Info label="Unidade de origem" value={data.storeName}/><Info label="Número do pedido" value={data.orderNumber || '—'}/>{data.requiresPrescription && <Info label="Receita" value={data.prescriptionCollectedAt ? `Recolhida pelo motoboy · ${fmtTime(data.prescriptionCollectedAt)}` : 'Motoboy precisa pegar com o cliente'}/>}
                 <Info label="Distância informada" value={data.distanceKm != null ? `${data.distanceKm} km` : 'Não disponível'}/><Info label="Previsão" value={data.estimatedMinutes != null ? `${data.estimatedMinutes} min` : 'Não informada'}/>
               </div>
-              <div className="mt-5 grid gap-3 rounded-lg bg-[#f7f6f4] p-3 sm:grid-cols-3">
-                <Info label="Chegada à loja" value={fmtTime(data.events.find(event => /arriv|chegad|at_store/i.test(`${event.kind} ${event.label}`))?.timestamp)} />
-                <Info label="Saída da loja" value={fmtTime(data.events.find(event => /depart|sa[ií]d|in_transit/i.test(`${event.kind} ${event.label}`))?.timestamp)} />
-                <Info label="Entrega concluída" value={fmtTime(data.events.find(event => /complet|conclu[ií]d/i.test(`${event.kind} ${event.label}`))?.timestamp)} />
+              <div className="mt-5 rounded-lg bg-[#f7f6f4] p-3">
+                <DeliveryProgress status={data.status} events={data.events} createdAt={data.createdAt} />
               </div>
               {data.evidenceAvailable && <EvidencePhotoViewer apiBase={isNativeApp ? nativeApiBaseUrl : basePath} deliveryId={data.id} />}
               {data.notes && <div className="mt-4 rounded-lg bg-[#f7f6f4] p-3"><div className="eyebrow">OBSERVAÇÕES</div><p className="mt-1 text-sm leading-relaxed">{data.notes}</p></div>}
@@ -1141,7 +1166,7 @@ function DeliveryDetail() {
             <section className="panel p-5">
               <div className="mb-4"><div className="eyebrow">ENTREGADOR</div><h2 className="mt-1 font-bold">Atribuição atual</h2></div>
               {data.courierName ? <div className="flex items-center gap-3 rounded-lg bg-[#f7f6f4] p-3"><span className="avatar avatar-large">{data.courierInitials || data.courierName.slice(0,2).toUpperCase()}</span><div className="min-w-0 flex-1"><div className="font-semibold">{data.courierName}</div><div className="mt-1 text-xs text-muted-foreground">Última localização: {timeAgo(locationAt)}</div></div><Badge tone="blue">Atribuído</Badge></div> : <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center"><Bike size={22} className="mx-auto text-muted-foreground"/><p className="mt-2 text-sm font-semibold">Aguardando entregador</p><p className="mt-1 text-xs text-muted-foreground">Despache para iniciar o atendimento.</p></div>}
-              {['REQUESTED','AWAITING_COURIER'].includes(data.status) && <div className="mt-4"><label className="eyebrow" htmlFor="quick-courier">OFERTA INDIVIDUAL</label><div className="mt-2 flex gap-2"><select id="quick-courier" className="filter-select min-w-0 flex-1" defaultValue=""><option value="">Escolher motoboy</option>{(couriers.data ?? []).map(c => <option key={c.id} value={c.id} disabled={c.status === 'BUSY'}>{c.name} · {c.status === 'AVAILABLE' ? 'Disponível' : c.status === 'OFFLINE' ? 'Offline' : 'Em atendimento'}</option>)}</select><button className="button-secondary" onClick={e => { const select = e.currentTarget.previousElementSibling as HTMLSelectElement; if (select.value) singleDispatch(select.value); else setActionError('Selecione um motoboy que não esteja em atendimento.'); }} disabled={dispatch.isPending}>Enviar</button></div></div>}
+              {waitingForCourier(data) && <div className="mt-4"><label className="eyebrow" htmlFor="quick-courier">ENVIAR SÓ PARA UM MOTOBOY</label><div className="mt-2 flex gap-2"><select id="quick-courier" className="filter-select min-w-0 flex-1" defaultValue=""><option value="">Escolher motoboy</option>{(couriers.data ?? []).map(c => <option key={c.id} value={c.id} disabled={c.status === 'BUSY'}>{c.name} · {c.status === 'AVAILABLE' ? 'Disponível' : c.status === 'OFFLINE' ? 'Offline' : 'Em atendimento'}</option>)}</select><button className="button-secondary" onClick={e => { const select = e.currentTarget.previousElementSibling as HTMLSelectElement; if (select.value) singleDispatch(select.value); else setActionError('Selecione um motoboy que não esteja em atendimento.'); }} disabled={dispatch.isPending}>Enviar</button></div></div>}
             </section>
             <section className="panel p-5">
               <div className="mb-5 flex items-center gap-2"><History size={16} className="text-primary"/><div><div className="eyebrow">AUDITORIA</div><h2 className="mt-0.5 font-bold">Histórico de eventos</h2></div></div>
@@ -1223,7 +1248,7 @@ function UserPortalRoute() {
     );
   }
   if (profile.data.role === 'STORE_MANAGER' || profile.data.role === 'STORE_STAFF') {
-    return <StorePortal profile={profile.data} NewDeliveryModal={DeliveryModal} DispatchModal={DispatchModal} GroupRouteModal={GroupRouteModal} RemoveFromRouteModal={RemoveFromRouteModal} CancelDeliveryModal={CancelDeliveryModal} />;
+    return <StorePortal profile={profile.data} NewDeliveryModal={DeliveryModal} DispatchModal={DispatchModal} GroupRouteModal={GroupRouteModal} RemoveFromRouteModal={RemoveFromRouteModal} CancelDeliveryModal={CancelDeliveryModal} EditDeliveryModal={EditDeliveryModal} />;
   }
   // Admin e Central: a página inicial é a operação de entregas (antes "Visão geral" + "Entregas").
   return <RoutedErrorBoundary><AdminShell profile={profile.data}><Dashboard canCancel={profile.data.role === 'ADMIN' || profile.data.role === 'CENTRAL'} canDelete={profile.data.role === 'ADMIN'} /></AdminShell></RoutedErrorBoundary>;
@@ -1240,6 +1265,16 @@ function CentralRoute({ children, adminOnly = false }: { children: ReactNode | (
     return <main className="grid min-h-[100dvh] place-items-center bg-[#f4f3f1] p-5"><section className="panel p-6 text-center"><h1 className="font-bold">Acesso restrito</h1><p className="mt-2 text-sm text-muted-foreground">Somente administradores podem gerenciar perfis.</p><Link className="button-primary mt-4" href="/">Voltar ao painel</Link></section></main>;
   }
   return <RoutedErrorBoundary><AdminShell profile={profile.data}>{typeof children === 'function' ? children(profile.data) : children}</AdminShell></RoutedErrorBoundary>;
+}
+
+/** Relatórios: o geral é só do admin/Central; o gerente vê só a contabilidade da filial dele. */
+function ReportsRoute() {
+  const { auth, profile } = useSignedInProfile();
+  if (!auth.isLoaded || (auth.isSignedIn && profile.isLoading)) return <ProfileLoading />;
+  if (auth.isSignedIn && profile.data?.role === 'STORE_MANAGER') {
+    return <main className="min-h-[100dvh] bg-[#f4f3f1] px-4 pb-10 pt-5 text-[#24272d] sm:px-6"><div className="mx-auto max-w-6xl"><StoreAccountingPage/></div></main>;
+  }
+  return <CentralRoute><Reports/></CentralRoute>;
 }
 
 function AppRoutes() {
@@ -1262,7 +1297,7 @@ function AppRoutes() {
             <Route path="/deliveries/:deliveryId" component={() => <CentralRoute><DeliveryDetail/></CentralRoute>}/>
             <Route path="/access" component={() => <CentralRoute adminOnly><AccessManagement/></CentralRoute>}/>
             <Route path="/filiais" component={() => <CentralRoute adminOnly><StoreManagement/></CentralRoute>}/>
-            <Route path="/reports" component={() => <CentralRoute><Reports/></CentralRoute>}/>
+            <Route path="/reports" component={ReportsRoute}/>
             <Route path="/sign-in/*?" component={SignInPage}/>
             <Route path="/sign-up/*?" component={SignUpPage}/>
             <Route path="/esqueci-senha" component={ForgotPasswordPage}/>
@@ -1270,6 +1305,7 @@ function AppRoutes() {
             <Route path="/aceitar-convite" component={AcceptInvitePage}/>
             <Route component={NotFound}/>
           </Switch>
+          <PublicSupportButton/>
           <Toaster/>
         </TooltipProvider>
       </AuthProvider>

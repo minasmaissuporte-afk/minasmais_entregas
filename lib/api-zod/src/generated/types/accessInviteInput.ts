@@ -19,6 +19,11 @@ export interface AccessInviteInput {
   /** @nullable */
   storeId?: string | null;
   /**
+     * @maxLength 120
+     * @nullable
+     */
+  courierCity?: string | null;
+  /**
      * @maxLength 30
      * @nullable
      */

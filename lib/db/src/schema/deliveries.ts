@@ -49,6 +49,8 @@ export const couriersTable = pgTable(
     name: text("name").notNull(),
     phone: text("phone"),
     initials: text("initials").notNull(),
+    // Cidade em que o motoboy recebe as entregas (todas as filiais desta cidade).
+    city: text("city"),
     status: text("status").notNull().default("AVAILABLE"),
     currentDeliveryCode: text("current_delivery_code"),
     currentLatitude: real("current_latitude"),
@@ -96,6 +98,13 @@ export const deliveriesTable = pgTable(
     // Medicamento com receita: o motoboy precisa recolher a receita na entrega.
     requiresPrescription: boolean("requires_prescription").notNull().default(false),
     prescriptionCollectedAt: timestamp("prescription_collected_at", { withTimezone: true }),
+    // Pagamento do cliente: CARD, PIX ou CASH. Dinheiro: troco para quanto. Cartão: levar maquininha.
+    paymentMethod: text("payment_method"),
+    changeForCents: integer("change_for_cents"),
+    bringCardMachine: boolean("bring_card_machine"),
+    // Contabilidade da filial: quando o valor da entrega foi pago ao motoboy (e por quem).
+    courierPaidAt: timestamp("courier_paid_at", { withTimezone: true }),
+    courierPaidBy: text("courier_paid_by"),
     destination: text("destination").notNull(),
     customerLatitude: real("customer_latitude"),
     customerLongitude: real("customer_longitude"),
@@ -218,6 +227,29 @@ export const courierRouteOfferDeclinesTable = pgTable(
       table.courierId,
     ),
     index("courier_route_offer_declines_courier_idx").on(table.courierId),
+  ],
+);
+
+/** Motoboy que dispensou uma entrega oferecida a todos: ela some só para ele. */
+export const deliveryOfferDeclinesTable = pgTable(
+  "delivery_offer_declines",
+  {
+    id: text("id").primaryKey(),
+    deliveryId: text("delivery_id")
+      .notNull()
+      .references(() => deliveriesTable.id, { onDelete: "cascade" }),
+    courierId: text("courier_id")
+      .notNull()
+      .references(() => couriersTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("delivery_offer_declines_delivery_courier_idx").on(
+      table.deliveryId,
+      table.courierId,
+    ),
   ],
 );
 

@@ -43,10 +43,11 @@ test.describe("Rotas agrupadas: criação", () => {
     const central = await Api.as("central");
     const [d1, d2] = await twoDeliveries(central);
     await expectError(await central.post("/delivery-routes", { deliveryIds: [d1.id, "e2e-nao-existe"] }), 404);
-    await expectStatus(central, d1.id, "REQUESTED");
-    await central.post(`/deliveries/${d2.id}/dispatch`, { mode: "group" });
+    await expectStatus(central, d1.id, "OFFERED");
+    // Entrega já aceita por um motoboy não entra numa rota.
+    await query(`update deliveries set status = 'ACCEPTED', courier_id = 'e2e-courier-2' where id = $1`, [d2.id]);
     await expectError(await central.post("/delivery-routes", { deliveryIds: [d1.id, d2.id] }), 409);
-    await expectStatus(central, d1.id, "REQUESTED");
+    await expectStatus(central, d1.id, "OFFERED");
     expect(await query("select 1 from delivery_routes where $1 = any(delivery_ids)", [d1.id])).toEqual([]);
   });
 
@@ -169,8 +170,7 @@ test.describe("Rotas agrupadas: rota aceita (montada no banco)", () => {
     // Fora de ordem (a 2ª retirada antes da 1ª)
     await expectError(await courier.post(`${base}/${stops[1].id}/arrive`), 409);
     await expectError(await courier.post(`${base}/${stops[1].id}/complete`, {}), 409, "sequência");
-    // Saída sem chegada
-    await expectError(await courier.post(`${base}/${stops[0].id}/complete`, {}), 409, "chegada");
+    // Chegada e retirada viraram um toque só; "cheguei" continua aceito antes.
     const arrive = await courier.post(`${base}/${stops[0].id}/arrive`);
     expect(arrive.status(), await describe(arrive)).toBe(200);
     const done = await courier.post(`${base}/${stops[0].id}/complete`, {});
@@ -222,6 +222,8 @@ test.describe("Rotas agrupadas: rota aceita (montada no banco)", () => {
   });
 
   test("Acidente durante a rota aborta tudo: entregas voltam à fila com prioridade e motoboy fica OFFLINE", async () => {
+    // "Moto com problema" saiu da lista padrão; o fluxo continua valendo se a Central reativar o motivo.
+    await query("update delivery_cancellation_reasons set active = true where id = 'MOTORCYCLE_ISSUE'");
     const { central, courier, d1, d2, routeId } = await acceptedRoute();
     const res = await courier.post(`/courier/deliveries/${d1.id}/unable`, { reason: "Moto com problema / acidente" });
     expect(res.status(), await describe(res)).toBe(200);
@@ -234,6 +236,7 @@ test.describe("Rotas agrupadas: rota aceita (montada no banco)", () => {
     }
     const [c] = await query("select status from couriers where id='e2e-courier-1'");
     expect(c.status).toBe("OFFLINE");
+    await query("update delivery_cancellation_reasons set active = false where id = 'MOTORCYCLE_ISSUE'");
   });
 
   test("Ocorrência comum numa entrega da rota recalcula as paradas (Google Maps) ou falha sem corromper a rota", async () => {
@@ -242,7 +245,7 @@ test.describe("Rotas agrupadas: rota aceita (montada no banco)", () => {
     await courier.post(`${base}/${stops[0].id}/arrive`);
     await courier.post(`${base}/${stops[0].id}/complete`, {});
     await courierOnline(courier);
-    const res = await courier.post(`/courier/deliveries/${d1.id}/unable`, { reason: "Endereço não encontrado ou incorreto", ...BH_POSITION });
+    const res = await courier.post(`/courier/deliveries/${d1.id}/unable`, { reason: "Endereço não encontrado", ...BH_POSITION });
     if (res.status() >= 500) {
       // Sem Optimization no token local: nada pode ter mudado.
       await expectStatus(central, d1.id, "IN_TRANSIT");
