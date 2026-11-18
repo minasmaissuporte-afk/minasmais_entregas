@@ -245,7 +245,9 @@ async function sendToSubscription(
         keys: { p256dh: subscription.p256dh, auth: subscription.auth },
       },
       JSON.stringify(payload),
-      { TTL: 60 * 60 },
+      // Prioridade alta: com a tela bloqueada o Android (modo soneca) entrega na hora.
+      // Normal pode ficar retida até o celular "acordar". Ofertas perdem valor rápido.
+      { TTL: 15 * 60, urgency: "high" },
     );
     return true;
   } catch (error) {

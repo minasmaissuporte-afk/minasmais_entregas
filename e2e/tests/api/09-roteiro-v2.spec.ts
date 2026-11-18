@@ -340,14 +340,14 @@ test.describe("8. Devolução e cancelamento", () => {
     expect(await status(d.id)).toBe("CANCELLED");
   });
 
-  test("8.5 Com o produto retirado, 'Não consigo entregar' → Voltando para a loja", async () => {
+  test("8.5 Com o produto retirado, 'Não consigo entregar' → Devolvida pelo motoboy (sai da lista dele)", async () => {
     const d = await managerCreates();
     const a = await Api.as("courier");
     await a.patch(`/deliveries/${d.id}/status`, { status: "ACCEPTED" });
     await a.patch(`/deliveries/${d.id}/status`, { status: "IN_TRANSIT" });
     const res = await a.post(`/courier/deliveries/${d.id}/unable`, { reason: "Endereço não encontrado", ...BH_POSITION });
     expect(res.status(), await describe(res)).toBe(200);
-    expect(await status(d.id)).toBe("RETURNING_TO_STORE");
+    expect(await status(d.id)).toBe("AWAITING_COURIER");
   });
 });
 

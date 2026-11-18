@@ -2635,3 +2635,11 @@ textarea { resize:vertical; }
   box-shadow: 0 8px 20px rgb(216 17 43 / 28%);
 }
 .courier-pwa .courier-delivery-card[data-delivery-status="OFFERED"] .courier-offer-distances { margin-top: 10px; }
+
+/* Fila do painel: cabe em telas de notebook sem precisar diminuir o zoom. */
+.delivery-table--queue .table-code { white-space: nowrap; }
+.delivery-table--queue td:last-child { white-space: nowrap; }
+@media (max-width: 1499px) {
+  .delivery-table--queue .queue-action-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .delivery-table--queue td, .delivery-table--queue th { padding-left: 10px; padding-right: 10px; }
+}

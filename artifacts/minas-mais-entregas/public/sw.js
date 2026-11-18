@@ -1,4 +1,4 @@
-const CACHE_NAME = "minas-mais-static-v2";
+const CACHE_NAME = "minas-mais-static-v3";
 const PRECACHE_URLS = [
   "/manifest.webmanifest",
   "/favicon.png",
@@ -33,10 +33,18 @@ self.addEventListener("push", (event) => {
   const title = typeof message.title === "string" && message.title.trim()
     ? message.title
     : "Minas Mais Entregas";
+  // Aviso chamativo: vibra, toca o som padrão do celular, fica na tela até o motoboy tocar
+  // e um aviso novo toca de novo mesmo se o anterior ainda estiver aberto.
   const options = {
     body: typeof message.body === "string" ? message.body : "Há uma atualização nas suas entregas.",
     icon: "/pwa-icon-192.png",
     badge: "/pwa-icon-180.png",
+    vibrate: [400, 150, 400, 150, 600],
+    requireInteraction: true,
+    renotify: true,
+    silent: false,
+    tag: `minas-mais-${Date.now()}`,
+    timestamp: Date.now(),
     data: { url: typeof message.url === "string" ? message.url : "/motoboy-pwa" },
   };
   event.waitUntil(self.registration.showNotification(title, options));

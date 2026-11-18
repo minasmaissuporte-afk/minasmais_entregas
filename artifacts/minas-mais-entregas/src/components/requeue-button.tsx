@@ -17,10 +17,13 @@ export default function RequeueButton({
   code,
   className = "button-primary",
   onDone,
+  shortLabel = false,
 }: {
   deliveryId: string;
   code: string;
   className?: string;
+  /** Tabelas estreitas: só "Reenviar" (o nome completo fica na dica e no leitor de tela). */
+  shortLabel?: boolean;
   onDone?: (message: string) => void;
 }) {
   const qc = useQueryClient();
@@ -53,8 +56,9 @@ export default function RequeueButton({
         disabled={dispatch.isPending}
         aria-busy={dispatch.isPending}
         data-testid={`button-requeue-${deliveryId}`}
+        title="Reenviar aos motoboys"
       >
-        <RotateCcw size={15} aria-hidden="true" /> {dispatch.isPending ? "Reenviando…" : "Reenviar aos motoboys"}
+        <RotateCcw size={15} aria-hidden="true" /> {dispatch.isPending ? "Reenviando…" : shortLabel ? <>Reenviar<span className="sr-only"> aos motoboys</span></> : "Reenviar aos motoboys"}
       </button>
       {error && <span role="alert" className="text-xs text-red-700">{error}</span>}
     </span>
