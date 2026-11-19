@@ -57,6 +57,7 @@ import {
   storesTable,
 } from "@workspace/db";
 import { courierCity, notifyCityCouriers, offerToCity, openOfferFor, sameCity } from "../lib/deliveryOffers";
+import { acceptIntoCourierRoute } from "./courier-routes";
 import {
   requireAuthentication,
   requireRole,
@@ -2416,6 +2417,32 @@ router.patch(
         res.status(422).json({
           error: "Envie uma foto válida de comprovação antes de concluir a entrega.",
         });
+        return;
+      }
+    }
+
+    // Motoboy já em entrega aceitando outra: junta numa rota e o Google recalcula a ordem.
+    if (body.data.status === "ACCEPTED" && profile.role === "COURIER" && profile.courierId) {
+      const [me] = await db
+        .select({ status: couriersTable.status })
+        .from(couriersTable)
+        .where(eq(couriersTable.id, profile.courierId))
+        .limit(1);
+      if (me?.status === "BUSY") {
+        const stacked = await acceptIntoCourierRoute(profile.courierId, params.data.deliveryId);
+        if ("error" in stacked) {
+          const messages: Record<string, string> = {
+            taken: "Outro motoboy aceitou esta entrega primeiro.",
+            other_city: "Esta entrega é de uma filial de outra cidade.",
+            too_many: "Sua rota já tem 10 entregas. Termine algumas antes de aceitar mais.",
+            changed: "Sua rota mudou agora há pouco. Atualize e tente de novo.",
+            planning: "Não foi possível recalcular a rota agora. Tente de novo.",
+          };
+          res.status(409).json({ error: stacked.message ?? messages[stacked.error] });
+          return;
+        }
+        const stackedView = await deliveryView(params.data.deliveryId);
+        res.json(UpdateDeliveryStatusResponse.parse(stackedView ? hideAmountForCourier(profile, stackedView) : stackedView));
         return;
       }
     }

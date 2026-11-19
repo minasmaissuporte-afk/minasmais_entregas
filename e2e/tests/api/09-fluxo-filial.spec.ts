@@ -200,6 +200,35 @@ test.describe("Fluxo da filial: despacho automático por cidade", () => {
     expect(await json(await manager.post("/reports/store-accounting/pay", { courierId: "e2e-courier-1" }))).toEqual({ paidDeliveries: 0, amount: 0 });
   });
 
+  test("Motoboy em entrega aceita outra: as duas viram uma rota recalculada", async () => {
+    const manager = await Api.as("manager");
+    const courier = await Api.as("courier");
+    await courierOnline(courier);
+    const first = await createDelivery(manager);
+    expect((await setStatus(courier, first.id, "ACCEPTED")).status()).toBe(200);
+    expect((await setStatus(courier, first.id, "IN_TRANSIT")).status()).toBe(200);
+    const second = await createDelivery(manager);
+    const accepted = await setStatus(courier, second.id, "ACCEPTED");
+    expect(accepted.status(), await describe(accepted)).toBe(200);
+    expect((await json(accepted)).courierId).toBe("e2e-courier-1");
+
+    const routes = await json(await courier.get("/courier/routes"));
+    const route = routes.find((item: { status: string }) => item.status === "ACCEPTED");
+    expect(route, "rota ativa do motoboy").toBeTruthy();
+    expect(route.deliveries.map((item: { id: string }) => item.id).sort()).toEqual([first.id, second.id].sort());
+    // A primeira já foi retirada: só falta entregar. A segunda tem retirada e entrega.
+    const pending = route.stops.filter((stop: { status: string }) => stop.status === "PENDING");
+    expect(pending.filter((stop: { deliveryId: string }) => stop.deliveryId === first.id).map((stop: { kind: string }) => stop.kind)).toEqual(["delivery"]);
+    expect(pending.filter((stop: { deliveryId: string }) => stop.deliveryId === second.id).map((stop: { kind: string }) => stop.kind)).toEqual(["pickup", "delivery"]);
+
+    // Terceira entrega entra na mesma rota.
+    const third = await createDelivery(manager);
+    expect((await setStatus(courier, third.id, "ACCEPTED")).status()).toBe(200);
+    const after = (await json(await courier.get("/courier/routes"))).find((item: { status: string }) => item.status === "ACCEPTED");
+    expect(after.id).toBe(route.id);
+    expect(after.deliveries).toHaveLength(3);
+  });
+
   test("Convite de motoboy exige a cidade", async () => {
     await expectError(
       await (await Api.as("admin")).post("/access/invites", {
