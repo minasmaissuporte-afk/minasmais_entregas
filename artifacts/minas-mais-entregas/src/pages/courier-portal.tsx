@@ -802,6 +802,8 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
+        // Aceitar com outra entrega em andamento junta as duas numa rota recalculada.
+        queryClient.invalidateQueries({ queryKey: getListCourierRoutesQueryKey() }),
         queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period: "day" }) }),
         queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period: "week" }) }),
         queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period: "month" }) }),
