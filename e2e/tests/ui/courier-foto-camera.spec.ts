@@ -53,8 +53,20 @@ test.describe("Foto de comprovação pela câmera", () => {
     page.on("request", (request) => {
       if (request.method() === "PUT") uploads.push(request.headers()["content-type"] ?? "");
     });
-    await input.setInputFiles({ name: "foto.bmp", mimeType: "image/bmp", buffer: bmp() });
+    // Nome longo como o da câmera do Android: não pode empurrar o cartão para fora da tela.
+    await input.setInputFiles({ name: "JPEG_20261119_132824_2606579040691234567890.bmp", mimeType: "image/bmp", buffer: bmp() });
     await expect(page.getByText("Tirar outra foto")).toBeVisible();
+    await expect(page.getByText("Foto da câmera")).toBeVisible();
+    await page.waitForTimeout(800);
+    // O painel da aba Entregas não pode ganhar rolagem lateral (era o que empurrava o cartão).
+    const shifted = await page.evaluate(() => {
+      const panel = document.querySelector<HTMLElement>(".courier-tab-panel--deliveries");
+      return panel && (panel.scrollLeft > 0 || panel.scrollWidth > panel.clientWidth + 1)
+        ? [`scrollLeft=${panel.scrollLeft} ${panel.scrollWidth}/${panel.clientWidth}`]
+        : [];
+    });
+    expect(shifted, "cartão da entrega saiu da largura da tela").toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
     const group = page.getByRole("group", { name: "Confirmar entrega" });
     await expect(group).toBeVisible({ timeout: 10_000 });
     const handle = group.locator("button").first();

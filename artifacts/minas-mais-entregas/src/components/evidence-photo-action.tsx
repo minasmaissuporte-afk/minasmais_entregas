@@ -87,7 +87,7 @@ export default function EvidencePhotoAction({
   useEffect(() => {
     if (!file) return;
     const frame = window.requestAnimationFrame(() =>
-      confirmRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }));
+      confirmRef.current?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" }));
     return () => window.cancelAnimationFrame(frame);
   }, [file]);
 
@@ -146,7 +146,7 @@ export default function EvidencePhotoAction({
         : "";
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-2">
       <label className={`flex min-h-12 items-center justify-center gap-2 rounded-lg border border-dashed border-[#d8c6c3] bg-[#fbf7f5] px-3 py-2 text-xs font-semibold text-[#85434a] transition hover:bg-[#f8efed] ${disabled || submitting || requestUpload.isPending ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
         <Camera size={16} />
         <span>{file ? "Tirar outra foto" : "Tirar foto de comprovação"}</span>
@@ -169,12 +169,12 @@ export default function EvidencePhotoAction({
       </label>
       {file && (
         <div className="flex items-center gap-3 rounded-lg border border-border bg-white p-2">
-          <img src={preview} alt="Prévia da foto de comprovação" className="h-14 w-14 rounded-md object-cover" />
+          <img src={preview} alt="Prévia da foto de comprovação" className="h-14 w-14 shrink-0 rounded-md object-cover" />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-xs font-semibold">{file.name || "Foto capturada"}</div>
+            <div className="truncate text-xs font-semibold">{/^(JPEG|IMG|PXL)_/i.test(file.name) || !file.name ? "Foto da câmera" : file.name}</div>
             <div className="mt-1 text-xs text-muted-foreground">{uploadedPath ? "Foto já enviada · falta só confirmar" : "Será reduzida e enviada ao concluir"}</div>
           </div>
-          <Check size={15} className="text-green-700" />
+          <Check size={15} className="shrink-0 text-green-700" />
         </div>
       )}
       {file && requiresPrescription && (
