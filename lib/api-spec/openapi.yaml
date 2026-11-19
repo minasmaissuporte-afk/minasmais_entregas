@@ -768,6 +768,18 @@ paths:
           description: Last administrator or account has active courier work
         "502":
           description: App access was revoked but the login could not be deleted
+  /courier/plan:
+    get:
+      operationId: getCourierPlan
+      tags: [routes]
+      summary: Suggested order (Google) for the courier's active individual deliveries
+      responses:
+        "200":
+          description: Suggested plan, or null when there is less than 2 active deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourierPlan"
   /courier/earnings:
     get:
       operationId: getCourierEarnings
@@ -1789,6 +1801,14 @@ components:
           type: ["array", "null"]
           items:
             $ref: "#/components/schemas/RouteCoordinate"
+    CourierPlan:
+      type: object
+      required: [plan]
+      properties:
+        plan:
+          anyOf:
+            - $ref: "#/components/schemas/CourierDeliveryRoute"
+            - type: "null"
     CourierRoutePreviewStop:
       type: object
       required: [deliveryId, kind, address, latitude, longitude]

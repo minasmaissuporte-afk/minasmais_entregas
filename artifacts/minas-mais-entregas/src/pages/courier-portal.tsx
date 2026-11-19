@@ -4,6 +4,8 @@ import {
   getGetCourierDeliveryNavigationQueryKey,
   getGetCourierEarningsQueryKey,
   getListCourierRoutesQueryKey,
+  getGetCourierPlanQueryKey,
+  useGetCourierPlan,
   getListDeliveriesQueryKey,
   getGetVapidPublicKeyQueryKey,
   useGetVapidPublicKey,
@@ -669,6 +671,22 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       null,
     [individualDeliveries],
   );
+  // Mais de uma entrega aceita: cada uma segue separada e o Google sugere a ordem das paradas.
+  const activeIndividualCount = individualDeliveries.filter((delivery) =>
+    ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status)).length;
+  const plan = useGetCourierPlan({
+    query: {
+      queryKey: getGetCourierPlanQueryKey(),
+      enabled: activeIndividualCount >= 2,
+      refetchInterval: 20000,
+    },
+  });
+  const suggestedPlan = activeIndividualCount >= 2 ? plan.data?.plan ?? null : null;
+  const suggestedPlanDelivery = useMemo(() => {
+    if (!suggestedPlan) return null;
+    const first = suggestedPlan.stops[0];
+    return suggestedPlan.deliveries.find((delivery) => delivery.id === first?.deliveryId) ?? null;
+  }, [suggestedPlan]);
   const activeRouteDelivery = useMemo(() => {
     if (!activeRoute) return null;
     const nextStop = activeRoute.stops.find((stop) => stop.status === "PENDING");
@@ -802,8 +820,9 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: getListDeliveriesQueryKey() }),
-        // Aceitar com outra entrega em andamento junta as duas numa rota recalculada.
         queryClient.invalidateQueries({ queryKey: getListCourierRoutesQueryKey() }),
+        // Com mais de uma entrega, a ordem sugerida é recalculada.
+        queryClient.invalidateQueries({ queryKey: getGetCourierPlanQueryKey() }),
         queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period: "day" }) }),
         queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period: "week" }) }),
         queryClient.invalidateQueries({ queryKey: getGetCourierEarningsQueryKey({ period: "month" }) }),
@@ -826,7 +845,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
   const renderIndividualDelivery = (delivery: Delivery) => (
     <CourierIndividualDeliveryCard
       delivery={delivery}
-      active={delivery.id === activeIndividualDelivery?.id}
+      active={["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"].includes(delivery.status)}
       busy={updateStatus.isPending || declineDelivery.isPending}
       nextStatus={nextCourierStatus[delivery.status]}
       nextStatusLabel={nextStatusLabel[delivery.status]}
@@ -955,6 +974,26 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
               </section>
             )}
             {returningDeliveries.length > 0 && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-950" role="status">{returningDeliveries.length} {returningDeliveries.length === 1 ? "produto para devolver" : "produtos para devolver"} na filial. A Central confirmará quando receber.</p>}
+            {suggestedPlan && (
+              <section className="courier-plan-card" aria-label="Ordem sugerida das paradas" data-testid="courier-suggested-plan">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#a3141f]">Ordem sugerida</p>
+                    <p className="text-sm font-bold">{suggestedPlan.deliveryCount} entregas{suggestedPlan.distanceKm != null ? ` · ${suggestedPlan.distanceKm} km` : ""}{suggestedPlan.estimatedMinutes != null ? ` · ~${suggestedPlan.estimatedMinutes} min` : ""}</p>
+                  </div>
+                  <button type="button" className="button-secondary min-h-11 shrink-0" onClick={() => changeActiveTab("map")}><MapIcon size={15} /> Ver no mapa</button>
+                </div>
+                <ol className="mt-3 space-y-1.5">
+                  {suggestedPlan.stops.map((stop, index) => (
+                    <li key={stop.id} className="flex items-start gap-2 text-sm">
+                      <span className="courier-plan-step">{index + 1}</span>
+                      <span className="min-w-0"><b>{stop.kind === "pickup" ? "Retirar" : "Entregar"} {stop.code}</b> <span className="text-muted-foreground">· {stop.kind === "pickup" ? stop.storeName : stop.customerName}</span></span>
+                    </li>
+                  ))}
+                </ol>
+                <p className="mt-2 text-xs text-muted-foreground">Cada entrega continua com os próprios botões logo abaixo. A ordem é só uma sugestão do Google.</p>
+              </section>
+            )}
             <CourierRoutesSection
               courierId={profile.id}
               routes={routes.data ?? []}
@@ -1004,6 +1043,7 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
 
           <TabsContent value="map" forceMount aria-hidden={activeTab !== "map"} data-transitioning={tabTransitioning ? "true" : "false"} className={`courier-tab-panel courier-tab-panel--map fixed inset-0 z-50 m-0 h-[100dvh] overflow-hidden ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
             {activeRoute ? <CourierRouteMapTab route={activeRoute} currentPosition={currentPosition} activeDelivery={activeRouteDelivery} resizeVersion={mapResizeVersion} />
+              : suggestedPlan ? <CourierRouteMapTab route={suggestedPlan} currentPosition={currentPosition} activeDelivery={suggestedPlanDelivery} resizeVersion={mapResizeVersion} />
               : activeIndividualDelivery ? <CourierDeliveryNavigation deliveryId={activeIndividualDelivery.id} delivery={activeIndividualDelivery} resizeVersion={mapResizeVersion} />
                 : <section className="grid h-full place-items-center p-6 text-center"><div><MapIcon className="mx-auto text-muted-foreground" size={24} /><h2 className="mt-3 text-base font-bold">Nenhuma rota ativa no momento</h2><p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">Quando você aceitar uma rota ou entrega, o mapa com o destino aparecerá aqui.</p>{(routes.data ?? []).some((route) => route.status === "OFFERED") && <p className="mt-2 text-xs text-muted-foreground">Há uma rota aguardando aceite. Acesse Início para aceitar e calcular o trajeto.</p>}<button type="button" className="button-primary mt-4 min-h-12" onClick={() => changeActiveTab("deliveries")}><PackageCheck size={15} /> Ver início</button></div></section>}
           </TabsContent>

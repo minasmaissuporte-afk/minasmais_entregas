@@ -22,6 +22,7 @@ import {
   GetCourierDeliveryNavigationParams,
   GetCourierDeliveryNavigationResponse,
   ListActiveRoutesResponse,
+  GetCourierPlanResponse,
   ListCourierRoutesResponse,
   RecordCourierStopArrivalParams,
   RecordCourierStopArrivalResponse,
@@ -59,7 +60,7 @@ import {
 } from "../lib/googleMaps";
 import { verifyEvidenceUpload } from "../lib/deliveryEvidence";
 import { notifyCentralUsers, notifyCouriers } from "../lib/webPush";
-import { courierCity, notifyCityCouriers, offerToCity, sameCity } from "../lib/deliveryOffers";
+import { courierCity, notInActiveRoute, notifyCityCouriers, offerToCity, sameCity } from "../lib/deliveryOffers";
 
 /**
  * Rota oferecida a todos (sem motoboy escolhido) só vale para os motoboys da cidade das filiais
@@ -1957,11 +1958,24 @@ router.post(
         actor,
         timestamp: now,
       });
+      const [otherActive] = routeAborted
+        ? []
+        : await tx
+            .select({ code: deliveriesTable.code })
+            .from(deliveriesTable)
+            .where(
+              and(
+                eq(deliveriesTable.courierId, courier.id),
+                inArray(deliveriesTable.status, ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"]),
+                sql`${deliveriesTable.id} <> ${delivery.id}`,
+              ),
+            )
+            .limit(1);
       await tx
         .update(couriersTable)
         .set({
-          status: routeAborted ? "OFFLINE" : "AVAILABLE",
-          currentDeliveryCode: null,
+          status: routeAborted ? "OFFLINE" : otherActive ? "BUSY" : "AVAILABLE",
+          currentDeliveryCode: otherActive?.code ?? null,
         })
         .where(eq(couriersTable.id, courier.id));
       return {
@@ -2500,181 +2514,134 @@ router.post(
   },
 );
 
-/**
- * Motoboy que já está numa entrega aceita outra: as entregas viram (ou entram em) uma rota
- * e o Google recalcula a melhor ordem de retiradas e entregas a partir da posição dele.
- * Se a otimização do Google falhar, a nova retirada e a nova entrega vão para o fim da rota.
- */
-export async function acceptIntoCourierRoute(
-  courierId: string,
-  deliveryId: string,
-): Promise<{ ok: true } | { error: "taken" | "other_city" | "too_many" | "changed" | "planning"; message?: string }> {
-  const ACTIVE = ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"];
-  const [courier] = await db.select().from(couriersTable).where(eq(couriersTable.id, courierId)).limit(1);
-  if (!courier) return { error: "changed" };
+/** Ordem sugerida guardada por motoboy (só recalcula quando as entregas, etapas ou a posição mudam). */
+const courierPlanCache = new Map<string, { key: string; plan: Awaited<ReturnType<typeof optimizeRoute>> }>();
 
-  const [newRow] = await routeDeliveries([deliveryId]);
-  if (!newRow || newRow.delivery.status !== "OFFERED" || (newRow.delivery.courierId && newRow.delivery.courierId !== courierId)) {
-    return { error: "taken" };
-  }
-  if (!sameCity(courier.city, newRow.storeCity)) return { error: "other_city" };
-
-  const [currentRoute] = await db
-    .select()
-    .from(deliveryRoutesTable)
-    .where(and(eq(deliveryRoutesTable.courierId, courierId), eq(deliveryRoutesTable.status, "ACCEPTED")))
-    .limit(1);
-  const activeIndividual = await db
-    .select({ id: deliveriesTable.id })
-    .from(deliveriesTable)
-    .where(and(eq(deliveriesTable.courierId, courierId), inArray(deliveriesTable.status, ACTIVE)));
-  const existingIds = [
-    ...new Set([
-      ...(currentRoute?.deliveryIds ?? []),
-      ...activeIndividual.map((row) => row.id),
-    ]),
-  ].filter((id) => id !== deliveryId);
-  const currentRows = (await routeDeliveries(existingIds)).filter((row) => ACTIVE.includes(row.delivery.status));
-  if (currentRows.length + 1 > 10) return { error: "too_many" };
-
-  const rows = [...currentRows, newRow];
-  const pickedUp = new Set(currentRows.filter((row) => row.delivery.status === "IN_TRANSIT").map((row) => row.delivery.id));
-  const start =
-    storedCoordinate(courier.currentLatitude, courier.currentLongitude) ??
-    storedCoordinate(newRow.storeLatitude, newRow.storeLongitude);
-  if (!start) return { error: "planning", message: "Ative o GPS para juntar esta entrega à sua rota." };
-
-  let plan: Awaited<ReturnType<typeof optimizeRoute>>;
-  try {
-    plan = await optimizeRoute(rows, start, pickedUp);
-  } catch {
-    // Sem a otimização do Google: mantém a ordem atual e coloca a nova retirada e entrega no fim.
-    const pendingStops = currentRoute
-      ? await db
-          .select()
-          .from(deliveryRouteStopsTable)
-          .where(and(eq(deliveryRouteStopsTable.routeId, currentRoute.id), eq(deliveryRouteStopsTable.status, "PENDING")))
-          .orderBy(asc(deliveryRouteStopsTable.sequence))
-      : [];
-    const stops: Array<{ deliveryId: string; kind: "pickup" | "delivery"; address: string; latitude: number; longitude: number }> = [];
-    if (pendingStops.length) {
-      for (const stop of pendingStops) {
-        stops.push({ deliveryId: stop.deliveryId, kind: stop.kind as "pickup" | "delivery", address: stop.address, latitude: stop.latitude, longitude: stop.longitude });
-      }
-    } else {
-      for (const row of currentRows) {
-        const store = storedCoordinate(row.storeLatitude, row.storeLongitude);
-        const customer = storedCoordinate(row.delivery.customerLatitude, row.delivery.customerLongitude);
-        if (!pickedUp.has(row.delivery.id) && store) stops.push({ deliveryId: row.delivery.id, kind: "pickup", address: `${row.storeAddress}, ${row.storeCity}`, ...store });
-        if (customer) stops.push({ deliveryId: row.delivery.id, kind: "delivery", address: row.delivery.destination, ...customer });
-      }
+router.get(
+  "/courier/plan",
+  requireRole("COURIER"),
+  async (_req, res): Promise<void> => {
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.json(GetCourierPlanResponse.parse({ plan: null }));
+      return;
     }
-    const newStore = storedCoordinate(newRow.storeLatitude, newRow.storeLongitude);
-    const newCustomer = storedCoordinate(newRow.delivery.customerLatitude, newRow.delivery.customerLongitude);
-    if (!newStore || !newCustomer) {
-      return { error: "planning", message: "Esta entrega está sem posição no mapa. Fale com a loja." };
-    }
-    stops.push({ deliveryId: newRow.delivery.id, kind: "pickup", address: `${newRow.storeAddress}, ${newRow.storeCity}`, ...newStore });
-    stops.push({ deliveryId: newRow.delivery.id, kind: "delivery", address: newRow.delivery.destination, ...newCustomer });
-    let geometry: Coordinate[] | null = null;
-    let distanceMeters: number | null = null;
-    let durationSeconds: number | null = null;
-    try {
-      const directions = await computeDrivingRoute([start, ...stops.map(({ latitude, longitude }) => ({ latitude, longitude }))]);
-      geometry = directions.geometry.length >= 2 ? directions.geometry : null;
-      distanceMeters = directions.distanceMeters !== null ? Math.round(directions.distanceMeters) : null;
-      durationSeconds = directions.durationSeconds !== null ? Math.round(directions.durationSeconds) : null;
-    } catch {
-      // Sem traçado: a rota segue com a lista de paradas.
-    }
-    plan = { stops, routeGeometry: geometry, distanceMeters, durationSeconds };
-  }
-
-  const result = await db.transaction(async (tx) => {
-    const [delivery] = await tx.select().from(deliveriesTable).where(eq(deliveriesTable.id, deliveryId)).for("update");
-    if (!delivery || delivery.status !== "OFFERED" || (delivery.courierId && delivery.courierId !== courierId)) {
-      return { error: "taken" as const };
-    }
-    const now = new Date();
-    const allIds = rows.map((row) => row.delivery.id);
-    let routeId: string;
-    let nextSequence = 1;
-    if (currentRoute) {
-      const [locked] = await tx.select().from(deliveryRoutesTable).where(eq(deliveryRoutesTable.id, currentRoute.id)).for("update");
-      if (!locked || locked.status !== "ACCEPTED") return { error: "changed" as const };
-      routeId = locked.id;
-      const [maxRow] = await tx
-        .select({ max: sql<number>`coalesce(max(${deliveryRouteStopsTable.sequence}), 0)` })
-        .from(deliveryRouteStopsTable)
-        .where(eq(deliveryRouteStopsTable.routeId, locked.id));
-      nextSequence = Number(maxRow?.max ?? 0) + 1;
-      await tx
-        .update(deliveryRouteStopsTable)
-        .set({ status: "CANCELLED" })
-        .where(and(eq(deliveryRouteStopsTable.routeId, locked.id), eq(deliveryRouteStopsTable.status, "PENDING")));
-      await tx
-        .update(deliveryRoutesTable)
-        .set({
-          deliveryIds: [...new Set([...locked.deliveryIds, ...allIds])],
-          routeGeometry: plan.routeGeometry,
-          distanceMeters: plan.distanceMeters,
-          durationSeconds: plan.durationSeconds,
-        })
-        .where(eq(deliveryRoutesTable.id, locked.id));
-    } else {
-      routeId = randomUUID();
-      await tx.insert(deliveryRoutesTable).values({
-        id: routeId,
-        deliveryIds: allIds,
-        status: "ACCEPTED",
-        courierId,
-        startLatitude: start.latitude,
-        startLongitude: start.longitude,
-        routeGeometry: plan.routeGeometry,
-        distanceMeters: plan.distanceMeters,
-        durationSeconds: plan.durationSeconds,
-        lockedAt: now,
-        createdBy: "motoboy",
-      });
-    }
-    if (plan.stops.length) {
-      await tx.insert(deliveryRouteStopsTable).values(
-        plan.stops.map((stop, index) => ({
-          id: randomUUID(),
-          routeId,
-          deliveryId: stop.deliveryId,
-          sequence: nextSequence + index,
-          kind: stop.kind,
-          address: stop.address,
-          latitude: stop.latitude,
-          longitude: stop.longitude,
-        })),
+    const [courier] = await db.select().from(couriersTable).where(eq(couriersTable.id, profile.courierId)).limit(1);
+    const active = await db
+      .select({ id: deliveriesTable.id })
+      .from(deliveriesTable)
+      .where(
+        and(
+          eq(deliveriesTable.courierId, profile.courierId),
+          inArray(deliveriesTable.status, ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"]),
+          notInActiveRoute,
+        ),
       );
+    if (active.length < 2 || !courier) {
+      res.json(GetCourierPlanResponse.parse({ plan: null }));
+      return;
     }
-    // Na rota, "a caminho da loja"/"na loja" contam como aceita (a retirada é a próxima parada).
-    await tx
-      .update(deliveriesTable)
-      .set({ status: "ACCEPTED", updatedAt: now })
-      .where(and(inArray(deliveriesTable.id, allIds), inArray(deliveriesTable.status, ["TO_STORE", "AT_STORE"])));
-    await tx
-      .update(deliveriesTable)
-      .set({ status: "ACCEPTED", courierId, updatedAt: now })
-      .where(eq(deliveriesTable.id, deliveryId));
-    await tx.insert(deliveryEventsTable).values({
-      id: randomUUID(),
-      deliveryId,
-      kind: "accepted",
-      label: `Aceita junto com ${currentRows.length} ${currentRows.length === 1 ? "entrega" : "entregas"} em andamento: rota recalculada`,
-      actor: "Motoboy",
-      timestamp: now,
-    });
-    await tx
-      .update(couriersTable)
-      .set({ status: "BUSY", currentDeliveryCode: courier.currentDeliveryCode ?? delivery.code })
-      .where(eq(couriersTable.id, courierId));
-    return { ok: true as const };
-  });
-  return result;
-}
+    const rows = await routeDeliveries(active.map((row) => row.id));
+    const pickedUp = new Set(rows.filter((row) => row.delivery.status === "IN_TRANSIT").map((row) => row.delivery.id));
+    const start =
+      storedCoordinate(courier.currentLatitude, courier.currentLongitude) ??
+      storedCoordinate(rows[0]?.storeLatitude, rows[0]?.storeLongitude);
+    if (!start) {
+      res.json(GetCourierPlanResponse.parse({ plan: null }));
+      return;
+    }
+    const grid = (value: number) => (Math.round(value * 700) / 700).toFixed(4);
+    const key = [
+      ...rows.map((row) => `${row.delivery.id}:${pickedUp.has(row.delivery.id) ? "r" : "a"}`).sort(),
+      `${grid(start.latitude)},${grid(start.longitude)}`,
+    ].join("|");
+    let plan = courierPlanCache.get(profile.courierId)?.key === key ? courierPlanCache.get(profile.courierId)!.plan : null;
+    if (!plan) {
+      try {
+        plan = await optimizeRoute(rows, start, pickedUp);
+      } catch {
+        // Sem a otimização do Google: retiradas pendentes primeiro, depois as entregas.
+        const stops: Array<{ deliveryId: string; kind: "pickup" | "delivery"; address: string; latitude: number; longitude: number }> = [];
+        for (const row of rows) {
+          const store = storedCoordinate(row.storeLatitude, row.storeLongitude);
+          if (!pickedUp.has(row.delivery.id) && store) {
+            stops.push({ deliveryId: row.delivery.id, kind: "pickup", address: `${row.storeAddress}, ${row.storeCity}`, ...store });
+          }
+        }
+        for (const row of rows) {
+          const customer = storedCoordinate(row.delivery.customerLatitude, row.delivery.customerLongitude);
+          if (customer) stops.push({ deliveryId: row.delivery.id, kind: "delivery", address: row.delivery.destination, ...customer });
+        }
+        let geometry: Coordinate[] | null = null;
+        let distanceMeters: number | null = null;
+        let durationSeconds: number | null = null;
+        try {
+          const directions = await computeDrivingRoute([start, ...stops.map(({ latitude, longitude }) => ({ latitude, longitude }))]);
+          geometry = directions.geometry.length >= 2 ? directions.geometry : null;
+          distanceMeters = directions.distanceMeters !== null ? Math.round(directions.distanceMeters) : null;
+          durationSeconds = directions.durationSeconds !== null ? Math.round(directions.durationSeconds) : null;
+        } catch {
+          // Sem traçado: o mapa mostra só os pontos na ordem.
+        }
+        plan = { stops, routeGeometry: geometry, distanceMeters, durationSeconds };
+      }
+      courierPlanCache.set(profile.courierId, { key, plan });
+    }
+    const rowById = new Map(rows.map((row) => [row.delivery.id, row]));
+    res.json(
+      GetCourierPlanResponse.parse({
+        plan: {
+          id: `plano-${profile.courierId}`,
+          status: "ACCEPTED",
+          courierId: profile.courierId,
+          deliveryCount: rows.length,
+          amountToReceive: 0,
+          distanceKm: plan.distanceMeters == null ? null : Number((plan.distanceMeters / 1000).toFixed(1)),
+          estimatedMinutes: plan.durationSeconds == null ? null : Math.ceil(plan.durationSeconds / 60),
+          lockedAt: null,
+          deliveries: rows.map((row) => ({
+            id: row.delivery.id,
+            code: row.delivery.code,
+            customerName: row.delivery.customerName,
+            customerPhone: row.delivery.customerPhone,
+            requiresPrescription: row.delivery.requiresPrescription,
+            paymentMethod: row.delivery.paymentMethod,
+            changeFor: row.delivery.changeForCents == null ? null : row.delivery.changeForCents / 100,
+            bringCardMachine: row.delivery.bringCardMachine,
+            destination: row.delivery.destination,
+            notes: row.delivery.notes,
+            storeName: row.storeName,
+            storeAddress: row.storeAddress,
+            storeCity: row.storeCity,
+            storeLatitude: row.storeLatitude,
+            storeLongitude: row.storeLongitude,
+            customerLatitude: row.delivery.customerLatitude,
+            customerLongitude: row.delivery.customerLongitude,
+            deliveryAmount: 0,
+            status: row.delivery.status,
+          })),
+          stops: plan.stops.map((stop, index) => {
+            const row = rowById.get(stop.deliveryId)!;
+            return {
+              id: `plano-${stop.deliveryId}-${stop.kind}`,
+              sequence: index + 1,
+              deliveryId: stop.deliveryId,
+              kind: stop.kind,
+              address: stop.address,
+              latitude: stop.latitude,
+              longitude: stop.longitude,
+              status: "PENDING",
+              code: row.delivery.code,
+              customerName: row.delivery.customerName,
+              storeName: row.storeName,
+              deliveryAmount: 0,
+            };
+          }),
+          routeGeometry: plan.routeGeometry,
+        },
+      }),
+    );
+  },
+);
 
 export default router;

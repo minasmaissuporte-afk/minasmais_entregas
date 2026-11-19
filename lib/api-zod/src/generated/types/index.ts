@@ -27,6 +27,7 @@ export * from './courierEarnings';
 export * from './courierEarningsPeriod';
 export * from './courierLocation';
 export * from './courierLocationInput';
+export * from './courierPlan';
 export * from './courierRoutePreview';
 export * from './courierRoutePreviewStop';
 export * from './courierRoutePreviewStopKind';
