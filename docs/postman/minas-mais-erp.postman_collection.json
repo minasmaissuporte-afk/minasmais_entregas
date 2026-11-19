@@ -1,0 +1,927 @@
+{
+  "info": {
+    "name": "Minas Mais Entregas - Integração ERP v1",
+    "description": "API de integração ERP → Minas Mais Entregas.\n\nAntes de usar, escolha o environment \"Minas Mais ERP\" e preencha a variável token (mmerp_...) e codigoFilial (uma filial de teste).\n\nDocumentação: {{baseUrl}}/docs\nOpenAPI: {{baseUrl}}/openapi.json",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Guarda o X-Request-Id da última chamada (informe ao suporte quando precisar investigar).",
+          "const rid = pm.response.headers.get(\"X-Request-Id\");",
+          "if (rid) pm.collectionVariables.set(\"ultimoRequestId\", rid);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://minas-mais-entregas.vercel.app/api/v1/erp"
+    },
+    {
+      "key": "idVenda",
+      "value": ""
+    },
+    {
+      "key": "idVendaExemplo",
+      "value": ""
+    },
+    {
+      "key": "idVendaErro",
+      "value": ""
+    },
+    {
+      "key": "dataVenda",
+      "value": ""
+    },
+    {
+      "key": "codigoEntrega",
+      "value": ""
+    },
+    {
+      "key": "ultimoRequestId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Homologação (rodar em ordem)",
+      "description": "Roteiro da seção 7 da documentação. Rode as requisições na ordem (ou use o Collection Runner nesta pasta). O passo 3 gera um idVenda novo (HML-<timestamp>) e os passos seguintes usam esse mesmo idVenda. O último passo cancela a entrega de teste.",
+      "item": [
+        {
+          "name": "Health (sem token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status ok\", () => pm.expect(pm.response.json().status).to.eql(\"ok\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Verifica se a integração está no ar. Não precisa de token.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health (com token) - valida credencial",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"credencialValida = true\", () => pm.expect(pm.response.json().credencialValida).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Com o token enviado, a resposta traz credencialValida: true ou false."
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar venda (POST /entregas)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Gera um idVenda novo a cada envio para não cair na idempotência.",
+                  "// Para reenviar a mesma venda, use a requisição \"Reenviar a mesma venda\".",
+                  "pm.collectionVariables.set(\"idVenda\", \"HML-\" + Date.now());",
+                  "pm.collectionVariables.set(\"dataVenda\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"duplicada = false\", () => pm.expect(r.duplicada).to.eql(false));",
+                  "pm.test(\"Tem codigoEntrega\", () => pm.expect(r.entrega.codigoEntrega).to.match(/^MM-\\d+$/));",
+                  "pm.collectionVariables.set(\"codigoEntrega\", r.entrega.codigoEntrega);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas"
+              ]
+            },
+            "description": "Cria a entrega. ATENÇÃO: cria uma entrega real na filial informada e ela é oferecida aos motoboys. Use uma filial de teste.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idVenda\": \"{{idVenda}}\",\n  \"codigoFilial\": \"{{codigoFilial}}\",\n  \"dataVenda\": \"{{dataVenda}}\",\n  \"cliente\": {\n    \"nome\": \"Cliente Teste Homologação\",\n    \"telefone\": \"35999998888\"\n  },\n  \"endereco\": {\n    \"cep\": \"37500-000\",\n    \"rua\": \"Rua das Flores\",\n    \"numero\": \"120\",\n    \"bairro\": \"Centro\",\n    \"cidade\": \"Itajubá\",\n    \"estado\": \"MG\",\n    \"complemento\": \"Apto 202\",\n    \"referencia\": \"Em frente à praça\"\n  },\n  \"pedido\": {\n    \"numeroPedido\": \"PED-{{idVenda}}\",\n    \"valorTotal\": 58.9,\n    \"formaPagamento\": \"DINHEIRO\",\n    \"trocoPara\": 100,\n    \"observacoes\": \"TESTE DE HOMOLOGAÇÃO - não entregar.\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reenviar a mesma venda (idempotência)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"duplicada = true\", () => pm.expect(pm.response.json().duplicada).to.eql(true));",
+                  "pm.test(\"Header Idempotent-Replayed\", () => pm.expect(pm.response.headers.get(\"Idempotent-Replayed\")).to.eql(\"true\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas"
+              ]
+            },
+            "description": "Reenvia o mesmo idVenda. Não cria outra entrega: responde 200 com duplicada: true.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idVenda\": \"{{idVenda}}\",\n  \"codigoFilial\": \"{{codigoFilial}}\",\n  \"dataVenda\": \"{{dataVenda}}\",\n  \"cliente\": {\n    \"nome\": \"Cliente Teste Homologação\",\n    \"telefone\": \"35999998888\"\n  },\n  \"endereco\": {\n    \"cep\": \"37500-000\",\n    \"rua\": \"Rua das Flores\",\n    \"numero\": \"120\",\n    \"bairro\": \"Centro\",\n    \"cidade\": \"Itajubá\",\n    \"estado\": \"MG\",\n    \"complemento\": \"Apto 202\",\n    \"referencia\": \"Em frente à praça\"\n  },\n  \"pedido\": {\n    \"numeroPedido\": \"PED-{{idVenda}}\",\n    \"valorTotal\": 58.9,\n    \"formaPagamento\": \"DINHEIRO\",\n    \"trocoPara\": 100,\n    \"observacoes\": \"TESTE DE HOMOLOGAÇÃO - não entregar.\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar entrega (GET /entregas/{idVenda})",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Mesmo idVenda\", () => pm.expect(pm.response.json().entrega.idVenda).to.eql(pm.collectionVariables.get(\"idVenda\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/entregas/{{idVenda}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas",
+                "{{idVenda}}"
+              ]
+            },
+            "description": "Situação atual e histórico da entrega."
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar dados (PATCH /entregas/{idVenda})",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"alterada = true\", () => pm.expect(pm.response.json().alterada).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas/{{idVenda}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas",
+                "{{idVenda}}"
+              ]
+            },
+            "description": "Envie só o que mudou. cliente e pedido são atualizados campo a campo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cliente\": {\n    \"telefone\": \"35988887777\"\n  },\n  \"pedido\": {\n    \"formaPagamento\": \"PIX\",\n    \"observacoes\": \"TESTE DE HOMOLOGAÇÃO - chamar no portão.\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar endereço (PATCH, endereço completo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 ou 409 ENDERECO_BLOQUEADO\", () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas/{{idVenda}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas",
+                "{{idVenda}}"
+              ]
+            },
+            "description": "O endereço vai completo. Só pode mudar antes de um motoboy aceitar; depois disso a resposta é 409 ENDERECO_BLOQUEADO.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"endereco\": {\n    \"rua\": \"Rua das Flores\",\n    \"numero\": \"250\",\n    \"bairro\": \"Centro\",\n    \"cidade\": \"Itajubá\",\n    \"estado\": \"MG\",\n    \"cep\": \"37500-000\",\n    \"complemento\": \"Casa\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancelar entrega (POST /entregas/{idVenda}/cancelar)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas/{{idVenda}}/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas",
+                "{{idVenda}}",
+                "cancelar"
+              ]
+            },
+            "description": "Cancela a entrega. Se já havia motoboy, ele é liberado e avisado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Teste de homologação\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancelar de novo (sem erro)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"jaEstavaCancelada = true\", () => pm.expect(pm.response.json().jaEstavaCancelada).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas/{{idVenda}}/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas",
+                "{{idVenda}}",
+                "cancelar"
+              ]
+            },
+            "description": "Repetir o cancelamento não dá erro: a resposta traz jaEstavaCancelada: true.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Teste de homologação\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Exemplos de envio",
+      "description": "Variações do POST /entregas. Cada uma gera o seu próprio idVenda (variável idVendaExemplo) e cria uma entrega real: depois de testar, cancele com a requisição \"Cancelar exemplo\".",
+      "item": [
+        {
+          "name": "Venda já paga",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Gera um idVenda novo a cada envio para não cair na idempotência.",
+                  "// Para reenviar a mesma venda, use a requisição \"Reenviar a mesma venda\".",
+                  "pm.collectionVariables.set(\"idVendaExemplo\", \"HML-\" + Date.now());",
+                  "pm.collectionVariables.set(\"dataVenda\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas"
+              ]
+            },
+            "description": "Pedido já pago: não precisa de formaPagamento e o motoboy não cobra nada.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idVenda\": \"{{idVendaExemplo}}\",\n  \"codigoFilial\": \"{{codigoFilial}}\",\n  \"dataVenda\": \"{{dataVenda}}\",\n  \"cliente\": {\n    \"nome\": \"Cliente Teste Pago\",\n    \"telefone\": \"35999998888\"\n  },\n  \"endereco\": {\n    \"rua\": \"Rua das Flores\",\n    \"numero\": \"120\",\n    \"bairro\": \"Centro\",\n    \"cidade\": \"Itajubá\",\n    \"estado\": \"MG\",\n    \"cep\": \"37500-000\"\n  },\n  \"pedido\": {\n    \"valorTotal\": 32.5,\n    \"pago\": true,\n    \"observacoes\": \"TESTE - não entregar.\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Venda no cartão (levar maquininha)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Gera um idVenda novo a cada envio para não cair na idempotência.",
+                  "// Para reenviar a mesma venda, use a requisição \"Reenviar a mesma venda\".",
+                  "pm.collectionVariables.set(\"idVendaExemplo\", \"HML-\" + Date.now());",
+                  "pm.collectionVariables.set(\"dataVenda\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas"
+              ]
+            },
+            "description": "Valores em dinheiro também podem ir como texto (\"45,90\").",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idVenda\": \"{{idVendaExemplo}}\",\n  \"codigoFilial\": \"{{codigoFilial}}\",\n  \"dataVenda\": \"{{dataVenda}}\",\n  \"cliente\": {\n    \"nome\": \"Cliente Teste Cartão\",\n    \"telefone\": \"35999998888\"\n  },\n  \"endereco\": {\n    \"rua\": \"Rua das Flores\",\n    \"numero\": \"120\",\n    \"bairro\": \"Centro\",\n    \"cidade\": \"Itajubá\",\n    \"estado\": \"MG\",\n    \"cep\": \"37500-000\"\n  },\n  \"pedido\": {\n    \"valorTotal\": \"45,90\",\n    \"formaPagamento\": \"CARTAO_CREDITO\",\n    \"levarMaquininha\": true,\n    \"observacoes\": \"TESTE - não entregar.\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Venda com receita (mínimo + receita)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Gera um idVenda novo a cada envio para não cair na idempotência.",
+                  "// Para reenviar a mesma venda, use a requisição \"Reenviar a mesma venda\".",
+                  "pm.collectionVariables.set(\"idVendaExemplo\", \"HML-\" + Date.now());",
+                  "pm.collectionVariables.set(\"dataVenda\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas"
+              ]
+            },
+            "description": "Só os campos obrigatórios (idVenda, codigoFilial, cliente.nome, endereco.rua, formaPagamento) mais receita: true. Número vazio vira s/n e cidade vazia vira a cidade da filial.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idVenda\": \"{{idVendaExemplo}}\",\n  \"codigoFilial\": \"{{codigoFilial}}\",\n  \"cliente\": {\n    \"nome\": \"Cliente Teste Receita\"\n  },\n  \"endereco\": {\n    \"rua\": \"Rua das Flores\"\n  },\n  \"pedido\": {\n    \"valorTotal\": 19.9,\n    \"formaPagamento\": \"PIX\",\n    \"receita\": true,\n    \"observacoes\": \"TESTE - não entregar.\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancelar exemplo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas/{{idVendaExemplo}}/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas",
+                "{{idVendaExemplo}}",
+                "cancelar"
+              ]
+            },
+            "description": "Cancela a última venda criada nesta pasta.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Teste\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Erros esperados",
+      "description": "Chamadas que devem falhar, para conferir os códigos de erro da seção 5.",
+      "item": [
+        {
+          "name": "401 - sem token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"Erro CREDENCIAL_AUSENTE\", () => pm.expect(pm.response.json().erro.codigo).to.eql(\"CREDENCIAL_AUSENTE\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/entregas/{{idVenda}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas",
+                "{{idVenda}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "401 - token inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"Erro CREDENCIAL_INVALIDA\", () => pm.expect(pm.response.json().erro.codigo).to.eql(\"CREDENCIAL_INVALIDA\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/entregas/{{idVenda}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas",
+                "{{idVenda}}"
+              ]
+            },
+            "description": "Cuidado: 20 tentativas com token inválido em 10 minutos bloqueiam o IP por 10 minutos.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "mmerp_invalido_000",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "404 - venda não encontrada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Erro VENDA_NAO_ENCONTRADA\", () => pm.expect(pm.response.json().erro.codigo).to.eql(\"VENDA_NAO_ENCONTRADA\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/entregas/NAO-EXISTE-000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas",
+                "NAO-EXISTE-000"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "400 - dados inválidos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Erro DADOS_INVALIDOS\", () => pm.expect(pm.response.json().erro.codigo).to.eql(\"DADOS_INVALIDOS\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas"
+              ]
+            },
+            "description": "Sem cliente.nome e endereco.rua: a resposta lista os campos em erro.detalhes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idVenda\": \"HML-INVALIDA\",\n  \"codigoFilial\": \"{{codigoFilial}}\",\n  \"pedido\": {\n    \"pago\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "422 - filial não cadastrada",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Gera um idVenda novo a cada envio para não cair na idempotência.",
+                  "// Para reenviar a mesma venda, use a requisição \"Reenviar a mesma venda\".",
+                  "pm.collectionVariables.set(\"idVendaErro\", \"HML-\" + Date.now());",
+                  "pm.collectionVariables.set(\"dataVenda\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"Erro FILIAL_NAO_CADASTRADA\", () => pm.expect(pm.response.json().erro.codigo).to.eql(\"FILIAL_NAO_CADASTRADA\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas"
+              ]
+            },
+            "description": "O erro também aparece no painel do administrador, em Histórico.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idVenda\": \"{{idVendaErro}}\",\n  \"codigoFilial\": \"FILIAL-INEXISTENTE\",\n  \"cliente\": {\n    \"nome\": \"Cliente Teste\"\n  },\n  \"endereco\": {\n    \"rua\": \"Rua das Flores\"\n  },\n  \"pedido\": {\n    \"pago\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "422 - forma de pagamento obrigatória",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Gera um idVenda novo a cada envio para não cair na idempotência.",
+                  "// Para reenviar a mesma venda, use a requisição \"Reenviar a mesma venda\".",
+                  "pm.collectionVariables.set(\"idVendaErro\", \"HML-\" + Date.now());",
+                  "pm.collectionVariables.set(\"dataVenda\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"Erro FORMA_PAGAMENTO_OBRIGATORIA\", () => pm.expect(pm.response.json().erro.codigo).to.eql(\"FORMA_PAGAMENTO_OBRIGATORIA\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/entregas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "entregas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idVenda\": \"{{idVendaErro}}\",\n  \"codigoFilial\": \"{{codigoFilial}}\",\n  \"cliente\": {\n    \"nome\": \"Cliente Teste\"\n  },\n  \"endereco\": {\n    \"rua\": \"Rua das Flores\"\n  },\n  \"pedido\": {\n    \"valorTotal\": 10\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
