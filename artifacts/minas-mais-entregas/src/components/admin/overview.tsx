@@ -389,6 +389,8 @@ export function OperationMap({
       kind: "store",
       color: "#ffffff",
       textColor: "#b91e2c",
+      // Filial fixa: sempre visível por cima dos marcadores de cliente.
+      zIndex: 4,
     }));
   // Desenho fixo do trajeto de cada motoboy em entrega (ou só do motoboy filtrado).
   const visibleRoutes = layers.route

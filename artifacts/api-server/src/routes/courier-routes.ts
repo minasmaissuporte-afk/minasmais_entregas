@@ -675,10 +675,33 @@ router.get(
           managerStore ? eq(deliveriesTable.storeId, managerStore) : undefined,
         ),
       );
+    const pending = individual.filter((row) => !routedIds.has(row.id));
+    const countByCourier = new Map<string, number>();
+    for (const row of pending) countByCourier.set(row.courierId!, (countByCourier.get(row.courierId!) ?? 0) + 1);
+    const planned = new Set<string>();
+    const planRoutes = (
+      await Promise.all(
+        [...countByCourier.entries()]
+          // Gerente vê só as entregas da filial dele: linha por entrega (a rota completa pode ter outras lojas).
+          .filter(([, count]) => count >= 2 && !managerStore)
+          .map(async ([courierId]) => {
+            const computed = await computeCourierPlan(courierId).catch(() => null);
+            if (!computed?.plan.routeGeometry) return [];
+            for (const row of computed.rows) planned.add(row.delivery.id);
+            const sample = pending.find((row) => row.courierId === courierId)!;
+            return [{
+              id: `plano-${courierId}`,
+              courierId,
+              courierFirstName: getCourierFirstName(sample.courierName, sample.courierEmail),
+              routeGeometry: computed.plan.routeGeometry,
+            }];
+          }),
+      )
+    ).flat();
     const individualRoutes = (
       await Promise.all(
-        individual
-          .filter((row) => !routedIds.has(row.id))
+        pending
+          .filter((row) => !planned.has(row.id))
           .map(async (row) => {
             const geometry = await individualRouteGeometry(row);
             return geometry
@@ -708,6 +731,7 @@ router.get(
               }]
             : [],
         ),
+        ...planRoutes,
         ...individualRoutes,
       ]),
     );
@@ -2517,45 +2541,32 @@ router.post(
 /** Ordem sugerida guardada por motoboy (só recalcula quando as entregas, etapas ou a posição mudam). */
 const courierPlanCache = new Map<string, { key: string; plan: Awaited<ReturnType<typeof optimizeRoute>> }>();
 
-router.get(
-  "/courier/plan",
-  requireRole("COURIER"),
-  async (_req, res): Promise<void> => {
-    const profile = res.locals.appUser as AppUserProfile;
-    if (!profile.courierId) {
-      res.json(GetCourierPlanResponse.parse({ plan: null }));
-      return;
-    }
-    const [courier] = await db.select().from(couriersTable).where(eq(couriersTable.id, profile.courierId)).limit(1);
+/** Ordem sugerida das entregas avulsas de um motoboy (usada pelo app e pelo mapa do painel). */
+async function computeCourierPlan(courierId: string) {
+    const [courier] = await db.select().from(couriersTable).where(eq(couriersTable.id, courierId)).limit(1);
     const active = await db
       .select({ id: deliveriesTable.id })
       .from(deliveriesTable)
       .where(
         and(
-          eq(deliveriesTable.courierId, profile.courierId),
+          eq(deliveriesTable.courierId, courierId),
           inArray(deliveriesTable.status, ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"]),
           notInActiveRoute,
         ),
       );
-    if (active.length < 2 || !courier) {
-      res.json(GetCourierPlanResponse.parse({ plan: null }));
-      return;
-    }
+    if (active.length < 2 || !courier) return null;
     const rows = await routeDeliveries(active.map((row) => row.id));
     const pickedUp = new Set(rows.filter((row) => row.delivery.status === "IN_TRANSIT").map((row) => row.delivery.id));
     const start =
       storedCoordinate(courier.currentLatitude, courier.currentLongitude) ??
       storedCoordinate(rows[0]?.storeLatitude, rows[0]?.storeLongitude);
-    if (!start) {
-      res.json(GetCourierPlanResponse.parse({ plan: null }));
-      return;
-    }
+    if (!start) return null;
     const grid = (value: number) => (Math.round(value * 700) / 700).toFixed(4);
     const key = [
       ...rows.map((row) => `${row.delivery.id}:${pickedUp.has(row.delivery.id) ? "r" : "a"}`).sort(),
       `${grid(start.latitude)},${grid(start.longitude)}`,
     ].join("|");
-    let plan = courierPlanCache.get(profile.courierId)?.key === key ? courierPlanCache.get(profile.courierId)!.plan : null;
+    let plan = courierPlanCache.get(courierId)?.key === key ? courierPlanCache.get(courierId)!.plan : null;
     if (!plan) {
       try {
         plan = await optimizeRoute(rows, start, pickedUp);
@@ -2585,8 +2596,26 @@ router.get(
         }
         plan = { stops, routeGeometry: geometry, distanceMeters, durationSeconds };
       }
-      courierPlanCache.set(profile.courierId, { key, plan });
+      courierPlanCache.set(courierId, { key, plan });
     }
+    return { rows, plan };
+}
+
+router.get(
+  "/courier/plan",
+  requireRole("COURIER"),
+  async (_req, res): Promise<void> => {
+    const profile = res.locals.appUser as AppUserProfile;
+    if (!profile.courierId) {
+      res.json(GetCourierPlanResponse.parse({ plan: null }));
+      return;
+    }
+    const computed = await computeCourierPlan(profile.courierId);
+    if (!computed) {
+      res.json(GetCourierPlanResponse.parse({ plan: null }));
+      return;
+    }
+    const { rows, plan } = computed;
     const rowById = new Map(rows.map((row) => [row.delivery.id, row]));
     res.json(
       GetCourierPlanResponse.parse({

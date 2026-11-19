@@ -138,6 +138,7 @@ export default function StorePortal({
           kind: "store" as const,
           color: "#ffffff",
           textColor: "#b91e2c",
+          zIndex: 4,
         }]
       : []),
     ...activeDeliveries
