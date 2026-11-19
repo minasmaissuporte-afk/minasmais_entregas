@@ -59,8 +59,9 @@ test.describe("Entregas: criação e validação", () => {
   ];
   for (const [label, patch, status, msg] of invalid) {
     test(`Validação: ${label} → ${status}`, async () => {
-      const central = await Api.as("central");
-      await expectError(await central.post("/deliveries", deliveryInput(patch)), status, msg);
+      // Administrador: vê todas as filiais (o supervisor receberia 403 numa filial fora da supervisão).
+      const admin = await Api.as("admin");
+      await expectError(await admin.post("/deliveries", deliveryInput(patch)), status, msg);
     });
   }
 
@@ -73,7 +74,7 @@ test.describe("Entregas: criação e validação", () => {
   });
 
   test("Atendente cria entrega na própria filial", async () => {
-    const staff = await Api.as("staff");
+    const staff = await Api.as("supervisor");
     const delivery = await createDelivery(staff, { storeId: stores.b.id });
     expect(delivery.storeId).toBe(stores.b.id);
   });
@@ -100,7 +101,7 @@ test.describe("Entregas: visibilidade, busca e filtros", () => {
     const managerIds = (await json(await (await Api.as("manager")).get("/deliveries"))).map((d: any) => d.id);
     expect(managerIds).toContain(fromA.id);
     expect(managerIds).not.toContain(fromB.id);
-    const staffIds = (await json(await (await Api.as("staff")).get("/deliveries"))).map((d: any) => d.id);
+    const staffIds = (await json(await (await Api.as("supervisor")).get("/deliveries"))).map((d: any) => d.id);
     expect(staffIds).toContain(fromB.id);
     expect(staffIds).not.toContain(fromA.id);
   });
@@ -231,7 +232,7 @@ test.describe("Entregas: transições de status", () => {
   test("Atendente e motoboy não cancelam (403); gerente cancela entrega da filial ainda sem motoboy", async () => {
     const central = await Api.as("central");
     const d = await createDelivery(central, { storeId: stores.a.id });
-    for (const role of ["staff", "courier"] as const) {
+    for (const role of ["supervisor", "courier"] as const) {
       await expectError(await setStatus(await Api.as(role), d.id, "CANCELLED"), 403);
     }
     await expectStatus(central, d.id, "OFFERED");
@@ -257,7 +258,7 @@ test.describe("Entregas: transições de status", () => {
   test("[BUG] Atendente de outra filial não altera status (deveria ser 403, como no GET)", async () => {
     const central = await Api.as("central");
     const d = await createDelivery(central, { storeId: stores.a.id });
-    await expectError(await setStatus(await Api.as("staff"), d.id, "IN_TRANSIT"), 403);
+    await expectError(await setStatus(await Api.as("supervisor"), d.id, "IN_TRANSIT"), 403);
   });
 
   test("Motoboy não conclui entrega sem foto de comprovação (422)", async () => {
@@ -299,7 +300,7 @@ test.describe("Entregas: exclusão definitiva", () => {
 
   test("Gerente, atendente, Central e motoboy não excluem entregas (403)", async () => {
     const d = await createDelivery(await Api.as("central"), { storeId: stores.a.id });
-    for (const role of ["central", "manager", "staff", "courier"] as const) {
+    for (const role of ["central", "manager", "supervisor", "courier"] as const) {
       await expectError(await (await Api.as(role)).delete(`/deliveries/${d.id}`), 403);
     }
   });

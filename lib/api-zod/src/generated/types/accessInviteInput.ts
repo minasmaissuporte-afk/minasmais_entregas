@@ -18,6 +18,8 @@ export interface AccessInviteInput {
   role: AccessInviteInputRole;
   /** @nullable */
   storeId?: string | null;
+  /** Filiais do Supervisor regional */
+  storeIds?: string[];
   /**
      * @maxLength 120
      * @nullable

@@ -11,6 +11,8 @@ export type AccessInviteInputRole = typeof AccessInviteInputRole[keyof typeof Ac
 
 export const AccessInviteInputRole = {
   ADMIN: 'ADMIN',
+  DEVELOPER: 'DEVELOPER',
+  REGIONAL_SUPERVISOR: 'REGIONAL_SUPERVISOR',
   STORE_MANAGER: 'STORE_MANAGER',
   COURIER: 'COURIER',
 } as const;

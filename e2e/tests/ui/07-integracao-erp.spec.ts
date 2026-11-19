@@ -17,7 +17,7 @@ test.describe("Painel: Integração ERP", () => {
 
   test("Administrador gera credencial, vincula a filial e vê a venda chegar no histórico", async ({ page }) => {
     const errors = trackErrors(page);
-    await loginAs(page, "admin");
+    await loginAs(page, "developer");
     const nav = page.getByRole("navigation", { name: "Navegação principal" });
     await nav.getByRole("link", { name: /Painel técnico/ }).click();
     await expect(page).toHaveURL(/\/painel-tecnico$/);
@@ -73,11 +73,20 @@ test.describe("Painel: Integração ERP", () => {
   test("Celular: tela sem rolagem horizontal", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     // Endereço antigo continua funcionando: abre o Painel técnico na aba do ERP.
-    await loginAs(page, "admin", "/integracao-erp");
+    await loginAs(page, "developer", "/integracao-erp");
     await expect(page).toHaveURL(/\/painel-tecnico\?aba=erp$/);
     await expect(page.getByRole("heading", { level: 2, name: "Integração ERP" })).toBeVisible({ timeout: 15_000 });
     await expectNoHorizontalScroll(page);
     if (shots) await page.screenshot({ path: `${shots}/erp-mobile.png`, fullPage: true });
+  });
+
+  test("Administrador (diretoria) vê Filiais, mas não o Painel técnico", async ({ page }) => {
+    await loginAs(page, "admin");
+    const nav = page.getByRole("navigation", { name: "Navegação principal" });
+    await expect(nav.getByRole("link", { name: /Filiais/ })).toBeVisible({ timeout: 15_000 });
+    await expect(nav.getByRole("link", { name: /Painel técnico/ })).toHaveCount(0);
+    await page.goto("/painel-tecnico");
+    await expect(page.getByRole("heading", { name: "Acesso restrito" })).toBeVisible();
   });
 
   test("Central não vê o menu nem a tela", async ({ page }) => {

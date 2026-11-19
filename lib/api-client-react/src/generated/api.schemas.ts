@@ -1007,9 +1007,9 @@ export type AppUserRole = typeof AppUserRole[keyof typeof AppUserRole];
 
 export const AppUserRole = {
   ADMIN: 'ADMIN',
-  CENTRAL: 'CENTRAL',
+  DEVELOPER: 'DEVELOPER',
+  REGIONAL_SUPERVISOR: 'REGIONAL_SUPERVISOR',
   STORE_MANAGER: 'STORE_MANAGER',
-  STORE_STAFF: 'STORE_STAFF',
   COURIER: 'COURIER',
   PENDING: 'PENDING',
 } as const;
@@ -1036,6 +1036,8 @@ export interface AppUser {
   storeId: string | null;
   /** @nullable */
   courierId: string | null;
+  /** Filiais sob a supervisão (só Supervisor regional) */
+  supervisedStoreIds?: string[];
 }
 
 export type AccessInviteInputRole = typeof AccessInviteInputRole[keyof typeof AccessInviteInputRole];
@@ -1043,6 +1045,8 @@ export type AccessInviteInputRole = typeof AccessInviteInputRole[keyof typeof Ac
 
 export const AccessInviteInputRole = {
   ADMIN: 'ADMIN',
+  DEVELOPER: 'DEVELOPER',
+  REGIONAL_SUPERVISOR: 'REGIONAL_SUPERVISOR',
   STORE_MANAGER: 'STORE_MANAGER',
   COURIER: 'COURIER',
 } as const;
@@ -1058,6 +1062,8 @@ export interface AccessInviteInput {
   role: AccessInviteInputRole;
   /** @nullable */
   storeId?: string | null;
+  /** Filiais do Supervisor regional */
+  storeIds?: string[];
   /**
      * @maxLength 120
      * @nullable
@@ -1080,15 +1086,17 @@ export type UserRoleInputRole = typeof UserRoleInputRole[keyof typeof UserRoleIn
 
 export const UserRoleInputRole = {
   ADMIN: 'ADMIN',
-  CENTRAL: 'CENTRAL',
+  DEVELOPER: 'DEVELOPER',
+  REGIONAL_SUPERVISOR: 'REGIONAL_SUPERVISOR',
   STORE_MANAGER: 'STORE_MANAGER',
-  STORE_STAFF: 'STORE_STAFF',
   COURIER: 'COURIER',
   PENDING: 'PENDING',
 } as const;
 
 export interface UserRoleInput {
   role: UserRoleInputRole;
+  /** Filiais do Supervisor regional */
+  storeIds?: string[];
   /**
      * @minLength 1
      * @maxLength 120

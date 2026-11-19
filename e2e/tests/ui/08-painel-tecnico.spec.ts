@@ -7,7 +7,7 @@ const shots = process.env.E2E_SHOTS_DIR;
 test.describe("Painel técnico (tela)", () => {
   test("Administrador navega pelas abas", async ({ page }) => {
     const errors = trackErrors(page);
-    await loginAs(page, "admin", "/painel-tecnico");
+    await loginAs(page, "developer", "/painel-tecnico");
     await expect(page.getByRole("heading", { level: 1, name: "Painel técnico" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("dev-api-status")).toBeVisible();
     await expect(page.getByTestId("dev-service-database")).toContainText("Configurado");
@@ -37,7 +37,7 @@ test.describe("Painel técnico (tela)", () => {
 
   test("Celular: abas e conteúdo sem rolagem horizontal", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await loginAs(page, "admin", "/painel-tecnico");
+    await loginAs(page, "developer", "/painel-tecnico");
     await expect(page.getByRole("heading", { level: 1, name: "Painel técnico" })).toBeVisible({ timeout: 15_000 });
     await expectNoHorizontalScroll(page);
     if (shots) await page.screenshot({ path: `${shots}/dev-mobile.png`, fullPage: true });

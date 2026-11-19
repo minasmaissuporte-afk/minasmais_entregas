@@ -29,4 +29,6 @@ export interface AppUser {
   storeId: string | null;
   /** @nullable */
   courierId: string | null;
+  /** Filiais sob a supervisão (só Supervisor regional) */
+  supervisedStoreIds?: string[];
 }

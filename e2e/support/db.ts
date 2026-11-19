@@ -92,6 +92,11 @@ export async function seedDatabase(authIds: Record<RoleKey, string>) {
         user.storeId ?? null, user.courierId ?? null],
     );
   }
+  for (const [key, user] of Object.entries(users) as [RoleKey, (typeof users)[RoleKey]][]) {
+    for (const storeId of user.supervisedStores ?? []) {
+      await query(`insert into supervisor_stores (app_user_id, store_id) values ($1, $2)`, [`e2e-user-${key}`, storeId]);
+    }
+  }
   await query(
     `insert into app_users (id, email, name, role, courier_id) values ($1,$2,$3,'COURIER',$4)`,
     [secondCourier.appUserId, secondCourier.email, secondCourier.name, secondCourier.courierId],

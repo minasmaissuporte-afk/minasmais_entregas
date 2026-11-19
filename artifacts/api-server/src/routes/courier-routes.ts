@@ -47,8 +47,12 @@ import {
   storesTable,
 } from "@workspace/db";
 import {
+  hasFullAccess,
+  inStoreScope,
   requireAuthentication,
   requireRole,
+  storeScope,
+  storeScopeCondition,
   type AppUserProfile,
 } from "../middlewares/accessControl";
 import {
@@ -437,7 +441,7 @@ async function optimizeRoute(
 
 router.post(
   "/delivery-routes",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     const body = CreateDeliveryRouteBody.safeParse(req.body);
     if (!body.success || new Set(body.data.deliveryIds).size !== body.data.deliveryIds.length) {
@@ -482,8 +486,8 @@ router.post(
           .where(eq(deliveriesTable.id, deliveryId))
           .for("update");
         if (!delivery) return { error: "not_found" as const };
-        // Gerente só monta rota com entregas da própria filial.
-        if (profile.role === "STORE_MANAGER" && delivery.storeId !== profile.storeId) {
+        // Gerente só monta rota com entregas da própria filial; supervisor, das filiais dele.
+        if (!inStoreScope(res, delivery.storeId)) {
           return { error: "not_found" as const };
         }
         const waitingInQueue =
@@ -621,10 +625,11 @@ async function individualRouteGeometry(row: {
 router.get(
   "/operations/active-routes",
   // Gerente acompanha o trajeto dos motoboys com entregas da filial dele.
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (_req, res): Promise<void> => {
     const profile = res.locals.appUser as AppUserProfile;
-    const managerStore = profile.role === "STORE_MANAGER" ? profile.storeId ?? "__none__" : null;
+    // Gerente: a filial dele. Supervisor regional: as filiais dele. Admin/dev: todas (null).
+    const scope = storeScope(res);
     const routes = await db
       .select({
         id: deliveryRoutesTable.id,
@@ -642,7 +647,7 @@ router.get(
       .where(eq(deliveryRoutesTable.status, "ACCEPTED"));
     const routedIds = new Set(routes.flatMap((route) => route.deliveryIds));
     let visibleRoutes = routes;
-    if (managerStore) {
+    if (scope !== null) {
       const routeStores = routedIds.size
         ? await db
             .select({ id: deliveriesTable.id, storeId: deliveriesTable.storeId })
@@ -650,7 +655,7 @@ router.get(
             .where(inArray(deliveriesTable.id, [...routedIds]))
         : [];
       const storeOf = new Map(routeStores.map((row) => [row.id, row.storeId]));
-      visibleRoutes = routes.filter((route) => route.deliveryIds.some((id) => storeOf.get(id) === managerStore));
+      visibleRoutes = routes.filter((route) => route.deliveryIds.some((id) => scope.includes(storeOf.get(id) ?? "")));
     }
 
     // Entregas avulsas em andamento (fora de rota agrupada): trajeto loja → cliente.
@@ -675,7 +680,7 @@ router.get(
       .where(
         and(
           inArray(deliveriesTable.status, ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"]),
-          managerStore ? eq(deliveriesTable.storeId, managerStore) : undefined,
+          storeScopeCondition(res, deliveriesTable.storeId),
         ),
       );
     const pending = individual.filter((row) => !routedIds.has(row.id));
@@ -686,7 +691,7 @@ router.get(
       await Promise.all(
         [...countByCourier.entries()]
           // Gerente vê só as entregas da filial dele: linha por entrega (a rota completa pode ter outras lojas).
-          .filter(([, count]) => count >= 2 && !managerStore)
+          .filter(([, count]) => count >= 2 && scope === null)
           .map(async ([courierId]) => {
             const computed = await computeCourierPlan(courierId).catch(() => null);
             if (!computed?.plan.routeGeometry) return [];
@@ -741,24 +746,24 @@ router.get(
   },
 );
 
-/** Quem pode mexer numa rota: Central/admin, ou o gerente se todas as entregas forem da filial dele. */
-async function canManageRoute(profile: AppUserProfile, deliveryIds: string[]) {
-  if (profile.role === "ADMIN" || profile.role === "CENTRAL") return true;
-  if (profile.role !== "STORE_MANAGER" || !profile.storeId || !deliveryIds.length) return false;
+/** Quem pode mexer numa rota: admin/dev, ou gerente/supervisor se todas as entregas forem das filiais dele. */
+async function canManageRoute(profile: AppUserProfile, deliveryIds: string[], scope: string[] | null) {
+  if (hasFullAccess(profile.role)) return true;
+  if (!["STORE_MANAGER", "REGIONAL_SUPERVISOR"].includes(profile.role) || !scope?.length || !deliveryIds.length) return false;
   const rows = await db
     .select({ storeId: deliveriesTable.storeId })
     .from(deliveriesTable)
     .where(inArray(deliveriesTable.id, deliveryIds));
-  return rows.length === deliveryIds.length && rows.every((row) => row.storeId === profile.storeId);
+  return rows.length === deliveryIds.length && rows.every((row) => scope.includes(row.storeId));
 }
 
 function actorFor(profile: AppUserProfile) {
-  return profile.role === "STORE_MANAGER" ? "Gerente da filial" : "Central de entregas";
+  return profile.role === "STORE_MANAGER" ? "Gerente da filial" : profile.role === "REGIONAL_SUPERVISOR" ? "Supervisor regional" : "Central de entregas";
 }
 
 router.post(
   "/delivery-routes/:routeId/ungroup",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     const routeId = String(req.params.routeId ?? "");
     const profile = res.locals.appUser as AppUserProfile;
@@ -767,7 +772,7 @@ router.post(
       .from(deliveryRoutesTable)
       .where(eq(deliveryRoutesTable.id, routeId))
       .limit(1);
-    if (!route || !(await canManageRoute(profile, route.deliveryIds))) {
+    if (!route || !(await canManageRoute(profile, route.deliveryIds, storeScope(res)))) {
       res.status(404).json({ error: "Rota não encontrada." });
       return;
     }
@@ -815,7 +820,7 @@ router.post(
 
 router.post(
   "/delivery-routes/:routeId/remove-delivery",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     const routeId = String(req.params.routeId ?? "");
     const body = RemoveDeliveryFromRouteBody.safeParse(req.body);
@@ -832,7 +837,7 @@ router.post(
       .from(deliveryRoutesTable)
       .where(eq(deliveryRoutesTable.id, routeId))
       .limit(1);
-    if (!route || !route.deliveryIds.includes(deliveryId) || !(await canManageRoute(profile, [deliveryId]))) {
+    if (!route || !route.deliveryIds.includes(deliveryId) || !(await canManageRoute(profile, [deliveryId], storeScope(res)))) {
       res.status(404).json({ error: "Esta entrega não está nesta rota." });
       return;
     }
@@ -1270,6 +1275,36 @@ router.post(
           INSERT INTO delivery_offer_declines (id, delivery_id, courier_id)
           VALUES (${randomUUID()}, ${delivery.id}, ${profile.courierId})
           ON CONFLICT DO NOTHING`);
+        // Se todos os motoboys online da cidade já dispensaram, ninguém mais vê a oferta:
+        // ela volta para a filial (Devolvida) e o gerente/central reenvia quando quiser.
+        const [store] = await tx
+          .select({ city: storesTable.city, name: storesTable.name })
+          .from(storesTable)
+          .where(eq(storesTable.id, delivery.storeId))
+          .limit(1);
+        const remaining = await tx.execute<{ total: number }>(sql`
+          SELECT count(*)::int AS total
+          FROM couriers c
+          JOIN app_users u ON u.courier_id = c.id AND u.role = 'COURIER'
+          WHERE c.status IN ('AVAILABLE', 'BUSY')
+            AND (c.city IS NULL OR trim(c.city) = '' OR lower(trim(c.city)) = lower(trim(${store?.city ?? ""})))
+            AND NOT EXISTS (
+              SELECT 1 FROM delivery_offer_declines d WHERE d.delivery_id = ${delivery.id} AND d.courier_id = c.id
+            )`);
+        if (Number(remaining.rows[0]?.total ?? 0) === 0) {
+          await tx
+            .update(deliveriesTable)
+            .set({ status: "AWAITING_COURIER", courierId: null, updatedAt: new Date() })
+            .where(eq(deliveriesTable.id, delivery.id));
+          await tx.insert(deliveryEventsTable).values({
+            id: randomUUID(),
+            deliveryId: delivery.id,
+            kind: "declined_by_all",
+            label: `Todos os motoboys online${store?.city ? ` de ${store.city}` : ""} dispensaram; voltou para a filial`,
+            actor: "Sistema",
+          });
+          return { ok: true as const, broadcast: true, returned: { code: delivery.code, storeName: store?.name ?? "", storeId: delivery.storeId } };
+        }
         return { ok: true as const, broadcast: true };
       }
       if (delivery.courierId !== profile.courierId) {
@@ -1291,6 +1326,13 @@ router.post(
     }
     if (!result.broadcast) {
       await notifyCityCouriers(params.data.deliveryId, "Nova entrega disponível", "Uma entrega voltou para a fila. Quem aceitar primeiro leva.");
+    }
+    if ("returned" in result && result.returned) {
+      await notifyCentralUsers({
+        title: "Entrega voltou para a filial",
+        body: `${result.returned.code} · ${result.returned.storeName}: todos os motoboys online dispensaram. Reenvie aos motoboys quando quiser.`,
+        storeId: result.returned.storeId,
+      }).catch(() => undefined);
     }
     res.sendStatus(204);
   },
@@ -2029,6 +2071,7 @@ router.post(
         : "Ocorrência de entrega",
       body: `${getCourierDisplayName(courier.name, profile.email)} · pedido ${targetRow.delivery.code} · ${targetRow.delivery.customerName} · ${reason.label}${result.routeContinues ? " — rota continua com os pedidos restantes." : ""}`,
       url: "/",
+      storeId: targetRow.delivery.storeId,
     });
     res.json(
       CreateCourierDeliveryCancellationResponse.parse({

@@ -55,11 +55,18 @@ import {
   deliveryEventsTable,
   deliveryRoutesTable,
   storesTable,
+  supervisorStoresTable,
 } from "@workspace/db";
 import { courierCity, notifyCityCouriers, offerToCity, openOfferFor, sameCity } from "../lib/deliveryOffers";
 import {
+  hasFullAccess,
+  inStoreScope,
   requireAuthentication,
   requireRole,
+  courierInCities,
+  scopeCities,
+  storeScope,
+  storeScopeCondition,
   resolveAppUser,
   type AppRole,
   type AppUserProfile,
@@ -103,7 +110,7 @@ const defaultCourierCancellationReasons = [
 
 router.get(
   "/delivery-cancellation-reasons",
-  requireRole("ADMIN", "CENTRAL", "COURIER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "COURIER"),
   async (_req, res): Promise<void> => {
     await db
       .insert(deliveryCancellationReasonsTable)
@@ -125,7 +132,8 @@ router.get(
 
 router.put(
   "/delivery-cancellation-reasons",
-  requireRole("ADMIN", "CENTRAL"),
+  // Configuração geral (vale para todas as filiais): só diretoria e desenvolvimento.
+  requireRole("ADMIN", "DEVELOPER"),
   async (req, res): Promise<void> => {
     const body = UpdateDeliveryCancellationReasonsBody.safeParse(req.body);
     if (!body.success) {
@@ -179,7 +187,7 @@ router.put(
 
 router.get(
   "/delivery-cancellations",
-  requireRole("ADMIN", "CENTRAL"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR"),
   async (_req, res): Promise<void> => {
     const rows = await db
       .select({
@@ -198,11 +206,14 @@ router.get(
       .innerJoin(storesTable, eq(deliveriesTable.storeId, storesTable.id))
       .leftJoin(couriersTable, eq(deliveryCancellationsTable.courierId, couriersTable.id))
       .where(
-        inArray(deliveryCancellationsTable.status, [
-          "AWAITING_CENTRAL",
-          "RETURNING_TO_STORE",
-          "ROUTE_ABORTED",
-        ]),
+        and(
+          inArray(deliveryCancellationsTable.status, [
+            "AWAITING_CENTRAL",
+            "RETURNING_TO_STORE",
+            "ROUTE_ABORTED",
+          ]),
+          storeScopeCondition(res, deliveriesTable.storeId),
+        ),
       )
       .orderBy(desc(deliveryCancellationsTable.priority), desc(deliveryCancellationsTable.requestedAt));
     res.json(
@@ -220,7 +231,7 @@ router.get(
 
 router.post(
   "/delivery-cancellations/:cancellationId/action",
-  requireRole("ADMIN", "CENTRAL"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR"),
   async (req, res): Promise<void> => {
     const params = ActOnDeliveryCancellationParams.safeParse(req.params);
     const body = ActOnDeliveryCancellationBody.safeParse(req.body);
@@ -243,6 +254,8 @@ router.post(
         .where(eq(deliveriesTable.id, cancellation.deliveryId))
         .for("update");
       if (!delivery) return { error: "not_found" as const };
+      // Supervisor regional: só ocorrências das filiais dele.
+      if (!inStoreScope(res, delivery.storeId)) return { error: "not_found" as const };
 
       if (body.data.action === "REQUEUE") {
         if (
@@ -363,10 +376,15 @@ function hideAmountForCourier<T extends { deliveryAmount: number }>(profile: App
   return profile.role === "COURIER" ? { ...view, deliveryAmount: 0 } : view;
 }
 
-function canAccessDelivery(profile: AppUserProfile, delivery: { storeId: string; courierId: string | null; status?: string }) {
-  if (profile.role === "ADMIN" || profile.role === "CENTRAL") return true;
-  if (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") {
-    return Boolean(profile.storeId && profile.storeId === delivery.storeId);
+function canAccessDelivery(
+  profile: AppUserProfile,
+  delivery: { storeId: string; courierId: string | null; status?: string },
+  scope: string[] | null,
+) {
+  if (hasFullAccess(profile.role)) return true;
+  // Gerente (a filial dele) e supervisor regional (as filiais dele).
+  if (profile.role === "STORE_MANAGER" || profile.role === "REGIONAL_SUPERVISOR") {
+    return Boolean(scope && scope.includes(delivery.storeId));
   }
   if (profile.role !== "COURIER" || !profile.courierId) return false;
   // Oferta aberta a todos: qualquer motoboy pode ver e aceitar (a cidade é conferida no aceite).
@@ -407,6 +425,38 @@ function startOfSaoPauloPeriod(period: "day" | "week" | "month") {
     : -180;
   return new Date(midnightUtcWall - offsetMinutes * 60_000);
 }
+
+/** Filiais de cada Supervisor regional (por id da conta). */
+async function supervisedStoresByUser(userIds: string[]) {
+  const map = new Map<string, string[]>();
+  if (!userIds.length) return map;
+  const rows = await db
+    .select({ appUserId: supervisorStoresTable.appUserId, storeId: supervisorStoresTable.storeId })
+    .from(supervisorStoresTable)
+    .where(inArray(supervisorStoresTable.appUserId, userIds));
+  for (const row of rows) map.set(row.appUserId, [...(map.get(row.appUserId) ?? []), row.storeId]);
+  return map;
+}
+
+/** Valida as filiais escolhidas para o supervisor (sem repetir, todas existentes). */
+async function validSupervisorStores(storeIds: string[] | undefined) {
+  const unique = [...new Set((storeIds ?? []).filter(Boolean))];
+  if (!unique.length) return { error: "Escolha pelo menos uma filial para o supervisor." } as const;
+  const found = await db.select({ id: storesTable.id }).from(storesTable).where(inArray(storesTable.id, unique));
+  if (found.length !== unique.length) return { error: "Alguma filial escolhida não existe mais." } as const;
+  return { storeIds: unique } as const;
+}
+
+type AccessTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+async function replaceSupervisorStores(tx: AccessTx, appUserId: string, storeIds: string[]) {
+  await tx.delete(supervisorStoresTable).where(eq(supervisorStoresTable.appUserId, appUserId));
+  if (storeIds.length) {
+    await tx.insert(supervisorStoresTable).values(storeIds.map((storeId) => ({ appUserId, storeId })));
+  }
+}
+
+/** Diretoria e desenvolvimento: quem cadastra acessos. Sempre precisa sobrar pelo menos um. */
+const MANAGEMENT_ROLES = ["ADMIN", "DEVELOPER"];
 
 router.get("/me", async (req, res): Promise<void> => {
   const authUser = getAuthUser(res);
@@ -451,10 +501,12 @@ router.get("/me", async (req, res): Promise<void> => {
         .where(eq(storesTable.id, profile.storeId))
         .limit(1)
     : [];
-  res.json(GetMyProfileResponse.parse({ ...profile, storeName: store?.name ?? null }));
+  const supervised =
+    profile.role === "REGIONAL_SUPERVISOR" ? (await supervisedStoresByUser([profile.id])).get(profile.id) ?? [] : undefined;
+  res.json(GetMyProfileResponse.parse({ ...profile, storeName: store?.name ?? null, supervisedStoreIds: supervised }));
 });
 
-router.get("/access/users", requireRole("ADMIN"), async (_req, res): Promise<void> => {
+router.get("/access/users", requireRole("ADMIN", "DEVELOPER"), async (_req, res): Promise<void> => {
   const rows = await db
     .select({
       user: appUsersTable,
@@ -465,10 +517,14 @@ router.get("/access/users", requireRole("ADMIN"), async (_req, res): Promise<voi
     .from(appUsersTable)
     .leftJoin(couriersTable, eq(appUsersTable.courierId, couriersTable.id))
     .orderBy(appUsersTable.email);
+  const supervised = await supervisedStoresByUser(
+    rows.filter(({ user }) => user.role === "REGIONAL_SUPERVISOR").map(({ user }) => user.id),
+  );
   res.json(
     ListAccessUsersResponse.parse(
       rows.map(({ user, courierName, courierPhone, courierCity }) => ({
         ...user,
+        supervisedStoreIds: user.role === "REGIONAL_SUPERVISOR" ? supervised.get(user.id) ?? [] : undefined,
         name:
           user.role === "COURIER"
             ? getCourierDisplayName(courierName ?? user.name, user.email)
@@ -496,7 +552,7 @@ function safeInviteRedirect(value: string): string | null {
 
 router.post(
   "/access/invites",
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "DEVELOPER"),
   async (req, res): Promise<void> => {
     const body = InviteAccessUserBody.safeParse(req.body);
     if (!body.success) {
@@ -522,6 +578,15 @@ router.post(
     if (role === "COURIER" && !courierCity) {
       res.status(400).json({ error: "Escolha a cidade em que o motoboy vai atender." });
       return;
+    }
+    let supervisorStoreIds: string[] = [];
+    if (role === "REGIONAL_SUPERVISOR") {
+      const checked = await validSupervisorStores(body.data.storeIds);
+      if ("error" in checked) {
+        res.status(400).json({ error: checked.error });
+        return;
+      }
+      supervisorStoreIds = checked.storeIds;
     }
     if (storeId) {
       const [store] = await db
@@ -585,19 +650,21 @@ router.post(
         courierId = null;
       }
       const values = { name, role, storeId, courierId, updatedAt: new Date() };
+      let saved: typeof appUsersTable.$inferSelect | undefined;
       if (existing) {
-        const [updated] = await tx
+        [saved] = await tx
           .update(appUsersTable)
           .set(values)
           .where(eq(appUsersTable.id, existing.id))
           .returning();
-        return updated;
+      } else {
+        [saved] = await tx
+          .insert(appUsersTable)
+          .values({ id: randomUUID(), email, ...values })
+          .returning();
       }
-      const [created] = await tx
-        .insert(appUsersTable)
-        .values({ id: randomUUID(), email, ...values })
-        .returning();
-      return created;
+      if (saved) await replaceSupervisorStores(tx, saved.id, supervisorStoreIds);
+      return saved;
     });
     if (!saved) {
       res.status(500).json({ error: "O convite foi enviado, mas não foi possível salvar o perfil. Tente de novo." });
@@ -609,6 +676,7 @@ router.post(
         ...saved,
         phone: role === "COURIER" ? phone : null,
         courierCity,
+        supervisedStoreIds: role === "REGIONAL_SUPERVISOR" ? supervisorStoreIds : undefined,
       }),
     );
   },
@@ -616,7 +684,7 @@ router.post(
 
 router.patch(
   "/access/users/:userId",
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "DEVELOPER"),
   async (req, res): Promise<void> => {
     const params = DeleteAccessUserParams.safeParse(req.params);
     const body = UpdateAccessUserBody.safeParse(req.body);
@@ -635,11 +703,8 @@ router.patch(
       res.status(404).json({ error: "Conta não encontrada." });
       return;
     }
-    if (
-      target.authUserId === profile.authUserId &&
-      body.data.role !== "ADMIN"
-    ) {
-      res.status(400).json({ error: "O administrador não pode remover o próprio acesso." });
+    if (target.authUserId === profile.authUserId && !MANAGEMENT_ROLES.includes(body.data.role)) {
+      res.status(400).json({ error: "Você não pode tirar o seu próprio acesso de administração." });
       return;
     }
 
@@ -677,25 +742,34 @@ router.patch(
         return;
       }
     }
-    if (target.role === "ADMIN" && role !== "ADMIN") {
+    if (MANAGEMENT_ROLES.includes(target.role) && !MANAGEMENT_ROLES.includes(role)) {
       const administrators = await db
         .select({ id: appUsersTable.id })
         .from(appUsersTable)
-        .where(eq(appUsersTable.role, "ADMIN"));
+        .where(inArray(appUsersTable.role, MANAGEMENT_ROLES));
       if (administrators.length <= 1) {
         res.status(409).json({ error: "Não é possível remover o último administrador." });
         return;
       }
     }
+    let supervisorStoreIds: string[] = [];
+    if (role === "REGIONAL_SUPERVISOR") {
+      const checked = await validSupervisorStores(body.data.storeIds);
+      if ("error" in checked) {
+        res.status(400).json({ error: checked.error });
+        return;
+      }
+      supervisorStoreIds = checked.storeIds;
+    }
     const isCourier = role === "COURIER";
-    const storeId = ["STORE_MANAGER", "STORE_STAFF"].includes(role)
+    const storeId = ["STORE_MANAGER"].includes(role)
       ? body.data.storeId ?? null
       : null;
     const courierCity = isCourier ? body.data.courierCity?.trim() || null : null;
     const requestedCourierId = isCourier ? body.data.courierId ?? null : null;
     const courierName = body.data.name?.trim() ?? "";
     const courierPhone = body.data.phone?.trim() || null;
-    if (role === "STORE_MANAGER" || role === "STORE_STAFF") {
+    if (role === "STORE_MANAGER") {
       if (!storeId) {
         res.status(400).json({ error: "Selecione a unidade desta conta." });
         return;
@@ -770,6 +844,7 @@ router.patch(
         })
         .where(eq(appUsersTable.id, target.id))
         .returning();
+      if (updated) await replaceSupervisorStores(tx, updated.id, supervisorStoreIds);
       return updated ? { user: updated, courierId } : null;
     });
     if (!result) {
@@ -782,6 +857,7 @@ router.patch(
         name: isCourier ? courierName : result.user.name,
         phone: isCourier ? courierPhone : null,
         courierCity,
+        supervisedStoreIds: role === "REGIONAL_SUPERVISOR" ? supervisorStoreIds : undefined,
       }),
     );
   },
@@ -789,7 +865,7 @@ router.patch(
 
 router.delete(
   "/access/users/:userId",
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "DEVELOPER"),
   async (req, res): Promise<void> => {
     const params = UpdateAccessUserParams.safeParse(req.params);
     if (!params.success) {
@@ -810,11 +886,11 @@ router.delete(
         return { error: "self" as const };
       }
 
-      if (target.role === "ADMIN") {
+      if (MANAGEMENT_ROLES.includes(target.role)) {
         const administrators = await tx
           .select({ id: appUsersTable.id })
           .from(appUsersTable)
-          .where(eq(appUsersTable.role, "ADMIN"))
+          .where(inArray(appUsersTable.role, MANAGEMENT_ROLES))
           .for("update");
         if (administrators.length <= 1) {
           return { error: "last_admin" as const };
@@ -1055,10 +1131,11 @@ function saoPauloDayBoundary(value: string | Date) {
   return new Date(`${date}T03:00:00.000Z`);
 }
 
-/** Filial da contabilidade: o gerente só vê a dele; admin/Central escolhem. */
-function accountingStoreId(profile: AppUserProfile, requested?: string | null) {
+/** Filial da contabilidade: o gerente só vê a dele; supervisor escolhe entre as dele; admin escolhe qualquer uma. */
+function accountingStoreId(profile: AppUserProfile, requested: string | null | undefined, scope: string[] | null) {
   if (profile.role === "STORE_MANAGER") return profile.storeId ?? null;
-  return requested || null;
+  if (!requested) return null;
+  return scope === null || scope.includes(requested) ? requested : null;
 }
 
 /** Período por data de registro da entrega (dias no fuso de São Paulo). */
@@ -1078,7 +1155,7 @@ const parseDay = (value: unknown) =>
 
 router.get(
   "/reports/store-accounting",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     const query = GetStoreAccountingQueryParams.safeParse({
       from: parseDay(req.query.from),
@@ -1090,7 +1167,7 @@ router.get(
       return;
     }
     const profile = res.locals.appUser as AppUserProfile;
-    const storeId = accountingStoreId(profile, query.data.storeId);
+    const storeId = accountingStoreId(profile, query.data.storeId, storeScope(res));
     if (!storeId) {
       res.status(profile.role === "STORE_MANAGER" ? 403 : 400).json({
         error: profile.role === "STORE_MANAGER" ? "Esta conta não está vinculada a uma filial." : "Escolha a filial.",
@@ -1181,7 +1258,7 @@ router.get(
 
 router.post(
   "/reports/store-accounting/pay",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     const body = PayCourierBody.safeParse({
       ...req.body,
@@ -1193,7 +1270,7 @@ router.post(
       return;
     }
     const profile = res.locals.appUser as AppUserProfile;
-    const storeId = accountingStoreId(profile, body.data.storeId);
+    const storeId = accountingStoreId(profile, body.data.storeId, storeScope(res));
     if (!storeId) {
       res.status(400).json({ error: "Escolha a filial." });
       return;
@@ -1219,7 +1296,7 @@ router.post(
 router.get(
   "/reports/analytics",
   // Relatório geral é só da administração; o gerente usa a contabilidade da filial.
-  requireRole("ADMIN", "CENTRAL"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR"),
   async (req, res): Promise<void> => {
     const queryInput: Record<string, unknown> = { ...req.query };
     for (const field of ["from", "to"] as const) {
@@ -1236,7 +1313,7 @@ router.get(
     const profile = res.locals.appUser as AppUserProfile;
     const conditions = [];
     let selectedStoreId = query.data.storeId;
-    if (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") {
+    if (profile.role === "STORE_MANAGER") {
       if (selectedStoreId && selectedStoreId !== profile.storeId) {
         res.status(403).json({ error: "Esta conta só pode consultar relatórios da própria filial." });
         return;
@@ -1247,8 +1324,16 @@ router.get(
         return;
       }
     }
+    // Supervisor regional: relatório só das filiais dele (e só pode filtrar entre elas).
+    if (selectedStoreId && !inStoreScope(res, selectedStoreId)) {
+      res.status(403).json({ error: "Esta filial não está sob a sua supervisão." });
+      return;
+    }
     if (selectedStoreId) {
       conditions.push(eq(deliveriesTable.storeId, selectedStoreId));
+    } else {
+      const scoped = storeScopeCondition(res, deliveriesTable.storeId);
+      if (scoped) conditions.push(scoped);
     }
     if (query.data.courierId) {
       conditions.push(eq(deliveriesTable.courierId, query.data.courierId));
@@ -1320,6 +1405,8 @@ router.get(
       evidenceAvailable: Boolean(delivery.evidencePath),
     }));
     const cancellationConditions = [];
+    const scopedCancellations = selectedStoreId ? undefined : storeScopeCondition(res, deliveriesTable.storeId);
+    if (scopedCancellations) cancellationConditions.push(scopedCancellations);
     if (selectedStoreId) {
       cancellationConditions.push(eq(deliveriesTable.storeId, selectedStoreId));
     }
@@ -1554,9 +1641,11 @@ router.get(
 
 router.get(
   "/dashboard/summary",
-  requireRole("ADMIN", "CENTRAL"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR"),
   async (_req, res): Promise<void> => {
-  const deliveries = await db.select().from(deliveriesTable);
+  // Supervisor regional: só as filiais dele e os motoboys das cidades delas.
+  const deliveries = await db.select().from(deliveriesTable).where(storeScopeCondition(res, deliveriesTable.storeId));
+  const cities = await scopeCities(res);
   const linkedCourierRows = await db
     .select({ courierId: appUsersTable.courierId })
     .from(appUsersTable)
@@ -1567,9 +1656,12 @@ router.get(
       .filter((id): id is string => Boolean(id)),
   );
   const couriers = (await db.select().from(couriersTable)).filter((courier) =>
-    linkedCourierIds.has(courier.id),
+    linkedCourierIds.has(courier.id) && courierInCities(courier.city, cities),
   );
-  const events = await db.select().from(deliveryEventsTable);
+  const deliveryIds = deliveries.map((item) => item.id);
+  const events = deliveryIds.length
+    ? await db.select().from(deliveryEventsTable).where(inArray(deliveryEventsTable.deliveryId, deliveryIds))
+    : [];
   const now = Date.now();
   const activeStatuses = new Set([
     "REQUESTED",
@@ -1659,7 +1751,7 @@ router.get(
 
 router.get(
   "/deliveries",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER", "COURIER"),
   async (req, res): Promise<void> => {
   const profile = res.locals.appUser as AppUserProfile;
   const query = ListDeliveriesQueryParams.safeParse(req.query);
@@ -1669,7 +1761,9 @@ router.get(
   }
 
   const filters = [];
-  if (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") {
+  if (profile.role === "REGIONAL_SUPERVISOR") {
+    filters.push(storeScopeCondition(res, deliveriesTable.storeId)!);
+  } else if (profile.role === "STORE_MANAGER") {
     if (!profile.storeId) {
       res.status(403).json({ error: "Esta conta não está vinculada a uma unidade." });
       return;
@@ -1727,7 +1821,7 @@ router.get(
 
 router.post(
   "/deliveries",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
   const profile = res.locals.appUser as AppUserProfile;
   const body = CreateDeliveryBody.safeParse(req.body);
@@ -1760,10 +1854,11 @@ router.post(
       : null;
   const bringCardMachine = paymentMethod === "CARD" ? body.data.bringCardMachine ?? true : null;
 
-  const storeId = profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF"
+  const storeId = profile.role === "STORE_MANAGER"
     ? profile.storeId
     : body.data.storeId;
-  if (!storeId || (profile.storeId && profile.storeId !== storeId)) {
+  // Gerente: só a filial dele. Supervisor regional: só as filiais sob a supervisão dele.
+  if (!storeId || (profile.storeId && profile.storeId !== storeId) || !inStoreScope(res, storeId)) {
     res.status(403).json({ error: "A conta não pode registrar entregas para esta unidade." });
     return;
   }
@@ -1815,7 +1910,7 @@ router.post(
     created.id,
     "REQUESTED",
     eventLabels.REQUESTED,
-    profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF" ? "Equipe da unidade" : "Central de entregas",
+    profile.role === "STORE_MANAGER" ? "Equipe da unidade" : profile.role === "REGIONAL_SUPERVISOR" ? "Supervisor regional" : "Central de entregas",
   );
   // Despacho automático: vai direto para todos os motoboys da cidade; quem aceitar primeiro leva.
   await db.transaction((tx) =>
@@ -1829,7 +1924,7 @@ router.post(
 
 router.get(
   "/deliveries/:deliveryId",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER", "COURIER"),
   async (req, res): Promise<void> => {
   const params = GetDeliveryParams.safeParse(req.params);
   if (!params.success) {
@@ -1842,7 +1937,7 @@ router.get(
     return;
   }
   const profile = res.locals.appUser as AppUserProfile;
-  if (!canAccessDelivery(profile, delivery)) {
+  if (!canAccessDelivery(profile, delivery, storeScope(res))) {
     res.status(403).json({ error: "Esta entrega não pertence à sua área de acesso." });
     return;
   }
@@ -1855,7 +1950,7 @@ const CLOSED_DELIVERY_STATUSES = new Set(["COMPLETED", "CANCELLED", "NOT_DELIVER
 
 router.patch(
   "/deliveries/:deliveryId",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     const params = UpdateDeliveryParams.safeParse(req.params);
     if (!params.success) {
@@ -1888,6 +1983,10 @@ router.patch(
       return;
     }
     const editor = res.locals.appUser as AppUserProfile;
+    if (!inStoreScope(res, current.storeId)) {
+      res.status(403).json({ error: "Esta entrega não pertence à sua área de acesso." });
+      return;
+    }
     if (editor.role === "STORE_MANAGER") {
       // Gerente: só entregas da própria filial e só enquanto estão na fila, antes de um motoboy pegar.
       if (!editor.storeId || editor.storeId !== current.storeId) {
@@ -1994,7 +2093,7 @@ router.patch(
 
 router.delete(
   "/deliveries/:deliveryId",
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "DEVELOPER"),
   async (req, res): Promise<void> => {
     const params = GetDeliveryParams.safeParse(req.params);
     if (!params.success) {
@@ -2217,7 +2316,7 @@ router.post(
 
 router.get(
   "/deliveries/:deliveryId/evidence",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER", "COURIER"),
   async (req, res): Promise<void> => {
     const params = GetDeliveryParams.safeParse(req.params);
     if (!params.success) {
@@ -2234,7 +2333,7 @@ router.get(
       return;
     }
     const profile = res.locals.appUser as AppUserProfile;
-    if (!canAccessDelivery(profile, delivery)) {
+    if (!canAccessDelivery(profile, delivery, storeScope(res))) {
       res.status(403).json({ error: "Esta entrega não pertence à sua área de acesso." });
       return;
     }
@@ -2258,7 +2357,7 @@ router.get(
 
 router.post(
   "/deliveries/:deliveryId/dispatch",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     const params = DispatchDeliveryParams.safeParse(req.params);
     const body = DispatchDeliveryBody.safeParse(req.body);
@@ -2281,8 +2380,8 @@ router.post(
         .where(eq(deliveriesTable.id, params.data.deliveryId))
         .for("update");
       if (!delivery) return { error: "not_found" as const };
-      // Gerente só despacha entregas da própria filial.
-      if (profile.role === "STORE_MANAGER" && delivery.storeId !== profile.storeId) {
+      // Gerente só despacha entregas da própria filial; supervisor, das filiais dele.
+      if (!inStoreScope(res, delivery.storeId)) {
         return { error: "not_found" as const };
       }
       const activeRoutes = await tx
@@ -2398,7 +2497,7 @@ router.post(
 
 router.patch(
   "/deliveries/:deliveryId/status",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER", "COURIER"),
   async (req, res): Promise<void> => {
     const params = UpdateDeliveryStatusParams.safeParse(req.params);
     const body = UpdateDeliveryStatusBody.safeParse(req.body);
@@ -2416,11 +2515,11 @@ router.patch(
     const profile = res.locals.appUser as AppUserProfile;
     if (
       body.data.status === "CANCELLED" &&
-      profile.role !== "ADMIN" &&
-      profile.role !== "CENTRAL" &&
+      !hasFullAccess(profile.role) &&
+      profile.role !== "REGIONAL_SUPERVISOR" &&
       profile.role !== "STORE_MANAGER"
     ) {
-      res.status(403).json({ error: "Somente a Central ou o gerente da filial podem cancelar pedidos." });
+      res.status(403).json({ error: "Somente a administração, o supervisor ou o gerente da filial podem cancelar pedidos." });
       return;
     }
     if (body.data.status === "COMPLETED" && profile.role === "COURIER") {
@@ -2453,7 +2552,7 @@ router.patch(
       if (body.data.status === "ACCEPTED" && profile.role === "COURIER" && delivery.status !== "OFFERED") {
         return { error: "taken" as const };
       }
-      if (!canAccessDelivery(profile, delivery)) {
+      if (!canAccessDelivery(profile, delivery, storeScope(res))) {
         return { error: "forbidden" as const };
       }
       const activeRoutes = await tx
@@ -2475,7 +2574,7 @@ router.patch(
         (["REQUESTED", "AWAITING_COURIER", "NOT_DELIVERED"].includes(delivery.status) ||
           (delivery.status === "OFFERED" && !delivery.courierId));
       if (
-        (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") &&
+        profile.role === "STORE_MANAGER" &&
         nextStatus !== "IN_TRANSIT" &&
         !managerCanCancel
       ) {
@@ -2629,7 +2728,7 @@ router.patch(
         actor:
           profile.role === "COURIER"
             ? "Motoboy"
-            : profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF"
+            : profile.role === "STORE_MANAGER"
               ? "Equipe da unidade"
               : "Central de entregas",
       });
@@ -2672,7 +2771,7 @@ router.patch(
 
 router.get(
   "/couriers",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
   const profile = res.locals.appUser as AppUserProfile;
   const linkedCourierRows = await db
@@ -2692,9 +2791,11 @@ router.get(
       .filter((id): id is string => Boolean(id)),
   );
   const includeUnlinked =
-    profile.role === "ADMIN" && req.query.includeUnlinked === "true";
+    hasFullAccess(profile.role) && req.query.includeUnlinked === "true";
+  // Supervisor regional: motoboys das cidades das filiais dele.
+  const cities = await scopeCities(res);
   let couriers;
-  if (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") {
+  if (profile.role === "STORE_MANAGER") {
     if (!profile.storeId) {
       res.status(403).json({ error: "Esta conta não está vinculada a uma unidade." });
       return;
@@ -2735,9 +2836,10 @@ router.get(
       .select()
       .from(couriersTable)
       .orderBy(couriersTable.name);
-    couriers = includeUnlinked
+    couriers = (includeUnlinked
       ? rows
-      : rows.filter((courier) => linkedCourierIds.has(courier.id));
+      : rows.filter((courier) => linkedCourierIds.has(courier.id))
+    ).filter((courier) => courierInCities(courier.city, cities));
   }
   res.json(
     ListCouriersResponse.parse(

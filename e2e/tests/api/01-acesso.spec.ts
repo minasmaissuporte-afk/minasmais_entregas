@@ -2,16 +2,20 @@ import { test, expect } from "@playwright/test";
 import { Api, describe, json } from "../../support/api.ts";
 import type { RoleKey } from "../../support/fixtures-data.ts";
 
-type Role = "ADMIN" | "CENTRAL" | "STORE_MANAGER" | "STORE_STAFF" | "COURIER";
+type Role = "ADMIN" | "DEVELOPER" | "REGIONAL_SUPERVISOR" | "STORE_MANAGER" | "COURIER";
 const roleOf: Partial<Record<RoleKey, Role | "PENDING">> = {
   admin: "ADMIN",
-  central: "CENTRAL",
+  developer: "DEVELOPER",
+  supervisor: "REGIONAL_SUPERVISOR",
   manager: "STORE_MANAGER",
-  staff: "STORE_STAFF",
   courier: "COURIER",
   pending: "PENDING",
 };
-const ALL: Role[] = ["ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"];
+const ALL: Role[] = ["ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER", "COURIER"];
+/** Operam as entregas (diretoria, desenvolvimento e supervisor nas filiais dele). */
+const OPS: Role[] = ["ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR"];
+/** Cadastros (acessos e filiais) e exclusões. */
+const MGMT: Role[] = ["ADMIN", "DEVELOPER"];
 const X = "e2e-inexistente";
 // Mensagem do requireRole: separa "papel sem acesso" de 403 por regra de negócio (ex.: rota de outro motoboy).
 const ROLE_DENIED = "Sua conta ainda não tem acesso a esta área.";
@@ -20,38 +24,43 @@ const ROLE_DENIED = "Sua conta ainda não tem acesso a esta área.";
 const endpoints: { method: "get" | "post" | "put" | "patch" | "delete"; path: string; roles: Role[] | "any" }[] = [
   { method: "get", path: "/me", roles: "any" },
   { method: "get", path: "/push/config", roles: "any" },
-  { method: "post", path: "/push/subscription", roles: ["COURIER", "ADMIN", "CENTRAL"] },
-  { method: "delete", path: "/push/subscription", roles: ["COURIER", "ADMIN", "CENTRAL"] },
-  { method: "post", path: "/push/native-token", roles: ["COURIER", "ADMIN", "CENTRAL"] },
-  { method: "delete", path: "/push/native-token", roles: ["COURIER", "ADMIN", "CENTRAL"] },
-  { method: "get", path: "/dashboard/summary", roles: ["ADMIN", "CENTRAL"] },
-  { method: "get", path: "/operations/active-routes", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER"] },
-  { method: "get", path: "/reports/analytics", roles: ["ADMIN", "CENTRAL"] },
-  { method: "get", path: "/reports/store-accounting", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER"] },
-  { method: "get", path: "/delivery-cancellation-reasons", roles: ["ADMIN", "CENTRAL", "COURIER"] },
-  { method: "put", path: "/delivery-cancellation-reasons", roles: ["ADMIN", "CENTRAL"] },
-  { method: "get", path: "/delivery-cancellations", roles: ["ADMIN", "CENTRAL"] },
-  { method: "post", path: `/delivery-cancellations/${X}/action`, roles: ["ADMIN", "CENTRAL"] },
+  { method: "post", path: "/push/subscription", roles: ["COURIER", ...OPS] },
+  { method: "delete", path: "/push/subscription", roles: ["COURIER", ...OPS] },
+  { method: "post", path: "/push/native-token", roles: ["COURIER", ...OPS] },
+  { method: "delete", path: "/push/native-token", roles: ["COURIER", ...OPS] },
+  { method: "get", path: "/dashboard/summary", roles: OPS },
+  { method: "get", path: "/operations/active-routes", roles: [...OPS, "STORE_MANAGER"] },
+  { method: "get", path: "/reports/analytics", roles: OPS },
+  { method: "get", path: "/reports/store-accounting", roles: [...OPS, "STORE_MANAGER"] },
+  { method: "get", path: "/delivery-cancellation-reasons", roles: [...OPS, "COURIER"] },
+  { method: "put", path: "/delivery-cancellation-reasons", roles: MGMT },
+  { method: "get", path: "/delivery-cancellations", roles: OPS },
+  { method: "post", path: `/delivery-cancellations/${X}/action`, roles: OPS },
   { method: "get", path: "/deliveries", roles: ALL },
-  { method: "post", path: "/deliveries", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"] },
+  { method: "post", path: "/deliveries", roles: [...OPS, "STORE_MANAGER"] },
   { method: "get", path: `/deliveries/${X}`, roles: ALL },
-  { method: "delete", path: `/deliveries/${X}`, roles: ["ADMIN"] },
-  { method: "post", path: `/deliveries/${X}/dispatch`, roles: ["ADMIN", "CENTRAL", "STORE_MANAGER"] },
+  { method: "delete", path: `/deliveries/${X}`, roles: MGMT },
+  { method: "post", path: `/deliveries/${X}/dispatch`, roles: [...OPS, "STORE_MANAGER"] },
   { method: "patch", path: `/deliveries/${X}/status`, roles: ALL },
   { method: "post", path: `/deliveries/${X}/evidence/upload-url`, roles: ["COURIER"] },
   { method: "get", path: `/deliveries/${X}/evidence`, roles: ALL },
-  { method: "get", path: "/stores", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"] },
-  { method: "post", path: "/stores", roles: ["ADMIN"] },
-  { method: "put", path: `/stores/${X}`, roles: ["ADMIN"] },
-  { method: "delete", path: `/stores/${X}`, roles: ["ADMIN"] },
-  { method: "get", path: "/enderecos/autocomplete", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"] },
-  { method: "post", path: "/admin/demo-data/cleanup", roles: ["ADMIN"] },
-  { method: "get", path: "/couriers", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"] },
-  { method: "get", path: "/access/users", roles: ["ADMIN"] },
-  { method: "patch", path: `/access/users/${X}`, roles: ["ADMIN"] },
-  { method: "delete", path: `/access/users/${X}`, roles: ["ADMIN"] },
+  { method: "get", path: "/stores", roles: ALL },
+  { method: "post", path: "/stores", roles: MGMT },
+  { method: "put", path: `/stores/${X}`, roles: MGMT },
+  { method: "delete", path: `/stores/${X}`, roles: MGMT },
+  { method: "get", path: "/enderecos/autocomplete", roles: [...OPS, "STORE_MANAGER"] },
+  { method: "post", path: "/admin/demo-data/cleanup", roles: MGMT },
+  { method: "get", path: "/couriers", roles: [...OPS, "STORE_MANAGER"] },
+  { method: "get", path: "/access/users", roles: MGMT },
+  { method: "patch", path: `/access/users/${X}`, roles: MGMT },
+  { method: "delete", path: `/access/users/${X}`, roles: MGMT },
+  // Painel técnico (inclui a Integração ERP): só desenvolvimento.
+  { method: "get", path: "/admin/dev/overview", roles: ["DEVELOPER"] },
+  { method: "get", path: "/admin/dev/errors", roles: ["DEVELOPER"] },
+  { method: "get", path: "/admin/erp/summary", roles: ["DEVELOPER"] },
+  { method: "get", path: "/admin/erp/credentials", roles: ["DEVELOPER"] },
   { method: "get", path: "/courier/earnings", roles: ["COURIER"] },
-  { method: "post", path: "/delivery-routes", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER"] },
+  { method: "post", path: "/delivery-routes", roles: [...OPS, "STORE_MANAGER"] },
   { method: "get", path: "/courier/routes", roles: ["COURIER"] },
   { method: "get", path: `/courier/routes/${X}/preview`, roles: ["COURIER"] },
   { method: "patch", path: "/courier/availability", roles: ["COURIER"] },
@@ -144,6 +153,7 @@ test.describe("GET /me por papel", () => {
       const me = await json(res);
       expect(me.role).toBe(roleOf[key]);
       expect(me.email).toMatch(/^e2e-.*@example\.com$/);
+      if (roleOf[key] === "REGIONAL_SUPERVISOR") expect(me.supervisedStoreIds).toEqual(["e2e-store-b"]);
     });
   }
 });

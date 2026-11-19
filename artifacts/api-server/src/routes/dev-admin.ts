@@ -24,7 +24,7 @@ import { instanceStartedAt } from "../lib/telemetry";
  * erros recentes e banco de dados. Nunca devolve valores de segredos, só se estão configurados.
  */
 const router: IRouter = Router();
-const adminOnly = requireRole("ADMIN");
+const adminOnly = requireRole("DEVELOPER");
 
 const env = (name: string) => process.env[name]?.trim() || null;
 const ACTIVE_STATUSES = ["REQUESTED", "OFFERED", "AWAITING_COURIER", "ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"];

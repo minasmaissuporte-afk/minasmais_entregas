@@ -27,6 +27,12 @@ const waitingForCourier = (d: { status: string; courierId?: string | null; route
 const editableByStore = (d: { status: string; courierId?: string | null; routeId?: string | null }) =>
   !d.routeId && !d.courierId && ["REQUESTED", "OFFERED", "AWAITING_COURIER"].includes(d.status);
 
+/** A entrega voltou porque todos os motoboys online da cidade dispensaram a oferta. */
+const declinedByAll = (events: { kind: string }[]) => {
+  const last = [...events].reverse().find((event) => ["declined_by_all", "courier_unable_to_deliver", "courier_returning_to_store", "courier_route_aborted", "offered"].includes(event.kind));
+  return last?.kind === "declined_by_all";
+};
+
 /** Último motivo informado pelo motoboy ao devolver a entrega. */
 const returnReason = (events: { kind: string; label: string }[]) => {
   const label = [...events].reverse().find((event) => ["courier_unable_to_deliver", "courier_returning_to_store", "courier_route_aborted"].includes(event.kind))?.label;
@@ -340,7 +346,11 @@ export default function StorePortal({
                 )}
                 {["AWAITING_COURIER", "RETURNING_TO_STORE", "NOT_DELIVERED"].includes(delivery.status) && (
                   <p className="mt-3 rounded-lg bg-[#fff6e8] px-3 py-2 text-xs text-[#7a4b06]" role="status">
-                    {delivery.status === "RETURNING_TO_STORE" ? "O produto está voltando para a loja. " : "O motoboy devolveu esta entrega. "}
+                    {delivery.status === "RETURNING_TO_STORE"
+                      ? "O produto está voltando para a loja. "
+                      : declinedByAll(delivery.events)
+                        ? "Todos os motoboys online dispensaram esta entrega. Reenvie aos motoboys quando quiser. "
+                        : "O motoboy devolveu esta entrega. "}
                     {returnReason(delivery.events)}
                   </p>
                 )}

@@ -4,8 +4,8 @@ import { query } from "../../support/db.ts";
 
 /** Painel técnico: métricas de requisições, erros, serviços e banco (só administrador). */
 test.describe("Painel técnico (API)", () => {
-  test("Só o administrador acessa", async () => {
-    for (const role of ["central", "manager", "staff", "courier"] as const) {
+  test("Só o desenvolvedor acessa (admin não)", async () => {
+    for (const role of ["admin", "central", "manager", "supervisor", "courier"] as const) {
       const api = await Api.as(role);
       for (const path of ["/admin/dev/overview", "/admin/dev/requests", "/admin/dev/errors", "/admin/dev/database"]) {
         expect((await api.get(path)).status(), `${role} ${path}`).toBe(403);
@@ -16,7 +16,7 @@ test.describe("Painel técnico (API)", () => {
   });
 
   test("Visão geral mostra deploy, serviços e números sem expor segredos", async () => {
-    const admin = await Api.as("admin");
+    const admin = await Api.as("developer");
     const res = await admin.get("/admin/dev/overview");
     expect(res.status(), await describe(res)).toBe(200);
     const body = await json(res);
@@ -39,14 +39,14 @@ test.describe("Painel técnico (API)", () => {
 
   test("Requisições e erros são registrados por rota (sem query string)", async () => {
     await query(`delete from api_error_logs where path like '/api/deliveries/e2e-nao-existe%'`);
-    const admin = await Api.as("admin");
+    const admin = await Api.as("developer");
     const missing = await admin.get("/deliveries/e2e-nao-existe?segredo=nao-guardar");
     expect(missing.status()).toBe(404);
     await expect
       .poll(async () => (await query(`select count(*)::int as total from api_error_logs where path = '/api/deliveries/e2e-nao-existe'`))[0].total, { timeout: 10_000 })
       .toBe(1);
     const [logged] = await query(`select route, status, message, role, path from api_error_logs where path = '/api/deliveries/e2e-nao-existe'`);
-    expect(logged).toMatchObject({ route: "/api/deliveries/:deliveryId", status: 404, message: "Entrega não encontrada.", role: "ADMIN" });
+    expect(logged).toMatchObject({ route: "/api/deliveries/:deliveryId", status: 404, message: "Entrega não encontrada.", role: "DEVELOPER" });
     expect(logged.path).not.toContain("segredo");
 
     const errors = await json(await admin.get("/admin/dev/errors?status=4XX&q=e2e-nao-existe"));
@@ -70,7 +70,7 @@ test.describe("Painel técnico (API)", () => {
   });
 
   test("Banco de dados: versão, tamanho, conexões e tabelas", async () => {
-    const admin = await Api.as("admin");
+    const admin = await Api.as("developer");
     const body = await json(await admin.get("/admin/dev/database"));
     expect(body.ok).toBe(true);
     expect(body.version).toBeTruthy();

@@ -2071,17 +2071,25 @@ components:
         courierStatus: { type: ["string", "null"] }
         role:
           type: string
-          enum: [ADMIN, CENTRAL, STORE_MANAGER, STORE_STAFF, COURIER, PENDING]
+          enum: [ADMIN, DEVELOPER, REGIONAL_SUPERVISOR, STORE_MANAGER, COURIER, PENDING]
         storeId: { type: ["string", "null"] }
         courierId: { type: ["string", "null"] }
+        supervisedStoreIds:
+          type: array
+          description: Filiais sob a supervisão (só Supervisor regional)
+          items: { type: string }
     AccessInviteInput:
       type: object
       required: [email, name, role, redirectTo]
       properties:
         email: { type: string, format: email, maxLength: 254 }
         name: { type: string, minLength: 2, maxLength: 120 }
-        role: { type: string, enum: [ADMIN, STORE_MANAGER, COURIER] }
+        role: { type: string, enum: [ADMIN, DEVELOPER, REGIONAL_SUPERVISOR, STORE_MANAGER, COURIER] }
         storeId: { type: ["string", "null"] }
+        storeIds:
+          type: array
+          description: Filiais do Supervisor regional
+          items: { type: string }
         courierCity: { type: ["string", "null"], maxLength: 120 }
         phone: { type: ["string", "null"], maxLength: 30 }
         redirectTo: { type: string, maxLength: 300, description: Page of the app that opens from the invite link }
@@ -2091,7 +2099,11 @@ components:
       properties:
         role:
           type: string
-          enum: [ADMIN, CENTRAL, STORE_MANAGER, STORE_STAFF, COURIER, PENDING]
+          enum: [ADMIN, DEVELOPER, REGIONAL_SUPERVISOR, STORE_MANAGER, COURIER, PENDING]
+        storeIds:
+          type: array
+          description: Filiais do Supervisor regional
+          items: { type: string }
         name: { type: string, minLength: 1, maxLength: 120 }
         phone: { type: ["string", "null"], maxLength: 40 }
         storeId: { type: ["string", "null"] }

@@ -13,26 +13,29 @@ import { Check, ShieldCheck, Trash2, UsersRound } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useEffect, useState } from "react";
 import AccessInvitePanel, { CityStores, inviteErrorMessage, useSendInvite } from "@/components/access-invite-panel";
+import StoreMultiSelect from "@/components/store-multi-select";
 
-/** Perfis usados na operação: administradores, gerente de cada filial e motoboys. */
+/**
+ * Perfis: Administrador (diretoria, todas as filiais), Desenvolvedor (tudo + Painel técnico),
+ * Supervisor regional (filiais escolhidas), Gerente da filial (a dele) e Motoboy (só o app).
+ */
 const roles: { value: AppUser["role"]; label: string }[] = [
   { value: "PENDING", label: "Aguardando aprovação" },
-  { value: "ADMIN", label: "Administrador" },
+  { value: "ADMIN", label: "Administrador (diretoria)" },
+  { value: "DEVELOPER", label: "Desenvolvedor" },
+  { value: "REGIONAL_SUPERVISOR", label: "Supervisor regional" },
   { value: "STORE_MANAGER", label: "Gerente da filial" },
   { value: "COURIER", label: "Motoboy" },
 ];
-/** Perfis antigos: só aparecem para quem ainda está com eles, até ser trocado. */
-const legacyRoles: { value: AppUser["role"]; label: string }[] = [
-  { value: "CENTRAL", label: "Central de entregas (antigo)" },
-  { value: "STORE_STAFF", label: "Equipe da unidade (antigo)" },
-];
+const isManagementRole = (role: string) => role === "ADMIN" || role === "DEVELOPER";
 
 export default function AccessManagement() {
   const { user: signedInUser } = useAuth();
   const users = useListAccessUsers();
   const stores = useListStores();
   const couriers = useListCouriers({ includeUnlinked: true });
-  const adminCount = users.data?.filter((user) => user.role === "ADMIN").length ?? 0;
+  // Administradores e desenvolvedores cadastram acessos: sempre precisa sobrar pelo menos um.
+  const adminCount = users.data?.filter((user) => isManagementRole(user.role)).length ?? 0;
 
   return (
     <div className="soft-enter">
@@ -84,7 +87,7 @@ export default function AccessManagement() {
                 stores={stores.data ?? []}
                 couriers={couriers.data ?? []}
                 isCurrentUser={Boolean(user.authUserId && user.authUserId === signedInUser?.id)}
-                isLastAdmin={user.role === "ADMIN" && adminCount <= 1}
+                isLastAdmin={isManagementRole(user.role) && adminCount <= 1}
                 hasActiveWork={Boolean(
                   user.role === "COURIER" &&
                     couriers.data?.some((courier) => courier.id === user.courierId && courier.status === "BUSY"),
@@ -123,6 +126,7 @@ function UserAccessRow({
   const deleteAccount = useDeleteAccessUser();
   const [role, setRole] = useState<AppUser["role"]>(user.role);
   const [storeId, setStoreId] = useState(user.storeId ?? "");
+  const [supervisedStoreIds, setSupervisedStoreIds] = useState<string[]>(user.supervisedStoreIds ?? []);
   const [courierCity, setCourierCity] = useState(user.courierCity ?? "");
   const [courierId, setCourierId] = useState(user.courierId ?? "");
   const [name, setName] = useState(user.role === "COURIER" ? user.name : "");
@@ -130,7 +134,7 @@ function UserAccessRow({
   const [message, setMessage] = useState("");
   const invite = useSendInvite();
   const resendInvite = async () => {
-    if (user.role !== "ADMIN" && user.role !== "STORE_MANAGER" && user.role !== "COURIER") return;
+    if (user.role === "PENDING") return;
     setMessage("");
     try {
       await invite.send({
@@ -138,6 +142,7 @@ function UserAccessRow({
         name: user.name,
         role: user.role,
         storeId: user.role === "STORE_MANAGER" ? user.storeId : null,
+        storeIds: user.role === "REGIONAL_SUPERVISOR" ? user.supervisedStoreIds ?? [] : undefined,
         courierCity: user.role === "COURIER" ? user.courierCity ?? null : null,
         phone: user.phone ?? null,
       });
@@ -150,17 +155,21 @@ function UserAccessRow({
   useEffect(() => {
     setRole(user.role);
     setStoreId(user.storeId ?? "");
+    setSupervisedStoreIds(user.supervisedStoreIds ?? []);
     setCourierCity(user.courierCity ?? "");
     setCourierId(user.courierId ?? "");
     setName(user.role === "COURIER" ? user.name : "");
     setPhone(user.role === "COURIER" ? user.phone ?? "" : "");
-  }, [user.role, user.storeId, user.courierCity, user.courierId, user.name, user.phone]);
+  }, [user.role, user.storeId, user.supervisedStoreIds, user.courierCity, user.courierId, user.name, user.phone]);
 
-  const needsStore = role === "STORE_MANAGER" || role === "STORE_STAFF";
+  const needsStore = role === "STORE_MANAGER";
+  const needsStores = role === "REGIONAL_SUPERVISOR";
+  const sameStores = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
   const needsCourier = role === "COURIER";
   const isChanged =
     role !== user.role ||
     (needsStore && storeId !== (user.storeId ?? "")) ||
+    (needsStores && !sameStores(supervisedStoreIds, user.supervisedStoreIds ?? [])) ||
     (needsCourier && courierCity !== (user.courierCity ?? "")) ||
     courierId !== (user.courierId ?? "") ||
     (needsCourier && name.trim() !== user.name) ||
@@ -173,6 +182,7 @@ function UserAccessRow({
         data: {
           role,
           ...(needsStore ? { storeId } : {}),
+          ...(needsStores ? { storeIds: supervisedStoreIds } : {}),
           ...(needsCourier
             ? {
                 name: name.trim(),
@@ -330,7 +340,7 @@ function UserAccessRow({
         onChange={(event) => setRole(event.target.value as AppUser["role"])}
         disabled={user.role === "ADMIN" && user.authUserId === null}
       >
-        {[...roles, ...legacyRoles.filter((item) => item.value === user.role)].map((item) => (
+        {roles.map((item) => (
           <option key={item.value} value={item.value}>{item.label}</option>
         ))}
       </select>
@@ -361,6 +371,8 @@ function UserAccessRow({
         </div>
       ) : needsStore ? (
         storeSelect
+      ) : needsStores ? (
+        <StoreMultiSelect stores={stores} value={supervisedStoreIds} onChange={setSupervisedStoreIds} idPrefix={`supervisor-${user.id}`} />
       ) : (
         <span className="text-xs text-muted-foreground">Sem vínculo adicional</span>
       )}
@@ -378,6 +390,7 @@ function UserAccessRow({
             !isChanged ||
             update.isPending ||
             (needsStore && !storeId) ||
+            (needsStores && supervisedStoreIds.length === 0) ||
             (needsCourier && !name.trim())
           }
         >

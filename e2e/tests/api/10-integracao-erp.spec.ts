@@ -81,7 +81,7 @@ test.describe("Integração ERP (API pública /api/v1/erp)", () => {
   test.beforeAll(async () => {
     erp = await request.newContext({ baseURL: `${API_URL}/api/v1/erp/` });
     await resetAuthFailures();
-    const admin = await Api.as("admin");
+    const admin = await Api.as("developer");
     const created = await admin.post("/admin/erp/credentials", { name: "E2E ERP homologação" });
     expect(created.status(), await describe(created)).toBe(201);
     const body = await json(created);
@@ -141,7 +141,7 @@ test.describe("Integração ERP (API pública /api/v1/erp)", () => {
     const adminJwt = (await import("../../support/auth.ts")).accessToken;
     await expectErp(await call("POST", "/entregas", sale(), await adminJwt("admin")), 401, "CREDENCIAL_INVALIDA");
 
-    const admin = await Api.as("admin");
+    const admin = await Api.as("developer");
     const second = await json(await admin.post("/admin/erp/credentials", { name: "E2E ERP revogar" }));
     expect((await call("GET", "/entregas/qualquer", undefined, second.token)).status()).toBe(404);
     const revoked = await admin.post(`/admin/erp/credentials/${second.credential.id}/revoke`);
@@ -283,7 +283,7 @@ test.describe("Integração ERP (API pública /api/v1/erp)", () => {
     await expectErp(await call("POST", "/entregas", input), 422, "FILIAL_NAO_CADASTRADA");
     expect(await deliveriesForSale(input.idVenda)).toHaveLength(0);
 
-    const admin = await Api.as("admin");
+    const admin = await Api.as("developer");
     const failed = await json(await admin.get(`/admin/erp/events?outcome=FAILED&q=${input.idVenda}`));
     expect(failed).toHaveLength(1);
     expect(failed[0]).toMatchObject({ errorCode: "FILIAL_NAO_CADASTRADA", canReprocess: true, saleId: input.idVenda, storeCode: "E2E-999" });
@@ -417,15 +417,15 @@ test.describe("Integração ERP (API pública /api/v1/erp)", () => {
     }
   });
 
-  test("Painel Integração ERP é só do administrador", async () => {
-    for (const role of ["central", "manager", "courier"] as const) {
+  test("Painel Integração ERP é só do desenvolvedor", async () => {
+    for (const role of ["admin", "central", "manager", "courier"] as const) {
       const api = await Api.as(role);
       for (const path of ["/admin/erp/summary", "/admin/erp/credentials", "/admin/erp/stores", "/admin/erp/events"]) {
         expect((await api.get(path)).status(), `${role} ${path}`).toBe(403);
       }
       expect((await api.post("/admin/erp/credentials", { name: "E2E hack" })).status()).toBe(403);
     }
-    const admin = await Api.as("admin");
+    const admin = await Api.as("developer");
     const input = sale();
     await call("POST", "/entregas", input);
     const summary = await json(await admin.get("/admin/erp/summary"));

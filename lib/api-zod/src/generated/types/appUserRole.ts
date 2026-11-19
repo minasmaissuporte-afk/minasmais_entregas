@@ -11,9 +11,9 @@ export type AppUserRole = typeof AppUserRole[keyof typeof AppUserRole];
 
 export const AppUserRole = {
   ADMIN: 'ADMIN',
-  CENTRAL: 'CENTRAL',
+  DEVELOPER: 'DEVELOPER',
+  REGIONAL_SUPERVISOR: 'REGIONAL_SUPERVISOR',
   STORE_MANAGER: 'STORE_MANAGER',
-  STORE_STAFF: 'STORE_STAFF',
   COURIER: 'COURIER',
   PENDING: 'PENDING',
 } as const;

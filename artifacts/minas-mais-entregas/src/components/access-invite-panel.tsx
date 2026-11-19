@@ -9,13 +9,16 @@ import {
 import { MailPlus, Send } from "lucide-react";
 import { appUrl } from "@/lib/auth";
 import { AutoDismissFeedback, type FeedbackMessage } from "@/components/auto-dismiss-feedback";
+import StoreMultiSelect from "@/components/store-multi-select";
 
-type InviteRole = "COURIER" | "STORE_MANAGER" | "ADMIN";
+type InviteRole = "COURIER" | "STORE_MANAGER" | "REGIONAL_SUPERVISOR" | "ADMIN" | "DEVELOPER";
 
 const inviteRoles: { value: InviteRole; label: string; hint: string }[] = [
   { value: "COURIER", label: "Motoboy", hint: "Entra direto no app do motoboy." },
-  { value: "STORE_MANAGER", label: "Gerente da filial", hint: "Vê e registra as entregas da filial dele." },
-  { value: "ADMIN", label: "Administrador", hint: "Acesso completo, igual ao seu." },
+  { value: "STORE_MANAGER", label: "Gerente da filial", hint: "Vê e registra as entregas e os relatórios da filial dele." },
+  { value: "REGIONAL_SUPERVISOR", label: "Supervisor regional", hint: "Opera as entregas, os motoboys e os relatórios só das filiais escolhidas." },
+  { value: "ADMIN", label: "Administrador (diretoria)", hint: "Todas as filiais, relatórios e cadastros." },
+  { value: "DEVELOPER", label: "Desenvolvedor", hint: "Tudo do administrador e mais o Painel técnico." },
 ];
 
 export function inviteErrorMessage(error: unknown) {
@@ -26,7 +29,7 @@ export function inviteErrorMessage(error: unknown) {
 export function useSendInvite() {
   const queryClient = useQueryClient();
   const invite = useInviteAccessUser();
-  const send = (data: { email: string; name: string; role: InviteRole; storeId?: string | null; courierCity?: string | null; phone?: string | null }) =>
+  const send = (data: { email: string; name: string; role: InviteRole; storeId?: string | null; storeIds?: string[]; courierCity?: string | null; phone?: string | null }) =>
     invite.mutateAsync({ data: { ...data, redirectTo: appUrl("/aceitar-convite") } }).then((user) => {
       void queryClient.invalidateQueries({ queryKey: getListAccessUsersQueryKey() });
       void queryClient.invalidateQueries({ queryKey: getListCouriersQueryKey() });
@@ -71,6 +74,7 @@ export default function AccessInvitePanel({
   const [name, setName] = useState("");
   const [role, setRole] = useState<InviteRole>("COURIER");
   const [storeId, setStoreId] = useState("");
+  const [storeIds, setStoreIds] = useState<string[]>([]);
   const [courierCity, setCourierCity] = useState("");
   const [phone, setPhone] = useState("");
   const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
@@ -89,12 +93,17 @@ export default function AccessInvitePanel({
       setFeedback({ kind: "error", text: "Escolha a cidade em que o motoboy vai atender." });
       return;
     }
+    if (role === "REGIONAL_SUPERVISOR" && storeIds.length === 0) {
+      setFeedback({ kind: "error", text: "Escolha as filiais do supervisor." });
+      return;
+    }
     try {
       const user: AppUser = await send({
         email: email.trim(),
         name: name.trim(),
         role,
         storeId: role === "STORE_MANAGER" ? storeId || null : null,
+        storeIds: role === "REGIONAL_SUPERVISOR" ? storeIds : undefined,
         courierCity: role === "COURIER" ? courierCity : null,
         phone: role === "COURIER" ? phone.trim() || null : null,
       });
@@ -172,6 +181,8 @@ export default function AccessInvitePanel({
               ))}
             </select>
           </label>
+        ) : role === "REGIONAL_SUPERVISOR" ? (
+          <StoreMultiSelect stores={activeStores} value={storeIds} onChange={setStoreIds} idPrefix="invite" />
         ) : role === "COURIER" ? (
           <>
           <label className="field-label">

@@ -48,7 +48,8 @@ import {
 
 const roleLabels: Record<string, string> = {
   ADMIN: "Administração",
-  CENTRAL: "Central de operação",
+  DEVELOPER: "Desenvolvimento",
+  REGIONAL_SUPERVISOR: "Supervisor regional",
 };
 
 type NavItem = { href: string; label: string; icon: typeof LayoutGrid; match: (path: string) => boolean; count?: number };
@@ -102,12 +103,14 @@ export default function AdminShell({ profile, children }: { profile: AppUser; ch
 
   useEffect(() => setDrawerOpen(false), [location]);
 
-  const isAdmin = profile.role === "ADMIN";
+  // Cadastros (acessos e filiais): admin e desenvolvimento. Painel técnico: só desenvolvimento.
+  const isAdmin = profile.role === "ADMIN" || profile.role === "DEVELOPER";
+  const isDeveloper = profile.role === "DEVELOPER";
   const nav: NavItem[] = [
     { href: "/", label: "Entregas", icon: Package, match: (path) => path === "/" || path === "/user-portal" || path === "/entregas" || path.startsWith("/deliveries/"), count: awaitingCount },
     { href: "/motoboys", label: "Motoboys", icon: Bike, match: (path) => path === "/motoboys" },
     ...(isAdmin ? [{ href: "/filiais", label: "Filiais", icon: Store, match: (path: string) => path === "/filiais" }] : []),
-    ...(isAdmin ? [{ href: "/painel-tecnico", label: "Painel técnico", icon: SquareTerminal, match: (path: string) => path === "/painel-tecnico" || path === "/integracao-erp" }] : []),
+    ...(isDeveloper ? [{ href: "/painel-tecnico", label: "Painel técnico", icon: SquareTerminal, match: (path: string) => path === "/painel-tecnico" || path === "/integracao-erp" }] : []),
     { href: "/reports", label: "Relatórios", icon: ChartColumn, match: (path) => path === "/reports" },
   ];
   // "Configurações": profiles and access for admins; own account and password for the central.
