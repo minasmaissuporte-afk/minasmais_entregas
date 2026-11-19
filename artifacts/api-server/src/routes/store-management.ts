@@ -26,6 +26,7 @@ import {
 import {
   requireAuthentication,
   requireRole,
+  storeScope,
   type AppUserProfile,
 } from "../middlewares/accessControl";
 import {
@@ -111,7 +112,7 @@ function storeValues(input: ReturnType<typeof CreateStoreBody.parse>) {
 
 router.get(
   "/stores",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER", "COURIER"),
   async (_req, res): Promise<void> => {
     const profile = res.locals.appUser as AppUserProfile;
     // Motoboy: filiais ativas da cidade dele (para o mapa), sem contatos internos nem tarifas.
@@ -135,26 +136,21 @@ router.get(
       res.json(ListStoresResponse.parse(stores));
       return;
     }
-    if (
-      (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") &&
-      !profile.storeId
-    ) {
+    if (profile.role === "STORE_MANAGER" && !profile.storeId) {
       res.status(403).json({ error: "Esta conta não está vinculada a uma unidade." });
       return;
     }
 
-    const stores = await storeRecords(
-      profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF"
-        ? profile.storeId!
-        : undefined,
-    );
-    res.json(ListStoresResponse.parse(stores));
+    const stores = await storeRecords(profile.role === "STORE_MANAGER" ? profile.storeId! : undefined);
+    // Supervisor regional: só as filiais sob a supervisão dele.
+    const scope = storeScope(res);
+    res.json(ListStoresResponse.parse(scope === null ? stores : stores.filter((store) => scope.includes(store.id))));
   },
 );
 
 router.post(
   "/stores",
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "DEVELOPER"),
   async (req, res): Promise<void> => {
     const body = CreateStoreBody.safeParse(req.body);
     if (!body.success) {
@@ -179,7 +175,7 @@ router.post(
 
 router.put(
   "/stores/:storeId",
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "DEVELOPER"),
   async (req, res): Promise<void> => {
     const params = UpdateStoreParams.safeParse(req.params);
     const body = UpdateStoreBody.safeParse(req.body);
@@ -209,7 +205,7 @@ router.put(
 
 router.delete(
   "/stores/:storeId",
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "DEVELOPER"),
   async (req, res): Promise<void> => {
     const params = DeleteStoreParams.safeParse(req.params);
     if (!params.success) {
@@ -286,7 +282,7 @@ function sendMapsError(req: Parameters<Parameters<typeof router.get>[1]>[0], res
 
 router.get(
   "/enderecos/autocomplete",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     // O schema gerado usa coerce: sem o parâmetro, `undefined` virava o texto "undefined".
     const rawText = typeof req.query.texto === "string" ? req.query.texto : "";
@@ -311,7 +307,7 @@ router.get(
 
 router.get(
   "/enderecos/detalhes",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
+  requireRole("ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR", "STORE_MANAGER"),
   async (req, res): Promise<void> => {
     const placeId = typeof req.query.placeId === "string" ? req.query.placeId.trim() : "";
     if (!placeId || placeId.length > 512 || !/^[A-Za-z0-9_-]+$/.test(placeId)) {
@@ -333,7 +329,7 @@ router.get(
 
 router.post(
   "/admin/demo-data/cleanup",
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "DEVELOPER"),
   async (req, res): Promise<void> => {
     const body = CleanupDemoDataBody.safeParse(req.body);
     if (!body.success || body.data.confirmation !== "REMOVE_DEMO_RECORDS") {

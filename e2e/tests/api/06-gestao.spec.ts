@@ -27,13 +27,22 @@ test.describe("Gestão de acessos (Admin)", () => {
     expect(byId[TEMP].role).toBe("PENDING");
   });
 
-  test("Aprovar como atendente exige filial existente", async () => {
+  test("Aprovar como gerente exige filial existente", async () => {
     const admin = await Api.as("admin");
-    await expectError(await admin.patch(`/access/users/${TEMP}`, { role: "STORE_STAFF" }), 400, "unidade");
-    await expectError(await admin.patch(`/access/users/${TEMP}`, { role: "STORE_STAFF", storeId: "e2e-nao-existe" }), 400, "não encontrada");
-    const ok = await admin.patch(`/access/users/${TEMP}`, { role: "STORE_STAFF", storeId: stores.b.id });
+    await expectError(await admin.patch(`/access/users/${TEMP}`, { role: "STORE_MANAGER" }), 400, "unidade");
+    await expectError(await admin.patch(`/access/users/${TEMP}`, { role: "STORE_MANAGER", storeId: "e2e-nao-existe" }), 400, "não encontrada");
+    const ok = await admin.patch(`/access/users/${TEMP}`, { role: "STORE_MANAGER", storeId: stores.b.id });
     expect(ok.status(), await describe(ok)).toBe(200);
-    expect(await json(ok)).toMatchObject({ role: "STORE_STAFF", storeId: stores.b.id, courierId: null });
+    expect(await json(ok)).toMatchObject({ role: "STORE_MANAGER", storeId: stores.b.id, courierId: null });
+  });
+
+  test("Aprovar como supervisor exige filiais existentes", async () => {
+    const admin = await Api.as("admin");
+    await expectError(await admin.patch(`/access/users/${TEMP}`, { role: "REGIONAL_SUPERVISOR" }), 400, "filial");
+    await expectError(await admin.patch(`/access/users/${TEMP}`, { role: "REGIONAL_SUPERVISOR", storeIds: ["e2e-nao-existe"] }), 400, "não existe");
+    const ok = await admin.patch(`/access/users/${TEMP}`, { role: "REGIONAL_SUPERVISOR", storeIds: [stores.a.id] });
+    expect(ok.status(), await describe(ok)).toBe(200);
+    expect(await json(ok)).toMatchObject({ role: "REGIONAL_SUPERVISOR", storeId: null, supervisedStoreIds: [stores.a.id] });
   });
 
   test("Aprovar como motoboy exige nome; vincula a cadastro existente ou cria um novo", async () => {
@@ -55,29 +64,35 @@ test.describe("Gestão de acessos (Admin)", () => {
     expect(courier.initials).toMatch(/^[A-ZÁ]{1,3}$/);
   });
 
-  test("Aprovar como Central zera loja e motoboy", async () => {
+  test("Aprovar como Desenvolvedor zera loja e motoboy", async () => {
     const admin = await Api.as("admin");
-    const res = await admin.patch(`/access/users/${TEMP}`, { role: "CENTRAL", storeId: stores.a.id });
-    expect(await json(res)).toMatchObject({ role: "CENTRAL", storeId: null, courierId: null });
+    const res = await admin.patch(`/access/users/${TEMP}`, { role: "DEVELOPER", storeId: stores.a.id });
+    expect(await json(res)).toMatchObject({ role: "DEVELOPER", storeId: null, courierId: null });
   });
 
   test("Papel inválido → 400; conta inexistente → 404", async () => {
     const admin = await Api.as("admin");
     await expectError(await admin.patch(`/access/users/${TEMP}`, { role: "DONO" }), 400);
-    await expectError(await admin.patch("/access/users/e2e-nao-existe", { role: "CENTRAL" }), 404);
+    await expectError(await admin.patch("/access/users/e2e-nao-existe", { role: "DEVELOPER" }), 404);
+    // Perfis antigos foram removidos.
+    await expectError(await admin.patch(`/access/users/${TEMP}`, { role: "CENTRAL" }), 400);
+    await expectError(await admin.patch(`/access/users/${TEMP}`, { role: "STORE_STAFF" }), 400);
     await expectError(await admin.delete("/access/users/e2e-nao-existe"), 404);
   });
 
   test("Admin não remove o próprio acesso nem exclui a própria conta", async () => {
     const admin = await Api.as("admin");
-    await expectError(await admin.patch("/access/users/e2e-user-admin", { role: "CENTRAL" }), 400, "próprio acesso");
+    await expectError(await admin.patch("/access/users/e2e-user-admin", { role: "STORE_MANAGER", storeId: stores.a.id }), 400, "próprio acesso");
+    // Passar para Desenvolvedor mantém a administração: permitido (e volta para ADMIN).
+    expect((await admin.patch("/access/users/e2e-user-admin", { role: "DEVELOPER" })).status()).toBe(200);
+    expect((await (await Api.as("admin")).patch("/access/users/e2e-user-admin", { role: "ADMIN" })).status()).toBe(200);
     await expectError(await admin.delete("/access/users/e2e-user-admin"), 400);
     expect((await json(await admin.get("/me"))).role).toBe("ADMIN");
   });
 
   test("Excluir conta remove o perfil (204) e mantém as entregas da filial", async () => {
     const admin = await Api.as("admin");
-    await admin.patch(`/access/users/${TEMP}`, { role: "STORE_STAFF", storeId: stores.a.id });
+    await admin.patch(`/access/users/${TEMP}`, { role: "STORE_MANAGER", storeId: stores.a.id });
     const d = await createDelivery(await Api.as("central"), { storeId: stores.a.id });
     const res = await admin.delete(`/access/users/${TEMP}`);
     expect(res.status(), await describe(res)).toBe(204);
@@ -93,7 +108,7 @@ test.describe("Gestão de acessos (Admin)", () => {
     await central.post(`/deliveries/${d.id}/dispatch`, { mode: "single", courierId: "e2e-courier-2" });
     await setStatus(central, d.id, "ACCEPTED");
     const admin = await Api.as("admin");
-    await expectError(await admin.patch("/access/users/e2e-user-courier-2", { role: "CENTRAL" }), 409);
+    await expectError(await admin.patch("/access/users/e2e-user-courier-2", { role: "DEVELOPER" }), 409);
     await expectError(await admin.delete("/access/users/e2e-user-courier-2"), 409);
     await wipeDeliveries();
   });
@@ -118,8 +133,13 @@ test.describe("Motivos de ocorrência", () => {
     }
   });
 
-  test("Central desativa e reordena motivos: a lista passa a ter só os ativos, na nova ordem", async () => {
+  test("Supervisor não altera os motivos (configuração geral é da administração)", async () => {
     const central = await Api.as("central");
+    expect((await central.put("/delivery-cancellation-reasons", { reasons: original })).status()).toBe(403);
+  });
+
+  test("Administração desativa e reordena motivos: a lista passa a ter só os ativos, na nova ordem", async () => {
+    const central = await Api.as("admin");
     const changed = [...original].reverse().map((r) => ({ ...r, active: r.id !== "PERSONAL_ISSUE" }));
     const res = await central.put("/delivery-cancellation-reasons", { reasons: changed });
     expect(res.status(), await describe(res)).toBe(200);
@@ -129,13 +149,13 @@ test.describe("Motivos de ocorrência", () => {
   });
 
   test("Desativar todos os motivos → 400", async () => {
-    const central = await Api.as("central");
+    const central = await Api.as("admin");
     const changed = original.map((r) => ({ ...r, active: false }));
     await expectError(await central.put("/delivery-cancellation-reasons", { reasons: changed }), 400, "pelo menos um");
   });
 
   test("Lista vazia, rótulo vazio ou repetido → 400", async () => {
-    const central = await Api.as("central");
+    const central = await Api.as("admin");
     await expectError(await central.put("/delivery-cancellation-reasons", { reasons: [] }), 400);
     await expectError(
       await central.put("/delivery-cancellation-reasons", { reasons: original.map((r, i) => (i === 0 ? { ...r, label: "   " } : r)) }),

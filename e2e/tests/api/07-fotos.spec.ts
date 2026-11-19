@@ -50,7 +50,7 @@ test.describe("Fotos de comprovação (Supabase Storage)", () => {
       expect(photo.headers()["content-type"]).toMatch(/image\/jpeg/);
       expect((await photo.body()).subarray(0, 2).toString("hex")).toBe("ffd8");
     }
-    await expectError(await (await Api.as("staff")).get(`/deliveries/${d.id}/evidence`), 403);
+    await expectError(await (await Api.as("supervisor")).get(`/deliveries/${d.id}/evidence`), 403);
 
     // Pedir nova URL depois de concluída → 409 (não troca a foto de entrega já fechada).
     const again = await courier.post(`/deliveries/${d.id}/evidence/upload-url`, { name: "x.jpg", size: 100, contentType: "image/jpeg" });

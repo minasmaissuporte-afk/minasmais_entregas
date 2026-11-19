@@ -17,7 +17,7 @@ import { publicOrigin, reprocessErpEvent } from "./erp";
 
 /** Painel "Integração ERP": só para administradores. */
 const router: IRouter = Router();
-const adminOnly = requireRole("ADMIN");
+const adminOnly = requireRole("DEVELOPER");
 
 const REPROCESSABLE = new Set(["CREATE", "UPDATE", "CANCEL"]);
 

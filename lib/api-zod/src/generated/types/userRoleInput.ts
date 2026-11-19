@@ -9,6 +9,8 @@ import type { UserRoleInputRole } from './userRoleInputRole';
 
 export interface UserRoleInput {
   role: UserRoleInputRole;
+  /** Filiais do Supervisor regional */
+  storeIds?: string[];
   /**
      * @minLength 1
      * @maxLength 120

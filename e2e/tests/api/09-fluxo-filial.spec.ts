@@ -80,6 +80,9 @@ test.describe("Fluxo da filial: despacho automático por cidade", () => {
     const manager = await Api.as("manager");
     const courier = await Api.as("courier");
     await courierOnline(courier);
+    // Outro motoboy online na mesma cidade: com ele a oferta continua na fila
+    // (se todos dispensarem, ela volta para a filial; ver 12-dispensar-volta-filial).
+    await query(`update couriers set status = 'AVAILABLE', city = $1 where id = 'e2e-courier-2'`, [stores.a.city]);
     const d = await createDelivery(manager);
     const declined = await courier.post(`/courier/deliveries/${d.id}/decline`);
     expect(declined.status(), await describe(declined)).toBe(204);

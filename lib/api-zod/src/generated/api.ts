@@ -1190,9 +1190,10 @@ export const GetMyProfileResponse = zod.object({
   "storeName": zod.string().nullish(),
   "courierCity": zod.string().nullish().describe('Cidade em que o motoboy recebe entregas'),
   "courierStatus": zod.string().nullish(),
-  "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
+  "role": zod.enum(['ADMIN', 'DEVELOPER', 'REGIONAL_SUPERVISOR', 'STORE_MANAGER', 'COURIER', 'PENDING']),
   "storeId": zod.string().nullable(),
-  "courierId": zod.string().nullable()
+  "courierId": zod.string().nullable(),
+  "supervisedStoreIds": zod.array(zod.string()).optional().describe('Filiais sob a supervisão (só Supervisor regional)')
 })
 
 
@@ -1208,9 +1209,10 @@ export const ListAccessUsersResponseItem = zod.object({
   "storeName": zod.string().nullish(),
   "courierCity": zod.string().nullish().describe('Cidade em que o motoboy recebe entregas'),
   "courierStatus": zod.string().nullish(),
-  "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
+  "role": zod.enum(['ADMIN', 'DEVELOPER', 'REGIONAL_SUPERVISOR', 'STORE_MANAGER', 'COURIER', 'PENDING']),
   "storeId": zod.string().nullable(),
-  "courierId": zod.string().nullable()
+  "courierId": zod.string().nullable(),
+  "supervisedStoreIds": zod.array(zod.string()).optional().describe('Filiais sob a supervisão (só Supervisor regional)')
 })
 export const ListAccessUsersResponse = zod.array(ListAccessUsersResponseItem)
 
@@ -1234,8 +1236,9 @@ export const inviteAccessUserBodyRedirectToMax = 300;
 export const InviteAccessUserBody = zod.object({
   "email": zod.string().email().max(inviteAccessUserBodyEmailMax),
   "name": zod.string().min(inviteAccessUserBodyNameMin).max(inviteAccessUserBodyNameMax),
-  "role": zod.enum(['ADMIN', 'STORE_MANAGER', 'COURIER']),
+  "role": zod.enum(['ADMIN', 'DEVELOPER', 'REGIONAL_SUPERVISOR', 'STORE_MANAGER', 'COURIER']),
   "storeId": zod.string().nullish(),
+  "storeIds": zod.array(zod.string()).optional().describe('Filiais do Supervisor regional'),
   "courierCity": zod.string().max(inviteAccessUserBodyCourierCityMax).nullish(),
   "phone": zod.string().max(inviteAccessUserBodyPhoneMax).nullish(),
   "redirectTo": zod.string().max(inviteAccessUserBodyRedirectToMax).describe('Page of the app that opens from the invite link')
@@ -1250,9 +1253,10 @@ export const InviteAccessUserResponse = zod.object({
   "storeName": zod.string().nullish(),
   "courierCity": zod.string().nullish().describe('Cidade em que o motoboy recebe entregas'),
   "courierStatus": zod.string().nullish(),
-  "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
+  "role": zod.enum(['ADMIN', 'DEVELOPER', 'REGIONAL_SUPERVISOR', 'STORE_MANAGER', 'COURIER', 'PENDING']),
   "storeId": zod.string().nullable(),
-  "courierId": zod.string().nullable()
+  "courierId": zod.string().nullable(),
+  "supervisedStoreIds": zod.array(zod.string()).optional().describe('Filiais sob a supervisão (só Supervisor regional)')
 })
 
 
@@ -1272,7 +1276,8 @@ export const updateAccessUserBodyCourierCityMax = 120;
 
 
 export const UpdateAccessUserBody = zod.object({
-  "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
+  "role": zod.enum(['ADMIN', 'DEVELOPER', 'REGIONAL_SUPERVISOR', 'STORE_MANAGER', 'COURIER', 'PENDING']),
+  "storeIds": zod.array(zod.string()).optional().describe('Filiais do Supervisor regional'),
   "name": zod.string().min(1).max(updateAccessUserBodyNameMax).optional(),
   "phone": zod.string().max(updateAccessUserBodyPhoneMax).nullish(),
   "storeId": zod.string().nullish(),
@@ -1289,9 +1294,10 @@ export const UpdateAccessUserResponse = zod.object({
   "storeName": zod.string().nullish(),
   "courierCity": zod.string().nullish().describe('Cidade em que o motoboy recebe entregas'),
   "courierStatus": zod.string().nullish(),
-  "role": zod.enum(['ADMIN', 'CENTRAL', 'STORE_MANAGER', 'STORE_STAFF', 'COURIER', 'PENDING']),
+  "role": zod.enum(['ADMIN', 'DEVELOPER', 'REGIONAL_SUPERVISOR', 'STORE_MANAGER', 'COURIER', 'PENDING']),
   "storeId": zod.string().nullable(),
-  "courierId": zod.string().nullable()
+  "courierId": zod.string().nullable(),
+  "supervisedStoreIds": zod.array(zod.string()).optional().describe('Filiais sob a supervisão (só Supervisor regional)')
 })
 
 

@@ -36,7 +36,7 @@ router.get("/push/config", requireAuthentication, (_req, res): void => {
 router.post(
   "/push/subscription",
   requireAuthentication,
-  requireRole("COURIER", "ADMIN", "CENTRAL"),
+  requireRole("COURIER", "ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR"),
   async (req, res): Promise<void> => {
     const body = SavePushSubscriptionBody.safeParse(req.body);
     if (!body.success) {
@@ -82,7 +82,7 @@ router.post(
 router.delete(
   "/push/subscription",
   requireAuthentication,
-  requireRole("COURIER", "ADMIN", "CENTRAL"),
+  requireRole("COURIER", "ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR"),
   async (req, res): Promise<void> => {
     const body = RemovePushSubscriptionBody.safeParse(req.body);
     if (!body.success) {
@@ -109,7 +109,7 @@ router.delete(
 router.post(
   "/push/native-token",
   requireAuthentication,
-  requireRole("COURIER", "ADMIN", "CENTRAL"),
+  requireRole("COURIER", "ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR"),
   async (req, res): Promise<void> => {
     const body = SaveNativePushTokenBody.safeParse(req.body);
     if (!body.success) {
@@ -148,7 +148,7 @@ router.post(
 router.delete(
   "/push/native-token",
   requireAuthentication,
-  requireRole("COURIER", "ADMIN", "CENTRAL"),
+  requireRole("COURIER", "ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR"),
   async (req, res): Promise<void> => {
     const body = RemoveNativePushTokenBody.safeParse(req.body);
     if (!body.success) {

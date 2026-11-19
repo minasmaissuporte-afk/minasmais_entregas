@@ -73,7 +73,7 @@ test.describe("Filiais (lojas)", () => {
   test("Gerente e atendente só enxergam a própria filial", async () => {
     const manager = await json(await (await Api.as("manager")).get("/stores"));
     expect(manager.map((s: any) => s.id)).toEqual([stores.a.id]);
-    const staff = await json(await (await Api.as("staff")).get("/stores"));
+    const staff = await json(await (await Api.as("supervisor")).get("/stores"));
     expect(staff.map((s: any) => s.id)).toEqual([stores.b.id]);
   });
 

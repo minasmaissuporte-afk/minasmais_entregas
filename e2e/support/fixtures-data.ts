@@ -2,25 +2,33 @@
  * Dados fictícios usados pela bateria E2E. Tudo que a bateria cria usa o
  * prefixo `e2e-` (ids) ou `E2E ` (nomes), e é removido pela limpeza.
  */
-export type RoleKey = "admin" | "central" | "manager" | "staff" | "courier" | "courierB" | "courierC" | "pending";
+export type RoleKey = "admin" | "developer" | "central" | "manager" | "supervisor" | "courier" | "courierB" | "courierC" | "pending";
 
 export const users: Record<
   RoleKey,
-  { email: string; name: string; role: string; storeId?: string; courierId?: string }
+  { email: string; name: string; role: string; storeId?: string; courierId?: string; supervisedStores?: string[] }
 > = {
   admin: { email: "e2e-admin@example.com", name: "E2E Administradora", role: "ADMIN" },
-  central: { email: "e2e-central@example.com", name: "E2E Central", role: "CENTRAL" },
+  developer: { email: "e2e-dev@example.com", name: "E2E Desenvolvedora", role: "DEVELOPER" },
+  // "central": supervisor regional de todas as filiais de teste (opera como a antiga Central).
+  central: {
+    email: "e2e-central@example.com",
+    name: "E2E Central",
+    role: "REGIONAL_SUPERVISOR",
+    supervisedStores: ["e2e-store-a", "e2e-store-b", "e2e-store-zero", "e2e-store-inactive"],
+  },
   manager: {
     email: "e2e-gerente@example.com",
     name: "E2E Gerente Savassi",
     role: "STORE_MANAGER",
     storeId: "e2e-store-a",
   },
-  staff: {
-    email: "e2e-atendente@example.com",
-    name: "E2E Atendente Contagem",
-    role: "STORE_STAFF",
-    storeId: "e2e-store-b",
+  // Supervisor regional só da filial B (Contagem): não vê a filial A nem os motoboys de Belo Horizonte.
+  supervisor: {
+    email: "e2e-supervisor@example.com",
+    name: "E2E Supervisor Contagem",
+    role: "REGIONAL_SUPERVISOR",
+    supervisedStores: ["e2e-store-b"],
   },
   courier: {
     email: "e2e-motoboy@example.com",

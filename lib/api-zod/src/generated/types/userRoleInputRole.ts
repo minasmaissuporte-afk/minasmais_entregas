@@ -11,9 +11,9 @@ export type UserRoleInputRole = typeof UserRoleInputRole[keyof typeof UserRoleIn
 
 export const UserRoleInputRole = {
   ADMIN: 'ADMIN',
-  CENTRAL: 'CENTRAL',
+  DEVELOPER: 'DEVELOPER',
+  REGIONAL_SUPERVISOR: 'REGIONAL_SUPERVISOR',
   STORE_MANAGER: 'STORE_MANAGER',
-  STORE_STAFF: 'STORE_STAFF',
   COURIER: 'COURIER',
   PENDING: 'PENDING',
 } as const;

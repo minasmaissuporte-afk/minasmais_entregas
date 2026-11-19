@@ -292,10 +292,15 @@ export async function notifyCouriers(
   }
 }
 
+/**
+ * Avisa quem opera as entregas: administração e desenvolvimento sempre; o supervisor
+ * regional só quando a entrega é de uma filial dele (storeId informado).
+ */
 export async function notifyCentralUsers(payload: {
   title: string;
   body: string;
   url?: string;
+  storeId?: string | null;
 }): Promise<void> {
   const config = loadVapidConfiguration();
   if (!config) {
@@ -307,7 +312,17 @@ export async function notifyCentralUsers(payload: {
     const users = await db
       .select({ id: appUsersTable.id })
       .from(appUsersTable)
-      .where(inArray(appUsersTable.role, ["ADMIN", "CENTRAL"]));
+      .where(
+        or(
+          inArray(appUsersTable.role, ["ADMIN", "DEVELOPER"]),
+          payload.storeId
+            ? and(
+                eq(appUsersTable.role, "REGIONAL_SUPERVISOR"),
+                sql`exists (select 1 from supervisor_stores s where s.app_user_id = ${appUsersTable.id} and s.store_id = ${payload.storeId})`,
+              )
+            : undefined,
+        ),
+      );
     if (!users.length) return;
     const subscriptions = await db
       .select()

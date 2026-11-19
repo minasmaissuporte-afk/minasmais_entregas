@@ -1,17 +1,53 @@
 import { randomUUID } from "node:crypto";
 import type { RequestHandler } from "express";
-import { eq } from "drizzle-orm";
-import { appUsersTable, db } from "@workspace/db";
+import { eq, inArray, sql, type AnyColumn, type SQL } from "drizzle-orm";
+import { appUsersTable, db, storesTable, supervisorStoresTable } from "@workspace/db";
 import { getAuthUser, type AuthUser } from "../lib/supabaseAuth";
 
 export const appRoles = [
   "ADMIN",
-  "CENTRAL",
+  "DEVELOPER",
+  "REGIONAL_SUPERVISOR",
   "STORE_MANAGER",
-  "STORE_STAFF",
   "COURIER",
   "PENDING",
 ] as const;
+
+/** Veem todas as filiais (diretoria e desenvolvimento). */
+export const FULL_ACCESS_ROLES = ["ADMIN", "DEVELOPER"] as const;
+/** Operam entregas como a central: diretoria, desenvolvimento e supervisor (nas filiais dele). */
+export const OPERATOR_ROLES = ["ADMIN", "DEVELOPER", "REGIONAL_SUPERVISOR"] as const;
+
+export function hasFullAccess(role: string | null | undefined) {
+  return role === "ADMIN" || role === "DEVELOPER";
+}
+
+/**
+ * Filiais que a conta pode ver: null = todas (admin/dev); lista = só essas
+ * (gerente: a dele; supervisor: as que estão sob a supervisão dele).
+ */
+export async function loadStoreScope(profile: { id: string; role: string; storeId: string | null }): Promise<string[] | null> {
+  if (hasFullAccess(profile.role)) return null;
+  if (profile.role === "STORE_MANAGER") return profile.storeId ? [profile.storeId] : [];
+  if (profile.role === "REGIONAL_SUPERVISOR") {
+    const rows = await db
+      .select({ storeId: supervisorStoresTable.storeId })
+      .from(supervisorStoresTable)
+      .where(eq(supervisorStoresTable.appUserId, profile.id));
+    return rows.map((row) => row.storeId);
+  }
+  return null;
+}
+
+/** Escopo carregado pelo requireRole (null = todas as filiais). */
+export function storeScope(res: { locals: Record<string, unknown> }): string[] | null {
+  return (res.locals.storeScope as string[] | null | undefined) ?? null;
+}
+
+export function inStoreScope(res: { locals: Record<string, unknown> }, storeId: string | null | undefined) {
+  const scope = storeScope(res);
+  return scope === null || (!!storeId && scope.includes(storeId));
+}
 
 export type AppRole = (typeof appRoles)[number];
 export type AppUserProfile = typeof appUsersTable.$inferSelect;
@@ -127,10 +163,32 @@ export function requireRole(...allowedRoles: AppRole[]): RequestHandler {
         return;
       }
       res.locals.appUser = profile;
+      res.locals.storeScope = profile.role === "COURIER" ? null : await loadStoreScope(profile);
       next();
     } catch (error) {
       req.log?.error({ err: error }, "Failed to resolve application access");
       res.status(500).json({ error: "Não foi possível validar o acesso." });
     }
   };
+}
+
+/** Condição SQL "a filial está no escopo da conta" (undefined = sem filtro). */
+export function storeScopeCondition(res: { locals: Record<string, unknown> }, column: AnyColumn): SQL | undefined {
+  const scope = storeScope(res);
+  if (scope === null) return undefined;
+  return scope.length ? inArray(column, scope) : sql`false`;
+}
+
+/** Cidades das filiais do escopo (null = todas). Motoboys atendem por cidade. */
+export async function scopeCities(res: { locals: Record<string, unknown> }): Promise<string[] | null> {
+  const scope = storeScope(res);
+  if (scope === null) return null;
+  if (!scope.length) return [];
+  const rows = await db.select({ city: storesTable.city }).from(storesTable).where(inArray(storesTable.id, scope));
+  return [...new Set(rows.map((row) => row.city.trim().toLocaleLowerCase("pt-BR")))];
+}
+
+export function courierInCities(city: string | null | undefined, cities: string[] | null) {
+  if (cities === null) return true;
+  return !!city && cities.includes(city.trim().toLocaleLowerCase("pt-BR"));
 }

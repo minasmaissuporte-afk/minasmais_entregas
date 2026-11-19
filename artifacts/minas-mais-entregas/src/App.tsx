@@ -1257,22 +1257,27 @@ function UserPortalRoute() {
       </NativeCourierSetupGate>
     );
   }
-  if (profile.data.role === 'STORE_MANAGER' || profile.data.role === 'STORE_STAFF') {
+  if (profile.data.role === 'STORE_MANAGER') {
     return <StorePortal profile={profile.data} NewDeliveryModal={DeliveryModal} DispatchModal={DispatchModal} GroupRouteModal={GroupRouteModal} RemoveFromRouteModal={RemoveFromRouteModal} CancelDeliveryModal={CancelDeliveryModal} EditDeliveryModal={EditDeliveryModal} />;
   }
   // Admin e Central: a página inicial é a operação de entregas (antes "Visão geral" + "Entregas").
-  return <RoutedErrorBoundary><AdminShell profile={profile.data}><Dashboard canCancel={profile.data.role === 'ADMIN' || profile.data.role === 'CENTRAL'} canDelete={profile.data.role === 'ADMIN'} /></AdminShell></RoutedErrorBoundary>;
+  return <RoutedErrorBoundary><AdminShell profile={profile.data}><Dashboard canCancel={isOperator(profile.data.role)} canDelete={isManagement(profile.data.role)} /></AdminShell></RoutedErrorBoundary>;
 }
 
-function CentralRoute({ children, adminOnly = false }: { children: ReactNode | ((profile: AppUser) => ReactNode); adminOnly?: boolean }) {
+/** Operam as entregas: diretoria (admin), desenvolvimento e supervisor regional (nas filiais dele). */
+const isOperator = (role: string) => role === 'ADMIN' || role === 'DEVELOPER' || role === 'REGIONAL_SUPERVISOR';
+/** Cadastram acessos e filiais e podem excluir entregas: admin e desenvolvimento. */
+const isManagement = (role: string) => role === 'ADMIN' || role === 'DEVELOPER';
+
+function CentralRoute({ children, adminOnly = false, developerOnly = false }: { children: ReactNode | ((profile: AppUser) => ReactNode); adminOnly?: boolean; developerOnly?: boolean }) {
   const { auth, profile } = useSignedInProfile();
   if (!auth.isLoaded || (auth.isSignedIn && profile.isLoading)) return <ProfileLoading />;
   if (!auth.isSignedIn) return <Redirect to="/" />;
   if (profile.isError || !profile.data) return <ProfileError retry={() => void profile.refetch()} />;
   if (profile.data.role === 'PENDING') return <PendingApproval profile={profile.data} />;
-  if (profile.data.role !== 'ADMIN' && profile.data.role !== 'CENTRAL') return <Redirect to="/user-portal" />;
-  if (adminOnly && profile.data.role !== 'ADMIN') {
-    return <main className="grid min-h-[100dvh] place-items-center bg-[#f4f3f1] p-5"><section className="panel p-6 text-center"><h1 className="font-bold">Acesso restrito</h1><p className="mt-2 text-sm text-muted-foreground">Somente administradores podem gerenciar perfis.</p><Link className="button-primary mt-4" href="/">Voltar ao painel</Link></section></main>;
+  if (!isOperator(profile.data.role)) return <Redirect to="/user-portal" />;
+  if ((adminOnly && !isManagement(profile.data.role)) || (developerOnly && profile.data.role !== 'DEVELOPER')) {
+    return <main className="grid min-h-[100dvh] place-items-center bg-[#f4f3f1] p-5"><section className="panel p-6 text-center"><h1 className="font-bold">Acesso restrito</h1><p className="mt-2 text-sm text-muted-foreground">Esta área não está liberada para o seu perfil.</p><Link className="button-primary mt-4" href="/">Voltar ao painel</Link></section></main>;
   }
   return <RoutedErrorBoundary><AdminShell profile={profile.data}>{typeof children === 'function' ? children(profile.data) : children}</AdminShell></RoutedErrorBoundary>;
 }
@@ -1300,14 +1305,14 @@ function AppRoutes() {
             <Route path="/user-portal" component={UserPortalRoute}/>
             <Route path="/account" component={AccountRoute}/>
             <Route path="/motoboy-pwa" component={CourierAccessPage}/>
-            <Route path="/entregas" component={() => <CentralRoute>{(profile) => <Dashboard canCancel={profile.role === 'ADMIN' || profile.role === 'CENTRAL'} canDelete={profile.role === 'ADMIN'} />}</CentralRoute>}/>
+            <Route path="/entregas" component={() => <CentralRoute>{(profile) => <Dashboard canCancel={isOperator(profile.role)} canDelete={isManagement(profile.role)} />}</CentralRoute>}/>
             {/* A aba "Mapa em tempo real" saiu: o mapa está na página de entregas. */}
             <Route path="/mapa">{() => <Redirect to="/" />}</Route>
             <Route path="/motoboys" component={() => <CentralRoute><CouriersPage/></CentralRoute>}/>
             <Route path="/deliveries/:deliveryId" component={() => <CentralRoute><DeliveryDetail/></CentralRoute>}/>
             <Route path="/access" component={() => <CentralRoute adminOnly><AccessManagement/></CentralRoute>}/>
             <Route path="/filiais" component={() => <CentralRoute adminOnly><StoreManagement/></CentralRoute>}/>
-            <Route path="/painel-tecnico" component={() => <CentralRoute adminOnly><DevPanel/></CentralRoute>}/>
+            <Route path="/painel-tecnico" component={() => <CentralRoute developerOnly><DevPanel/></CentralRoute>}/>
             <Route path="/integracao-erp">{() => <Redirect to="/painel-tecnico?aba=erp" />}</Route>
             <Route path="/reports" component={ReportsRoute}/>
             <Route path="/sign-in/*?" component={SignInPage}/>
