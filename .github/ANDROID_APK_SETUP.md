@@ -1,18 +1,49 @@
 # Gerar e baixar o APK do motoboy
 
-O workflow `Android APK` compila um APK de release assinado e publica o arquivo como um artefato da execução no GitHub Actions.
+O workflow `Android APK` (GitHub Actions) compila um APK de release assinado e publica o arquivo
+como artefato da execução. O app instalado abre o sistema publicado na Vercel
+(`https://minas-mais-entregas.vercel.app`), então as telas se atualizam sem novo APK; só é preciso
+gerar outro APK quando mudar algo nativo (ícone, permissões, plugins).
 
-## Antes de executar
+## Chave de assinatura (uma vez)
 
-1. No painel Git do Replit, conecte este projeto ao repositório GitHub correto e envie as alterações para `main` ou `master`.
-2. Em **Settings → Secrets and variables → Actions**, crie os secrets abaixo:
-   - `ANDROID_KEYSTORE_BASE64`
-   - `ANDROID_KEYSTORE_PASSWORD`
-   - `ANDROID_KEY_ALIAS`
-   - `ANDROID_KEY_PASSWORD`
-   Os valores da chave de assinatura criada para este projeto estão em `.local/android-signing/github-actions-secrets.txt`. Esse arquivo fica fora do Git; copie cada valor diretamente para o secret de mesmo nome no GitHub e não o envie ao repositório.
-3. O `google-services.json` do Firebase fica em `artifacts/minas-mais-entregas/android/app/google-services.json` e precisa permanecer no repositório para o build do FCM.
-4. Para o servidor enviar notificações, configure no Replit Secret `FIREBASE_SERVICE_ACCOUNT_JSON` com o JSON de uma conta de serviço do projeto Firebase `minas-mais-entregas`. O `google-services.json` do Android é uma configuração de cliente e não substitui essa credencial do servidor.
-5. Abra **Actions → Android APK → Run workflow**. Após a execução verde, baixe o artefato `minas-mais-entregas-android-N` em **Artifacts**.
+A chave fica em `.local/android-signing/` neste computador (fora do Git):
 
-O keystore e as senhas de assinatura são dados permanentes: guarde uma cópia segura. Todos os APKs de atualização precisam usar a mesma chave de assinatura.
+- `minas-mais-release.p12` — a chave (PKCS#12).
+- `LEIA-ME.txt` — alias e senha.
+- `ANDROID_KEYSTORE_BASE64.txt` — a chave em texto, para colar no GitHub.
+
+**Guarde uma cópia segura dessa pasta.** Todos os APKs de atualização (e a Play Store) precisam da
+mesma chave.
+
+## Cadastrar os secrets no GitHub (uma vez)
+
+Em **github.com/minasmaissuporte-afk/minasmais_entregas → Settings → Secrets and variables →
+Actions → New repository secret**, crie:
+
+| Nome | Valor |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | conteúdo de `ANDROID_KEYSTORE_BASE64.txt` |
+| `ANDROID_KEYSTORE_PASSWORD` | a senha do `LEIA-ME.txt` |
+| `ANDROID_KEY_PASSWORD` | a mesma senha do `LEIA-ME.txt` |
+| `ANDROID_KEY_ALIAS` | `minas-mais-entregas` |
+
+## Gerar o APK
+
+1. **Actions → Android APK → Run workflow** (ou um merge na `main` que mexa no app).
+2. Quando ficar verde, baixe o artefato `minas-mais-entregas-android-N` em **Artifacts** (é um .zip
+   com o `app-release.apk`).
+3. No celular Android: abra o APK, permita "instalar apps desconhecidos" para o navegador/arquivos
+   e instale.
+
+## Notificações
+
+O `google-services.json` (Firebase) fica em `artifacts/minas-mais-entregas/android/app/` e precisa
+continuar no repositório. O servidor (Vercel) usa `FIREBASE_SERVICE_ACCOUNT_JSON` para enviar os
+avisos ao app instalado.
+
+## iPhone
+
+Sem conta Apple Developer não há TestFlight. Enquanto isso, no iPhone use o app pelo Safari:
+abrir `https://minas-mais-entregas.vercel.app/motoboy-pwa` → Compartilhar → **Adicionar à Tela de
+Início**. Avisos (push) funcionam no iOS 16.4 ou mais novo com o app aberto pela tela de início.

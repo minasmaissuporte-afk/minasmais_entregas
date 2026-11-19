@@ -37,7 +37,7 @@ import { groupRouteStops } from "@/lib/route-stops";
 const money = (amount: number) =>
   amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const nativeApiBaseUrl = (
-  import.meta.env.VITE_NATIVE_API_BASE_URL || "https://minas-mais-entregas.replit.app"
+  import.meta.env.VITE_NATIVE_API_BASE_URL || "https://minas-mais-entregas.vercel.app"
 ).replace(/\/+$/, "");
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>("BackgroundGeolocation");
 
