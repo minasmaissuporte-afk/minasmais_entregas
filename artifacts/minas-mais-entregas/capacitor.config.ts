@@ -10,10 +10,10 @@ const config: CapacitorConfig = {
   },
   server: {
     androidScheme: "https",
-    url: "https://minas-mais-entregas.replit.app/user-portal",
+    // O app instalado abre o sistema publicado na Vercel: atualizações chegam sem nova versão na loja.
+    url: "https://minas-mais-entregas.vercel.app/user-portal",
     allowNavigation: [
-      "minas-mais-entregas.replit.app",
-      "*.minas-mais-entregas.replit.app",
+      "minas-mais-entregas.vercel.app",
       // Supabase Auth (login, códigos por e-mail e redefinição de senha).
       "*.supabase.co",
     ],

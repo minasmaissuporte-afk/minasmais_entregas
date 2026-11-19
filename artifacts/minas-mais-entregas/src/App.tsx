@@ -76,7 +76,7 @@ const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const isNativeApp = Capacitor.isNativePlatform();
 const nativeApiBaseUrl = (
-  import.meta.env.VITE_NATIVE_API_BASE_URL || 'https://minas-mais-entregas.replit.app'
+  import.meta.env.VITE_NATIVE_API_BASE_URL || 'https://minas-mais-entregas.vercel.app'
 ).replace(/\/+$/, '');
 if (isNativeApp) setBaseUrl(nativeApiBaseUrl);
 function LandingPage() {
