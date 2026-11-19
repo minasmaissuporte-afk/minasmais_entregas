@@ -1994,3 +1994,198 @@ export const DeclineCourierDeliveryParams = zod.object({
 export const DeclineCourierDeliveryResponse = zod.void()
 
 
+/**
+ * @summary ERP integration status for administrators
+ */
+export const GetErpIntegrationSummaryResponse = zod.object({
+  "operational": zod.boolean(),
+  "databaseOk": zod.boolean(),
+  "baseUrl": zod.string(),
+  "docsUrl": zod.string(),
+  "openApiUrl": zod.string(),
+  "activeCredentials": zod.number().int(),
+  "storesMapped": zod.number().int(),
+  "storesActive": zod.number().int(),
+  "last24h": zod.object({
+  "received": zod.number().int(),
+  "created": zod.number().int(),
+  "duplicates": zod.number().int(),
+  "updated": zod.number().int(),
+  "cancelled": zod.number().int(),
+  "failed": zod.number().int()
+}),
+  "lastReceivedAt": zod.coerce.date().nullable(),
+  "lastFailureAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary List ERP API credentials (without secrets)
+ */
+export const ListErpCredentialsResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "keyPrefix": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string().nullable(),
+  "lastUsedAt": zod.coerce.date().nullable(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "revokedBy": zod.string().nullable()
+})
+export const ListErpCredentialsResponse = zod.array(ListErpCredentialsResponseItem)
+
+
+/**
+ * @summary Create an ERP API credential (token is shown once)
+ */
+export const createErpCredentialBodyNameMin = 2;
+export const createErpCredentialBodyNameMax = 80;
+
+
+
+export const CreateErpCredentialBody = zod.object({
+  "name": zod.string().min(createErpCredentialBodyNameMin).max(createErpCredentialBodyNameMax)
+})
+
+export const CreateErpCredentialResponse = zod.object({
+  "credential": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "keyPrefix": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string().nullable(),
+  "lastUsedAt": zod.coerce.date().nullable(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "revokedBy": zod.string().nullable()
+}),
+  "token": zod.string()
+})
+
+
+/**
+ * @summary Revoke an ERP API credential
+ */
+export const RevokeErpCredentialParams = zod.object({
+  "credentialId": zod.coerce.string()
+})
+
+export const RevokeErpCredentialResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "keyPrefix": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string().nullable(),
+  "lastUsedAt": zod.coerce.date().nullable(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "revokedBy": zod.string().nullable()
+})
+
+
+/**
+ * @summary Stores with their ERP branch codes
+ */
+export const ListErpStoreMappingsResponseItem = zod.object({
+  "storeId": zod.string(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "code": zod.string(),
+  "erpCode": zod.string().nullable(),
+  "active": zod.boolean(),
+  "deliveryFee": zod.number()
+})
+export const ListErpStoreMappingsResponse = zod.array(ListErpStoreMappingsResponseItem)
+
+
+/**
+ * @summary Set the ERP branch code of a store
+ */
+export const UpdateErpStoreMappingParams = zod.object({
+  "storeId": zod.coerce.string()
+})
+
+export const updateErpStoreMappingBodyErpCodeMax = 32;
+
+
+
+export const UpdateErpStoreMappingBody = zod.object({
+  "erpCode": zod.string().max(updateErpStoreMappingBodyErpCodeMax).nullable()
+})
+
+export const UpdateErpStoreMappingResponse = zod.object({
+  "storeId": zod.string(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "code": zod.string(),
+  "erpCode": zod.string().nullable(),
+  "active": zod.boolean(),
+  "deliveryFee": zod.number()
+})
+
+
+/**
+ * @summary History of requests received from the ERP
+ */
+export const listErpIntegrationEventsQueryLimitMax = 200;
+
+
+
+export const ListErpIntegrationEventsQueryParams = zod.object({
+  "outcome": zod.enum(['ALL', 'FAILED', 'CREATED', 'DUPLICATE', 'UPDATED', 'CANCELLED']).optional(),
+  "q": zod.coerce.string().optional(),
+  "limit": zod.coerce.number().int().min(1).max(listErpIntegrationEventsQueryLimitMax).optional()
+})
+
+export const ListErpIntegrationEventsResponseItem = zod.object({
+  "id": zod.string(),
+  "operation": zod.string(),
+  "saleId": zod.string().nullable(),
+  "storeCode": zod.string().nullable(),
+  "outcome": zod.string(),
+  "httpStatus": zod.number().int(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "deliveryId": zod.string().nullable(),
+  "deliveryCode": zod.string().nullable(),
+  "credentialName": zod.string().nullable(),
+  "clientIp": zod.string().nullable(),
+  "requestId": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "reprocessOf": zod.string().nullable(),
+  "reprocessedAt": zod.coerce.date().nullable(),
+  "reprocessedBy": zod.string().nullable(),
+  "canReprocess": zod.boolean(),
+  "payload": zod.unknown()
+})
+export const ListErpIntegrationEventsResponse = zod.array(ListErpIntegrationEventsResponseItem)
+
+
+/**
+ * @summary Reprocess a failed ERP request
+ */
+export const ReprocessErpIntegrationEventParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const ReprocessErpIntegrationEventResponse = zod.object({
+  "id": zod.string(),
+  "operation": zod.string(),
+  "saleId": zod.string().nullable(),
+  "storeCode": zod.string().nullable(),
+  "outcome": zod.string(),
+  "httpStatus": zod.number().int(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "deliveryId": zod.string().nullable(),
+  "deliveryCode": zod.string().nullable(),
+  "credentialName": zod.string().nullable(),
+  "clientIp": zod.string().nullable(),
+  "requestId": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "reprocessOf": zod.string().nullable(),
+  "reprocessedAt": zod.coerce.date().nullable(),
+  "reprocessedBy": zod.string().nullable(),
+  "canReprocess": zod.boolean(),
+  "payload": zod.unknown()
+})
+
+

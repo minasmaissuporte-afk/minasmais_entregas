@@ -1,0 +1,1614 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Minas Mais Entregas — Integração ERP",
+    "version": "1.0.0",
+    "description": "API para o ERP da Rede Minas Mais enviar automaticamente as vendas para entrega.\n\n**Fluxo:** venda finalizada no ERP e marcada como entrega → `POST /entregas` → a entrega é cadastrada na filial\ndo `codigoFilial`, aparece no painel da central e é oferecida aos motoboys da cidade (quem aceitar primeiro leva).\n\n**Autenticação:** token da integração no cabeçalho `Authorization: Bearer <token>` (ou `X-API-Key: <token>`).\nO token é gerado pelo administrador em *Integração ERP* e aparece uma única vez. Nunca coloque o token em URL.\n\n**Idempotência:** a venda é identificada pelo `idVenda`. Reenviar a mesma venda não cria outra entrega:\na resposta é `200` com `duplicada: true` e os dados da entrega existente (cabeçalho `Idempotent-Replayed: true`).\nVale também para envios simultâneos. Em caso de erro de rede ou `5xx`, reenvie a mesma requisição.\n\n**Limites:** 120 requisições por minuto por credencial (`429` com `Retry-After`).\nDepois de 20 tentativas com token inválido em 10 minutos, o IP fica bloqueado por 10 minutos.\nCorpo de até 64 KB. Somente HTTPS.\n\n**Erros:** sempre no formato `{ erro: { codigo, mensagem, detalhes? }, requestId }`. Informe o `requestId` ao suporte."
+  },
+  "servers": [
+    {
+      "url": "https://minas-mais-entregas.vercel.app/api/v1/erp",
+      "description": "Produção"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Entregas",
+      "description": "Envio, consulta, atualização e cancelamento de vendas para entrega"
+    },
+    {
+      "name": "Monitoramento",
+      "description": "Disponibilidade da integração"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Monitoramento"
+        ],
+        "summary": "Verificar disponibilidade",
+        "description": "Não precisa de token. Se o token for enviado, a resposta informa se ele é válido (`credencialValida`).",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Integração disponível",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                },
+                "example": {
+                  "status": "ok",
+                  "versao": "v1",
+                  "dataHora": "2026-11-19T13:30:00.000Z",
+                  "credencialValida": true
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Integração indisponível no momento",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "indisponivel",
+                  "versao": "v1",
+                  "dataHora": "2026-11-19T13:30:00.000Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entregas": {
+      "post": {
+        "tags": [
+          "Entregas"
+        ],
+        "summary": "Enviar venda para entrega",
+        "description": "Cadastra a entrega na filial do `codigoFilial` e envia para os motoboys. Se a venda já tiver sido recebida, devolve a entrega existente (200, `duplicada: true`).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Venda"
+              },
+              "examples": {
+                "dinheiro": {
+                  "summary": "Dinheiro com troco",
+                  "value": {
+                    "idVenda": "123456",
+                    "codigoFilial": "001",
+                    "dataVenda": "2026-11-19T10:30:00-03:00",
+                    "cliente": {
+                      "nome": "Maria da Silva",
+                      "telefone": "35999998888"
+                    },
+                    "endereco": {
+                      "cep": "37500-000",
+                      "rua": "Rua das Flores",
+                      "numero": "120",
+                      "bairro": "Centro",
+                      "cidade": "Itajubá",
+                      "estado": "MG",
+                      "complemento": "Apto 202",
+                      "referencia": "Em frente à praça"
+                    },
+                    "pedido": {
+                      "numeroPedido": "PED-98765",
+                      "valorTotal": 58.9,
+                      "formaPagamento": "DINHEIRO",
+                      "valorReceber": 66.9,
+                      "trocoPara": 100,
+                      "receita": false,
+                      "observacoes": "Interfone com defeito, ligar ao chegar."
+                    }
+                  }
+                },
+                "pago": {
+                  "summary": "Já pago (motoboy não cobra)",
+                  "value": {
+                    "idVenda": "123457",
+                    "codigoFilial": "001",
+                    "cliente": {
+                      "nome": "João Pereira"
+                    },
+                    "endereco": {
+                      "rua": "Av. Brasil",
+                      "numero": "45",
+                      "bairro": "Varginha",
+                      "cidade": "Itajubá",
+                      "estado": "MG"
+                    },
+                    "pedido": {
+                      "valorTotal": 32.5,
+                      "pago": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Venda já recebida antes (nenhuma entrega nova foi criada)",
+            "headers": {
+              "Idempotent-Replayed": {
+                "schema": {
+                  "type": "string",
+                  "example": "true"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaEntrega"
+                },
+                "example": {
+                  "duplicada": true,
+                  "mensagem": "Esta venda já tinha sido recebida. Nenhuma entrega nova foi criada.",
+                  "entrega": {
+                    "idVenda": "123456",
+                    "codigoEntrega": "MM-000231",
+                    "status": "OFFERED",
+                    "situacao": "Aguardando um motoboy aceitar",
+                    "filial": {
+                      "codigo": "001",
+                      "nome": "Drogaria Minas Mais Centro"
+                    },
+                    "cliente": {
+                      "nome": "Maria da Silva",
+                      "telefone": "35999998888"
+                    },
+                    "endereco": "Rua das Flores, 120, Apto 202 - Centro, Itajubá - MG, 37500-000",
+                    "numeroPedido": "PED-98765",
+                    "pagamento": {
+                      "formaPagamento": "DINHEIRO",
+                      "pago": false,
+                      "valorProdutos": 58.9,
+                      "taxaEntrega": 8,
+                      "valorCobrarNaEntrega": 66.9,
+                      "trocoPara": 100
+                    },
+                    "motoboy": null,
+                    "criadaEm": "2026-11-19T13:30:02.000Z",
+                    "atualizadaEm": "2026-11-19T13:30:02.000Z",
+                    "historico": [
+                      {
+                        "data": "2026-11-19T13:30:02.000Z",
+                        "descricao": "Entrega solicitada pelo ERP (venda 123456)"
+                      },
+                      {
+                        "data": "2026-11-19T13:30:02.000Z",
+                        "descricao": "Enviada para os motoboys de Itajubá"
+                      }
+                    ]
+                  },
+                  "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Entrega cadastrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaEntrega"
+                },
+                "example": {
+                  "duplicada": false,
+                  "mensagem": "Entrega cadastrada e enviada para os motoboys.",
+                  "entrega": {
+                    "idVenda": "123456",
+                    "codigoEntrega": "MM-000231",
+                    "status": "OFFERED",
+                    "situacao": "Aguardando um motoboy aceitar",
+                    "filial": {
+                      "codigo": "001",
+                      "nome": "Drogaria Minas Mais Centro"
+                    },
+                    "cliente": {
+                      "nome": "Maria da Silva",
+                      "telefone": "35999998888"
+                    },
+                    "endereco": "Rua das Flores, 120, Apto 202 - Centro, Itajubá - MG, 37500-000",
+                    "numeroPedido": "PED-98765",
+                    "pagamento": {
+                      "formaPagamento": "DINHEIRO",
+                      "pago": false,
+                      "valorProdutos": 58.9,
+                      "taxaEntrega": 8,
+                      "valorCobrarNaEntrega": 66.9,
+                      "trocoPara": 100
+                    },
+                    "motoboy": null,
+                    "criadaEm": "2026-11-19T13:30:02.000Z",
+                    "atualizadaEm": "2026-11-19T13:30:02.000Z",
+                    "historico": [
+                      {
+                        "data": "2026-11-19T13:30:02.000Z",
+                        "descricao": "Entrega solicitada pelo ERP (venda 123456)"
+                      },
+                      {
+                        "data": "2026-11-19T13:30:02.000Z",
+                        "descricao": "Enviada para os motoboys de Itajubá"
+                      }
+                    ]
+                  },
+                  "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos ou JSON malformado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "dados": {
+                    "value": {
+                      "erro": {
+                        "codigo": "DADOS_INVALIDOS",
+                        "mensagem": "Confira os campos enviados.",
+                        "detalhes": [
+                          {
+                            "campo": "cliente.nome",
+                            "mensagem": "obrigatório"
+                          },
+                          {
+                            "campo": "endereco.rua",
+                            "mensagem": "obrigatório"
+                          }
+                        ]
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  },
+                  "json": {
+                    "value": {
+                      "erro": {
+                        "codigo": "JSON_INVALIDO",
+                        "mensagem": "O corpo da requisição não é um JSON válido."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credencial ausente, inválida ou revogada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "ausente": {
+                    "value": {
+                      "erro": {
+                        "codigo": "CREDENCIAL_AUSENTE",
+                        "mensagem": "Envie o token no cabeçalho Authorization: Bearer <token>."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  },
+                  "invalida": {
+                    "value": {
+                      "erro": {
+                        "codigo": "CREDENCIAL_INVALIDA",
+                        "mensagem": "Credencial inválida ou revogada."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A venda não pode ser cadastrada (regra de negócio).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "filial": {
+                    "value": {
+                      "erro": {
+                        "codigo": "FILIAL_NAO_CADASTRADA",
+                        "mensagem": "A filial \"099\" não está vinculada no Sistema de Entregas. Peça ao administrador para cadastrar o código da filial do ERP."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  },
+                  "inativa": {
+                    "value": {
+                      "erro": {
+                        "codigo": "FILIAL_INATIVA",
+                        "mensagem": "A filial \"001\" está inativa no Sistema de Entregas."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  },
+                  "tarifa": {
+                    "value": {
+                      "erro": {
+                        "codigo": "FILIAL_SEM_TARIFA",
+                        "mensagem": "A filial \"001\" ainda não tem a taxa de entrega configurada."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  },
+                  "pagamento": {
+                    "value": {
+                      "erro": {
+                        "codigo": "FORMA_PAGAMENTO_OBRIGATORIA",
+                        "mensagem": "Informe pedido.formaPagamento (ou pedido.pago = true).",
+                        "detalhes": [
+                          {
+                            "campo": "pedido.formaPagamento",
+                            "mensagem": "obrigatório quando o pedido não está pago"
+                          }
+                        ]
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de requisições atingido. Respeite o cabeçalho Retry-After (segundos).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "limite": {
+                    "value": {
+                      "erro": {
+                        "codigo": "LIMITE_REQUISICOES",
+                        "mensagem": "Limite de 120 requisições por minuto atingido. Tente de novo em 1 minuto."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno. Pode reenviar a mesma requisição (é idempotente).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "interno": {
+                    "value": {
+                      "erro": {
+                        "codigo": "ERRO_INTERNO",
+                        "mensagem": "Erro interno. Tente de novo em instantes."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entregas/{idVenda}": {
+      "get": {
+        "tags": [
+          "Entregas"
+        ],
+        "summary": "Consultar entrega pela venda",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idVenda",
+            "required": true,
+            "description": "ID da venda no ERP (o mesmo enviado em `idVenda`).",
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9._\\-/]+$"
+            },
+            "example": "123456"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Situação atual da entrega",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaConsulta"
+                },
+                "example": {
+                  "entrega": {
+                    "idVenda": "123456",
+                    "codigoEntrega": "MM-000231",
+                    "status": "OFFERED",
+                    "situacao": "Aguardando um motoboy aceitar",
+                    "filial": {
+                      "codigo": "001",
+                      "nome": "Drogaria Minas Mais Centro"
+                    },
+                    "cliente": {
+                      "nome": "Maria da Silva",
+                      "telefone": "35999998888"
+                    },
+                    "endereco": "Rua das Flores, 120, Apto 202 - Centro, Itajubá - MG, 37500-000",
+                    "numeroPedido": "PED-98765",
+                    "pagamento": {
+                      "formaPagamento": "DINHEIRO",
+                      "pago": false,
+                      "valorProdutos": 58.9,
+                      "taxaEntrega": 8,
+                      "valorCobrarNaEntrega": 66.9,
+                      "trocoPara": 100
+                    },
+                    "motoboy": null,
+                    "criadaEm": "2026-11-19T13:30:02.000Z",
+                    "atualizadaEm": "2026-11-19T13:30:02.000Z",
+                    "historico": [
+                      {
+                        "data": "2026-11-19T13:30:02.000Z",
+                        "descricao": "Entrega solicitada pelo ERP (venda 123456)"
+                      },
+                      {
+                        "data": "2026-11-19T13:30:02.000Z",
+                        "descricao": "Enviada para os motoboys de Itajubá"
+                      }
+                    ]
+                  },
+                  "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credencial ausente, inválida ou revogada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "ausente": {
+                    "value": {
+                      "erro": {
+                        "codigo": "CREDENCIAL_AUSENTE",
+                        "mensagem": "Envie o token no cabeçalho Authorization: Bearer <token>."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  },
+                  "invalida": {
+                    "value": {
+                      "erro": {
+                        "codigo": "CREDENCIAL_INVALIDA",
+                        "mensagem": "Credencial inválida ou revogada."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Venda não encontrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "naoEncontrada": {
+                    "value": {
+                      "erro": {
+                        "codigo": "VENDA_NAO_ENCONTRADA",
+                        "mensagem": "Nenhuma entrega com a venda \"123456\"."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de requisições atingido. Respeite o cabeçalho Retry-After (segundos).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "limite": {
+                    "value": {
+                      "erro": {
+                        "codigo": "LIMITE_REQUISICOES",
+                        "mensagem": "Limite de 120 requisições por minuto atingido. Tente de novo em 1 minuto."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Entregas"
+        ],
+        "summary": "Atualizar dados da entrega",
+        "description": "Envie só o que mudou. Os campos enviados substituem os anteriores.\n- `cliente` e `pedido`: atualização parcial (campo a campo).\n- `endereco`: se enviado, vem completo e só pode mudar **antes de um motoboy aceitar** (senão `409 ENDERECO_BLOQUEADO`).\n- A filial não muda (`409 FILIAL_NAO_ALTERAVEL`): cancele e envie a venda de novo.\n- Entrega encerrada (entregue, cancelada) não muda (`409 ENTREGA_ENCERRADA`).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idVenda",
+            "required": true,
+            "description": "ID da venda no ERP (o mesmo enviado em `idVenda`).",
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9._\\-/]+$"
+            },
+            "example": "123456"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AtualizacaoVenda"
+              },
+              "example": {
+                "cliente": {
+                  "telefone": "35988887777"
+                },
+                "pedido": {
+                  "formaPagamento": "PIX",
+                  "observacoes": "Cliente pediu para chamar no portão."
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Atualizada (ou nada mudou, `alterada: false`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaAtualizacao"
+                },
+                "example": {
+                  "alterada": true,
+                  "mensagem": "Entrega atualizada.",
+                  "entrega": {
+                    "idVenda": "123456",
+                    "codigoEntrega": "MM-000231",
+                    "status": "OFFERED",
+                    "situacao": "Aguardando um motoboy aceitar",
+                    "filial": {
+                      "codigo": "001",
+                      "nome": "Drogaria Minas Mais Centro"
+                    },
+                    "cliente": {
+                      "nome": "Maria da Silva",
+                      "telefone": "35999998888"
+                    },
+                    "endereco": "Rua das Flores, 120, Apto 202 - Centro, Itajubá - MG, 37500-000",
+                    "numeroPedido": "PED-98765",
+                    "pagamento": {
+                      "formaPagamento": "DINHEIRO",
+                      "pago": false,
+                      "valorProdutos": 58.9,
+                      "taxaEntrega": 8,
+                      "valorCobrarNaEntrega": 66.9,
+                      "trocoPara": 100
+                    },
+                    "motoboy": null,
+                    "criadaEm": "2026-11-19T13:30:02.000Z",
+                    "atualizadaEm": "2026-11-19T13:30:02.000Z",
+                    "historico": [
+                      {
+                        "data": "2026-11-19T13:30:02.000Z",
+                        "descricao": "Entrega solicitada pelo ERP (venda 123456)"
+                      },
+                      {
+                        "data": "2026-11-19T13:30:02.000Z",
+                        "descricao": "Enviada para os motoboys de Itajubá"
+                      }
+                    ]
+                  },
+                  "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "dados": {
+                    "value": {
+                      "erro": {
+                        "codigo": "DADOS_INVALIDOS",
+                        "mensagem": "Confira os campos enviados.",
+                        "detalhes": [
+                          {
+                            "campo": "pedido.formaPagamento",
+                            "mensagem": "use um destes valores: DINHEIRO, PIX, CARTAO, CARTAO_CREDITO, CARTAO_DEBITO, PAGO"
+                          }
+                        ]
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credencial ausente, inválida ou revogada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "ausente": {
+                    "value": {
+                      "erro": {
+                        "codigo": "CREDENCIAL_AUSENTE",
+                        "mensagem": "Envie o token no cabeçalho Authorization: Bearer <token>."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  },
+                  "invalida": {
+                    "value": {
+                      "erro": {
+                        "codigo": "CREDENCIAL_INVALIDA",
+                        "mensagem": "Credencial inválida ou revogada."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Venda não encontrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "naoEncontrada": {
+                    "value": {
+                      "erro": {
+                        "codigo": "VENDA_NAO_ENCONTRADA",
+                        "mensagem": "Nenhuma entrega com a venda \"123456\"."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A alteração não é permitida na situação atual da entrega.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "encerrada": {
+                    "value": {
+                      "erro": {
+                        "codigo": "ENTREGA_ENCERRADA",
+                        "mensagem": "A entrega MM-000231 já foi encerrada (Entregue) e não pode mudar."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  },
+                  "endereco": {
+                    "value": {
+                      "erro": {
+                        "codigo": "ENDERECO_BLOQUEADO",
+                        "mensagem": "O endereço só pode mudar antes de um motoboy aceitar a entrega. Fale com a central ou cancele e envie de novo."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  },
+                  "filial": {
+                    "value": {
+                      "erro": {
+                        "codigo": "FILIAL_NAO_ALTERAVEL",
+                        "mensagem": "Não dá para trocar a filial de uma entrega. Cancele a venda e envie de novo com a filial certa."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de requisições atingido. Respeite o cabeçalho Retry-After (segundos).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "limite": {
+                    "value": {
+                      "erro": {
+                        "codigo": "LIMITE_REQUISICOES",
+                        "mensagem": "Limite de 120 requisições por minuto atingido. Tente de novo em 1 minuto."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno. Pode reenviar a mesma requisição (é idempotente).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "interno": {
+                    "value": {
+                      "erro": {
+                        "codigo": "ERRO_INTERNO",
+                        "mensagem": "Erro interno. Tente de novo em instantes."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entregas/{idVenda}/cancelar": {
+      "post": {
+        "tags": [
+          "Entregas"
+        ],
+        "summary": "Cancelar entrega",
+        "description": "Cancela a entrega e libera o motoboy (que recebe um aviso). Repetir o cancelamento não dá erro (`jaEstavaCancelada: true`). Entrega já entregue não pode ser cancelada.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idVenda",
+            "required": true,
+            "description": "ID da venda no ERP (o mesmo enviado em `idVenda`).",
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9._\\-/]+$"
+            },
+            "example": "123456"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Cancelamento"
+              },
+              "example": {
+                "motivo": "Venda estornada no caixa"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancelada (ou já estava)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaCancelamento"
+                },
+                "example": {
+                  "jaEstavaCancelada": false,
+                  "mensagem": "Entrega cancelada.",
+                  "entrega": {
+                    "idVenda": "123456",
+                    "codigoEntrega": "MM-000231",
+                    "status": "CANCELLED",
+                    "situacao": "Cancelada",
+                    "filial": {
+                      "codigo": "001",
+                      "nome": "Drogaria Minas Mais Centro"
+                    },
+                    "cliente": {
+                      "nome": "Maria da Silva",
+                      "telefone": "35999998888"
+                    },
+                    "endereco": "Rua das Flores, 120, Apto 202 - Centro, Itajubá - MG, 37500-000",
+                    "numeroPedido": "PED-98765",
+                    "pagamento": {
+                      "formaPagamento": "DINHEIRO",
+                      "pago": false,
+                      "valorProdutos": 58.9,
+                      "taxaEntrega": 8,
+                      "valorCobrarNaEntrega": 66.9,
+                      "trocoPara": 100
+                    },
+                    "motoboy": null,
+                    "criadaEm": "2026-11-19T13:30:02.000Z",
+                    "atualizadaEm": "2026-11-19T13:30:02.000Z",
+                    "historico": [
+                      {
+                        "data": "2026-11-19T13:30:02.000Z",
+                        "descricao": "Entrega solicitada pelo ERP (venda 123456)"
+                      },
+                      {
+                        "data": "2026-11-19T13:30:02.000Z",
+                        "descricao": "Enviada para os motoboys de Itajubá"
+                      }
+                    ]
+                  },
+                  "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credencial ausente, inválida ou revogada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "ausente": {
+                    "value": {
+                      "erro": {
+                        "codigo": "CREDENCIAL_AUSENTE",
+                        "mensagem": "Envie o token no cabeçalho Authorization: Bearer <token>."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  },
+                  "invalida": {
+                    "value": {
+                      "erro": {
+                        "codigo": "CREDENCIAL_INVALIDA",
+                        "mensagem": "Credencial inválida ou revogada."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Venda não encontrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "naoEncontrada": {
+                    "value": {
+                      "erro": {
+                        "codigo": "VENDA_NAO_ENCONTRADA",
+                        "mensagem": "Nenhuma entrega com a venda \"123456\"."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Não pode cancelar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "encerrada": {
+                    "value": {
+                      "erro": {
+                        "codigo": "ENTREGA_ENCERRADA",
+                        "mensagem": "A entrega MM-000231 já foi encerrada (Entregue) e não pode ser cancelada."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  },
+                  "rota": {
+                    "value": {
+                      "erro": {
+                        "codigo": "ENTREGA_EM_ROTA",
+                        "mensagem": "A entrega MM-000231 está numa rota agrupada. A central precisa tirá-la da rota antes de cancelar."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de requisições atingido. Respeite o cabeçalho Retry-After (segundos).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "limite": {
+                    "value": {
+                      "erro": {
+                        "codigo": "LIMITE_REQUISICOES",
+                        "mensagem": "Limite de 120 requisições por minuto atingido. Tente de novo em 1 minuto."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno. Pode reenviar a mesma requisição (é idempotente).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "examples": {
+                  "interno": {
+                    "value": {
+                      "erro": {
+                        "codigo": "ERRO_INTERNO",
+                        "mensagem": "Erro interno. Tente de novo em instantes."
+                      },
+                      "requestId": "5d1f2a64-3c3e-4f0f-9a51-1b2c3d4e5f60"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "mmerp_<prefixo>_<segredo>",
+        "description": "Token gerado em Integração ERP (painel do administrador)."
+      },
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Alternativa ao Authorization: o mesmo token."
+      }
+    },
+    "schemas": {
+      "Venda": {
+        "type": "object",
+        "required": [
+          "idVenda",
+          "codigoFilial",
+          "cliente",
+          "endereco"
+        ],
+        "properties": {
+          "idVenda": {
+            "type": [
+              "string",
+              "number"
+            ],
+            "maxLength": 64,
+            "description": "ID único da venda no ERP. Letras, números, `.`, `-`, `/` e `_`.",
+            "example": "123456"
+          },
+          "codigoFilial": {
+            "type": [
+              "string",
+              "number"
+            ],
+            "maxLength": 32,
+            "description": "Código da filial no ERP (cadastrado pelo administrador no Sistema de Entregas).",
+            "example": "001"
+          },
+          "dataVenda": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Data e hora da venda (ISO 8601 com fuso).",
+            "example": "2026-11-19T10:30:00-03:00"
+          },
+          "cliente": {
+            "type": "object",
+            "required": [
+              "nome"
+            ],
+            "properties": {
+              "nome": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 120,
+                "example": "Maria da Silva"
+              },
+              "telefone": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 30,
+                "description": "Telefone com DDD.",
+                "example": "35999998888"
+              }
+            }
+          },
+          "endereco": {
+            "type": "object",
+            "required": [
+              "rua"
+            ],
+            "properties": {
+              "cep": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 12,
+                "description": "CEP.",
+                "example": "37500-000"
+              },
+              "rua": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 160,
+                "description": "Logradouro.",
+                "example": "Rua das Flores"
+              },
+              "numero": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 20,
+                "description": "Número (vazio = s/n).",
+                "example": "120"
+              },
+              "bairro": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 80,
+                "description": "Bairro.",
+                "example": "Centro"
+              },
+              "cidade": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 80,
+                "description": "Cidade (vazio = cidade da filial).",
+                "example": "Itajubá"
+              },
+              "estado": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 2,
+                "description": "UF.",
+                "example": "MG"
+              },
+              "complemento": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 120,
+                "description": "Complemento.",
+                "example": "Apto 202"
+              },
+              "referencia": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 200,
+                "description": "Ponto de referência (vai para as observações).",
+                "example": "Em frente à praça"
+              }
+            }
+          },
+          "pedido": {
+            "type": "object",
+            "properties": {
+              "numeroPedido": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 60,
+                "description": "Número do pedido/cupom mostrado ao motoboy. Padrão: o idVenda.",
+                "example": "PED-98765"
+              },
+              "valorTotal": {
+                "type": [
+                  "number",
+                  "string",
+                  "null"
+                ],
+                "minimum": 0,
+                "description": "Valor dos produtos (sem a taxa de entrega). O motoboy cobra este valor + a taxa de entrega da filial. Aceita número (58.9) ou texto (\"58,90\").",
+                "example": 58.9
+              },
+              "formaPagamento": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "DINHEIRO",
+                  "PIX",
+                  "CARTAO",
+                  "CARTAO_CREDITO",
+                  "CARTAO_DEBITO",
+                  "PAGO",
+                  null
+                ],
+                "description": "Obrigatório quando o pedido não está pago. Sem diferenciar maiúsculas/acentos.",
+                "example": "DINHEIRO"
+              },
+              "valorReceber": {
+                "type": [
+                  "number",
+                  "string",
+                  "null"
+                ],
+                "minimum": 0,
+                "description": "Valor a receber na entrega. `0` = já pago. Se for diferente de produtos + taxa, aparece como aviso para a central e o motoboy. Aceita número (58.9) ou texto (\"58,90\").",
+                "example": 66.9
+              },
+              "trocoPara": {
+                "type": [
+                  "number",
+                  "string",
+                  "null"
+                ],
+                "minimum": 0,
+                "description": "Troco para quanto (só dinheiro). Aceita número (58.9) ou texto (\"58,90\").",
+                "example": 100
+              },
+              "levarMaquininha": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Só cartão. Padrão: true.",
+                "example": true
+              },
+              "pago": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "true = cliente já pagou produtos e entrega; o motoboy não cobra.",
+                "example": false
+              },
+              "receita": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Medicamento com receita: o motoboy recolhe a receita.",
+                "example": false
+              },
+              "observacoes": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 500,
+                "description": "Observações da entrega.",
+                "example": "Interfone com defeito, ligar ao chegar."
+              }
+            }
+          }
+        }
+      },
+      "AtualizacaoVenda": {
+        "type": "object",
+        "description": "Mesmos campos da venda, todos opcionais. `idVenda` vai na URL.",
+        "properties": {
+          "codigoFilial": {
+            "type": [
+              "string",
+              "number"
+            ],
+            "description": "Se enviado, precisa ser a mesma filial."
+          },
+          "dataVenda": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "cliente": {
+            "type": "object",
+            "properties": {
+              "nome": {
+                "type": "string"
+              },
+              "telefone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "endereco": {
+            "$ref": "#/components/schemas/Venda/properties/endereco"
+          },
+          "pedido": {
+            "$ref": "#/components/schemas/Venda/properties/pedido"
+          }
+        }
+      },
+      "Cancelamento": {
+        "type": "object",
+        "properties": {
+          "motivo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 300,
+            "description": "Motivo do cancelamento (aparece no histórico).",
+            "example": "Venda estornada no caixa"
+          }
+        }
+      },
+      "Entrega": {
+        "type": "object",
+        "properties": {
+          "idVenda": {
+            "type": "string"
+          },
+          "codigoEntrega": {
+            "type": "string",
+            "description": "Código no Sistema de Entregas (MM-000000)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "REQUESTED",
+              "OFFERED",
+              "AWAITING_COURIER",
+              "ACCEPTED",
+              "TO_STORE",
+              "AT_STORE",
+              "IN_TRANSIT",
+              "COMPLETED",
+              "CANCELLED",
+              "NOT_DELIVERED",
+              "RETURNING_TO_STORE",
+              "PRODUCT_RETURNED"
+            ],
+            "description": "REQUESTED/OFFERED/AWAITING_COURIER: aguardando motoboy · ACCEPTED/TO_STORE/AT_STORE: motoboy indo/na filial · IN_TRANSIT: saiu para entrega · COMPLETED: entregue · CANCELLED: cancelada · NOT_DELIVERED: não entregue."
+          },
+          "situacao": {
+            "type": "string",
+            "description": "Situação em português."
+          },
+          "filial": {
+            "type": "object",
+            "properties": {
+              "codigo": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nome": {
+                "type": "string"
+              }
+            }
+          },
+          "cliente": {
+            "type": "object",
+            "properties": {
+              "nome": {
+                "type": "string"
+              },
+              "telefone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "endereco": {
+            "type": "string"
+          },
+          "numeroPedido": {
+            "type": "string"
+          },
+          "pagamento": {
+            "type": "object",
+            "properties": {
+              "formaPagamento": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "DINHEIRO",
+                  "PIX",
+                  "CARTAO",
+                  "PAGO",
+                  null
+                ]
+              },
+              "pago": {
+                "type": "boolean"
+              },
+              "valorProdutos": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "taxaEntrega": {
+                "type": "number"
+              },
+              "valorCobrarNaEntrega": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "trocoPara": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          },
+          "motoboy": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "nome": {
+                "type": "string",
+                "description": "Primeiro nome."
+              }
+            }
+          },
+          "criadaEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "atualizadaEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "historico": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "data": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "descricao": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "RespostaEntrega": {
+        "type": "object",
+        "properties": {
+          "duplicada": {
+            "type": "boolean"
+          },
+          "mensagem": {
+            "type": "string"
+          },
+          "entrega": {
+            "$ref": "#/components/schemas/Entrega"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        }
+      },
+      "RespostaConsulta": {
+        "type": "object",
+        "properties": {
+          "entrega": {
+            "$ref": "#/components/schemas/Entrega"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        }
+      },
+      "RespostaAtualizacao": {
+        "type": "object",
+        "properties": {
+          "alterada": {
+            "type": "boolean"
+          },
+          "mensagem": {
+            "type": "string"
+          },
+          "entrega": {
+            "$ref": "#/components/schemas/Entrega"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        }
+      },
+      "RespostaCancelamento": {
+        "type": "object",
+        "properties": {
+          "jaEstavaCancelada": {
+            "type": "boolean"
+          },
+          "mensagem": {
+            "type": "string"
+          },
+          "entrega": {
+            "$ref": "#/components/schemas/Entrega"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "indisponivel"
+            ]
+          },
+          "versao": {
+            "type": "string"
+          },
+          "dataHora": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "credencialValida": {
+            "type": "boolean",
+            "description": "Só aparece se um token foi enviado."
+          }
+        }
+      },
+      "Erro": {
+        "type": "object",
+        "required": [
+          "erro",
+          "requestId"
+        ],
+        "properties": {
+          "erro": {
+            "type": "object",
+            "required": [
+              "codigo",
+              "mensagem"
+            ],
+            "properties": {
+              "codigo": {
+                "type": "string",
+                "example": "DADOS_INVALIDOS"
+              },
+              "mensagem": {
+                "type": "string"
+              },
+              "detalhes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "campo": {
+                      "type": "string"
+                    },
+                    "mensagem": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Identificador da requisição para o suporte."
+          }
+        }
+      }
+    }
+  }
+}

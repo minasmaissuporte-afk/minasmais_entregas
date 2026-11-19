@@ -22,6 +22,8 @@ tags:
     description: Courier-specific operations
   - name: routes
     description: Grouped courier routes and optimized stops
+  - name: erp
+    description: ERP integration administration
 paths:
   /healthz:
     get:
@@ -1101,8 +1103,245 @@ paths:
           description: Delivery is not offered to the signed-in courier
         "409":
           description: Delivery is no longer offered
+  /admin/erp/summary:
+    get:
+      operationId: getErpIntegrationSummary
+      tags: [erp]
+      summary: ERP integration status for administrators
+      responses:
+        "200":
+          description: Integration summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErpIntegrationSummary"
+  /admin/erp/credentials:
+    get:
+      operationId: listErpCredentials
+      tags: [erp]
+      summary: List ERP API credentials (without secrets)
+      responses:
+        "200":
+          description: Credentials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ErpCredential"
+    post:
+      operationId: createErpCredential
+      tags: [erp]
+      summary: Create an ERP API credential (token is shown once)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErpCredentialInput"
+      responses:
+        "201":
+          description: Credential created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErpCredentialCreated"
+  /admin/erp/credentials/{credentialId}/revoke:
+    post:
+      operationId: revokeErpCredential
+      tags: [erp]
+      summary: Revoke an ERP API credential
+      parameters:
+        - in: path
+          name: credentialId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Credential revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErpCredential"
+  /admin/erp/stores:
+    get:
+      operationId: listErpStoreMappings
+      tags: [erp]
+      summary: Stores with their ERP branch codes
+      responses:
+        "200":
+          description: Store mappings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ErpStoreMapping"
+  /admin/erp/stores/{storeId}:
+    put:
+      operationId: updateErpStoreMapping
+      tags: [erp]
+      summary: Set the ERP branch code of a store
+      parameters:
+        - in: path
+          name: storeId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErpStoreMappingInput"
+      responses:
+        "200":
+          description: Store mapping updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErpStoreMapping"
+  /admin/erp/events:
+    get:
+      operationId: listErpIntegrationEvents
+      tags: [erp]
+      summary: History of requests received from the ERP
+      parameters:
+        - in: query
+          name: outcome
+          required: false
+          schema:
+            type: string
+            enum: [ALL, FAILED, CREATED, DUPLICATE, UPDATED, CANCELLED]
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Integration events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ErpIntegrationEvent"
+  /admin/erp/events/{eventId}/reprocess:
+    post:
+      operationId: reprocessErpIntegrationEvent
+      tags: [erp]
+      summary: Reprocess a failed ERP request
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reprocess result (new event)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErpIntegrationEvent"
 components:
   schemas:
+    ErpIntegrationSummary:
+      type: object
+      required: [operational, databaseOk, baseUrl, docsUrl, openApiUrl, activeCredentials, storesMapped, storesActive, last24h, lastReceivedAt, lastFailureAt]
+      properties:
+        operational: { type: boolean }
+        databaseOk: { type: boolean }
+        baseUrl: { type: string }
+        docsUrl: { type: string }
+        openApiUrl: { type: string }
+        activeCredentials: { type: integer }
+        storesMapped: { type: integer }
+        storesActive: { type: integer }
+        last24h:
+          type: object
+          required: [received, created, duplicates, updated, cancelled, failed]
+          properties:
+            received: { type: integer }
+            created: { type: integer }
+            duplicates: { type: integer }
+            updated: { type: integer }
+            cancelled: { type: integer }
+            failed: { type: integer }
+        lastReceivedAt: { type: ["string", "null"], format: date-time }
+        lastFailureAt: { type: ["string", "null"], format: date-time }
+    ErpCredential:
+      type: object
+      required: [id, name, keyPrefix, createdAt, createdBy, lastUsedAt, revokedAt, revokedBy]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        keyPrefix: { type: string }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: ["string", "null"] }
+        lastUsedAt: { type: ["string", "null"], format: date-time }
+        revokedAt: { type: ["string", "null"], format: date-time }
+        revokedBy: { type: ["string", "null"] }
+    ErpCredentialInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+    ErpCredentialCreated:
+      type: object
+      required: [credential, token]
+      properties:
+        credential:
+          $ref: "#/components/schemas/ErpCredential"
+        token: { type: string }
+    ErpStoreMapping:
+      type: object
+      required: [storeId, name, city, code, erpCode, active, deliveryFee]
+      properties:
+        storeId: { type: string }
+        name: { type: string }
+        city: { type: string }
+        code: { type: string }
+        erpCode: { type: ["string", "null"] }
+        active: { type: boolean }
+        deliveryFee: { type: number }
+    ErpStoreMappingInput:
+      type: object
+      required: [erpCode]
+      properties:
+        erpCode: { type: ["string", "null"], maxLength: 32 }
+    ErpIntegrationEvent:
+      type: object
+      required: [id, operation, saleId, storeCode, outcome, httpStatus, errorCode, errorMessage, deliveryId, deliveryCode, credentialName, clientIp, requestId, createdAt, reprocessOf, reprocessedAt, reprocessedBy, canReprocess, payload]
+      properties:
+        id: { type: string }
+        operation: { type: string }
+        saleId: { type: ["string", "null"] }
+        storeCode: { type: ["string", "null"] }
+        outcome: { type: string }
+        httpStatus: { type: integer }
+        errorCode: { type: ["string", "null"] }
+        errorMessage: { type: ["string", "null"] }
+        deliveryId: { type: ["string", "null"] }
+        deliveryCode: { type: ["string", "null"] }
+        credentialName: { type: ["string", "null"] }
+        clientIp: { type: ["string", "null"] }
+        requestId: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        reprocessOf: { type: ["string", "null"] }
+        reprocessedAt: { type: ["string", "null"], format: date-time }
+        reprocessedBy: { type: ["string", "null"] }
+        canReprocess: { type: boolean }
+        payload: {}
     HealthStatus:
       type: object
       properties:

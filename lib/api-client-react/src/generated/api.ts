@@ -60,6 +60,13 @@ import type {
   DemoDataCleanupInput,
   DemoDataCleanupSummary,
   DispatchInput,
+  ErpCredential,
+  ErpCredentialCreated,
+  ErpCredentialInput,
+  ErpIntegrationEvent,
+  ErpIntegrationSummary,
+  ErpStoreMapping,
+  ErpStoreMappingInput,
   GetAddressDetailsParams,
   GetCourierEarningsParams,
   GetDeliveryAnalyticsParams,
@@ -67,6 +74,7 @@ import type {
   HealthStatus,
   ListCouriersParams,
   ListDeliveriesParams,
+  ListErpIntegrationEventsParams,
   NativePushTokenInput,
   PayCourierInput,
   PayCourierResult,
@@ -5125,5 +5133,741 @@ export const useDeclineCourierDelivery = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getDeclineCourierDeliveryMutationOptions(options), queryClient);
+    }
+
+export const getGetErpIntegrationSummaryUrl = () => {
+
+
+
+
+  return `/api/admin/erp/summary`
+}
+
+/**
+ * @summary ERP integration status for administrators
+ */
+export const getErpIntegrationSummary = async ( options?: Parameters<typeof customFetch>[1]): Promise<ErpIntegrationSummary> => {
+
+  return customFetch<ErpIntegrationSummary>(getGetErpIntegrationSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetErpIntegrationSummaryQueryKey = () => {
+    return [
+    `/api/admin/erp/summary`
+    ] as const;
+    }
+
+
+export const getGetErpIntegrationSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getErpIntegrationSummary>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getErpIntegrationSummary>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetErpIntegrationSummaryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getErpIntegrationSummary>>> = ({ signal }) => getErpIntegrationSummary({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getErpIntegrationSummary>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetErpIntegrationSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getErpIntegrationSummary>>>
+export type GetErpIntegrationSummaryQueryError = ErrorType<unknown>
+
+
+export function useGetErpIntegrationSummary<TData = Awaited<ReturnType<typeof getErpIntegrationSummary>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getErpIntegrationSummary>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getErpIntegrationSummary>>,
+          TError,
+          Awaited<ReturnType<typeof getErpIntegrationSummary>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetErpIntegrationSummary<TData = Awaited<ReturnType<typeof getErpIntegrationSummary>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getErpIntegrationSummary>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getErpIntegrationSummary>>,
+          TError,
+          Awaited<ReturnType<typeof getErpIntegrationSummary>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetErpIntegrationSummary<TData = Awaited<ReturnType<typeof getErpIntegrationSummary>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getErpIntegrationSummary>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary ERP integration status for administrators
+ */
+
+export function useGetErpIntegrationSummary<TData = Awaited<ReturnType<typeof getErpIntegrationSummary>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getErpIntegrationSummary>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetErpIntegrationSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListErpCredentialsUrl = () => {
+
+
+
+
+  return `/api/admin/erp/credentials`
+}
+
+/**
+ * @summary List ERP API credentials (without secrets)
+ */
+export const listErpCredentials = async ( options?: Parameters<typeof customFetch>[1]): Promise<ErpCredential[]> => {
+
+  return customFetch<ErpCredential[]>(getListErpCredentialsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListErpCredentialsQueryKey = () => {
+    return [
+    `/api/admin/erp/credentials`
+    ] as const;
+    }
+
+
+export const getListErpCredentialsQueryOptions = <TData = Awaited<ReturnType<typeof listErpCredentials>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpCredentials>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListErpCredentialsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listErpCredentials>>> = ({ signal }) => listErpCredentials({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listErpCredentials>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListErpCredentialsQueryResult = NonNullable<Awaited<ReturnType<typeof listErpCredentials>>>
+export type ListErpCredentialsQueryError = ErrorType<unknown>
+
+
+export function useListErpCredentials<TData = Awaited<ReturnType<typeof listErpCredentials>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpCredentials>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listErpCredentials>>,
+          TError,
+          Awaited<ReturnType<typeof listErpCredentials>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListErpCredentials<TData = Awaited<ReturnType<typeof listErpCredentials>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpCredentials>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listErpCredentials>>,
+          TError,
+          Awaited<ReturnType<typeof listErpCredentials>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListErpCredentials<TData = Awaited<ReturnType<typeof listErpCredentials>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpCredentials>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List ERP API credentials (without secrets)
+ */
+
+export function useListErpCredentials<TData = Awaited<ReturnType<typeof listErpCredentials>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpCredentials>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListErpCredentialsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateErpCredentialUrl = () => {
+
+
+
+
+  return `/api/admin/erp/credentials`
+}
+
+/**
+ * @summary Create an ERP API credential (token is shown once)
+ */
+export const createErpCredential = async (erpCredentialInput: ErpCredentialInput, options?: Parameters<typeof customFetch>[1]): Promise<ErpCredentialCreated> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ErpCredentialCreated>(getCreateErpCredentialUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(erpCredentialInput)
+  }
+);}
+
+
+
+
+
+export const getCreateErpCredentialMutationKey = () => ['createErpCredential'] as const;
+
+export const getCreateErpCredentialMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createErpCredential>>, TError,CreateErpCredentialMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createErpCredential>>, TError,CreateErpCredentialMutationVariables, TContext> => {
+
+const mutationKey = getCreateErpCredentialMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createErpCredential>>, CreateErpCredentialMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createErpCredential(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateErpCredentialMutationResult = NonNullable<Awaited<ReturnType<typeof createErpCredential>>>
+    export type CreateErpCredentialMutationBody = BodyType<ErpCredentialInput>
+    export type CreateErpCredentialMutationError = ErrorType<unknown>
+    export type CreateErpCredentialMutationVariables = {data: BodyType<ErpCredentialInput>}
+
+    /**
+ * @summary Create an ERP API credential (token is shown once)
+ */
+export const useCreateErpCredential = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createErpCredential>>, TError,CreateErpCredentialMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createErpCredential>>,
+        TError,
+        CreateErpCredentialMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateErpCredentialMutationOptions(options), queryClient);
+    }
+
+export const getRevokeErpCredentialUrl = (credentialId: string,) => {
+
+
+
+
+  return `/api/admin/erp/credentials/${credentialId}/revoke`
+}
+
+/**
+ * @summary Revoke an ERP API credential
+ */
+export const revokeErpCredential = async (credentialId: string, options?: Parameters<typeof customFetch>[1]): Promise<ErpCredential> => {
+
+  return customFetch<ErpCredential>(getRevokeErpCredentialUrl(credentialId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRevokeErpCredentialMutationKey = () => ['revokeErpCredential'] as const;
+
+export const getRevokeErpCredentialMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeErpCredential>>, TError,RevokeErpCredentialMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeErpCredential>>, TError,RevokeErpCredentialMutationVariables, TContext> => {
+
+const mutationKey = getRevokeErpCredentialMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeErpCredential>>, RevokeErpCredentialMutationVariables> = (props) => {
+          const {credentialId} = props ?? {};
+
+          return  revokeErpCredential(credentialId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeErpCredentialMutationResult = NonNullable<Awaited<ReturnType<typeof revokeErpCredential>>>
+
+    export type RevokeErpCredentialMutationError = ErrorType<unknown>
+    export type RevokeErpCredentialMutationVariables = {credentialId: string}
+
+    /**
+ * @summary Revoke an ERP API credential
+ */
+export const useRevokeErpCredential = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeErpCredential>>, TError,RevokeErpCredentialMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof revokeErpCredential>>,
+        TError,
+        RevokeErpCredentialMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRevokeErpCredentialMutationOptions(options), queryClient);
+    }
+
+export const getListErpStoreMappingsUrl = () => {
+
+
+
+
+  return `/api/admin/erp/stores`
+}
+
+/**
+ * @summary Stores with their ERP branch codes
+ */
+export const listErpStoreMappings = async ( options?: Parameters<typeof customFetch>[1]): Promise<ErpStoreMapping[]> => {
+
+  return customFetch<ErpStoreMapping[]>(getListErpStoreMappingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListErpStoreMappingsQueryKey = () => {
+    return [
+    `/api/admin/erp/stores`
+    ] as const;
+    }
+
+
+export const getListErpStoreMappingsQueryOptions = <TData = Awaited<ReturnType<typeof listErpStoreMappings>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpStoreMappings>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListErpStoreMappingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listErpStoreMappings>>> = ({ signal }) => listErpStoreMappings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listErpStoreMappings>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListErpStoreMappingsQueryResult = NonNullable<Awaited<ReturnType<typeof listErpStoreMappings>>>
+export type ListErpStoreMappingsQueryError = ErrorType<unknown>
+
+
+export function useListErpStoreMappings<TData = Awaited<ReturnType<typeof listErpStoreMappings>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpStoreMappings>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listErpStoreMappings>>,
+          TError,
+          Awaited<ReturnType<typeof listErpStoreMappings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListErpStoreMappings<TData = Awaited<ReturnType<typeof listErpStoreMappings>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpStoreMappings>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listErpStoreMappings>>,
+          TError,
+          Awaited<ReturnType<typeof listErpStoreMappings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListErpStoreMappings<TData = Awaited<ReturnType<typeof listErpStoreMappings>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpStoreMappings>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Stores with their ERP branch codes
+ */
+
+export function useListErpStoreMappings<TData = Awaited<ReturnType<typeof listErpStoreMappings>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpStoreMappings>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListErpStoreMappingsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateErpStoreMappingUrl = (storeId: string,) => {
+
+
+
+
+  return `/api/admin/erp/stores/${storeId}`
+}
+
+/**
+ * @summary Set the ERP branch code of a store
+ */
+export const updateErpStoreMapping = async (storeId: string,
+    erpStoreMappingInput: ErpStoreMappingInput, options?: Parameters<typeof customFetch>[1]): Promise<ErpStoreMapping> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ErpStoreMapping>(getUpdateErpStoreMappingUrl(storeId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(erpStoreMappingInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateErpStoreMappingMutationKey = () => ['updateErpStoreMapping'] as const;
+
+export const getUpdateErpStoreMappingMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateErpStoreMapping>>, TError,UpdateErpStoreMappingMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateErpStoreMapping>>, TError,UpdateErpStoreMappingMutationVariables, TContext> => {
+
+const mutationKey = getUpdateErpStoreMappingMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateErpStoreMapping>>, UpdateErpStoreMappingMutationVariables> = (props) => {
+          const {storeId,data} = props ?? {};
+
+          return  updateErpStoreMapping(storeId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateErpStoreMappingMutationResult = NonNullable<Awaited<ReturnType<typeof updateErpStoreMapping>>>
+    export type UpdateErpStoreMappingMutationBody = BodyType<ErpStoreMappingInput>
+    export type UpdateErpStoreMappingMutationError = ErrorType<unknown>
+    export type UpdateErpStoreMappingMutationVariables = {storeId: string;data: BodyType<ErpStoreMappingInput>}
+
+    /**
+ * @summary Set the ERP branch code of a store
+ */
+export const useUpdateErpStoreMapping = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateErpStoreMapping>>, TError,UpdateErpStoreMappingMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateErpStoreMapping>>,
+        TError,
+        UpdateErpStoreMappingMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateErpStoreMappingMutationOptions(options), queryClient);
+    }
+
+export const getListErpIntegrationEventsUrl = (params?: ListErpIntegrationEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/erp/events?${stringifiedParams}` : `/api/admin/erp/events`
+}
+
+/**
+ * @summary History of requests received from the ERP
+ */
+export const listErpIntegrationEvents = async (params?: ListErpIntegrationEventsParams, options?: Parameters<typeof customFetch>[1]): Promise<ErpIntegrationEvent[]> => {
+
+  return customFetch<ErpIntegrationEvent[]>(getListErpIntegrationEventsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListErpIntegrationEventsQueryKey = (params?: ListErpIntegrationEventsParams,) => {
+    return [
+    `/api/admin/erp/events`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListErpIntegrationEventsQueryOptions = <TData = Awaited<ReturnType<typeof listErpIntegrationEvents>>, TError = ErrorType<unknown>>(params?: ListErpIntegrationEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpIntegrationEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListErpIntegrationEventsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listErpIntegrationEvents>>> = ({ signal }) => listErpIntegrationEvents(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listErpIntegrationEvents>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListErpIntegrationEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listErpIntegrationEvents>>>
+export type ListErpIntegrationEventsQueryError = ErrorType<unknown>
+
+
+export function useListErpIntegrationEvents<TData = Awaited<ReturnType<typeof listErpIntegrationEvents>>, TError = ErrorType<unknown>>(
+ params: undefined |  ListErpIntegrationEventsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpIntegrationEvents>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listErpIntegrationEvents>>,
+          TError,
+          Awaited<ReturnType<typeof listErpIntegrationEvents>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListErpIntegrationEvents<TData = Awaited<ReturnType<typeof listErpIntegrationEvents>>, TError = ErrorType<unknown>>(
+ params?: ListErpIntegrationEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpIntegrationEvents>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listErpIntegrationEvents>>,
+          TError,
+          Awaited<ReturnType<typeof listErpIntegrationEvents>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListErpIntegrationEvents<TData = Awaited<ReturnType<typeof listErpIntegrationEvents>>, TError = ErrorType<unknown>>(
+ params?: ListErpIntegrationEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpIntegrationEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary History of requests received from the ERP
+ */
+
+export function useListErpIntegrationEvents<TData = Awaited<ReturnType<typeof listErpIntegrationEvents>>, TError = ErrorType<unknown>>(
+ params?: ListErpIntegrationEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listErpIntegrationEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListErpIntegrationEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReprocessErpIntegrationEventUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/admin/erp/events/${eventId}/reprocess`
+}
+
+/**
+ * @summary Reprocess a failed ERP request
+ */
+export const reprocessErpIntegrationEvent = async (eventId: string, options?: Parameters<typeof customFetch>[1]): Promise<ErpIntegrationEvent> => {
+
+  return customFetch<ErpIntegrationEvent>(getReprocessErpIntegrationEventUrl(eventId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getReprocessErpIntegrationEventMutationKey = () => ['reprocessErpIntegrationEvent'] as const;
+
+export const getReprocessErpIntegrationEventMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reprocessErpIntegrationEvent>>, TError,ReprocessErpIntegrationEventMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reprocessErpIntegrationEvent>>, TError,ReprocessErpIntegrationEventMutationVariables, TContext> => {
+
+const mutationKey = getReprocessErpIntegrationEventMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reprocessErpIntegrationEvent>>, ReprocessErpIntegrationEventMutationVariables> = (props) => {
+          const {eventId} = props ?? {};
+
+          return  reprocessErpIntegrationEvent(eventId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReprocessErpIntegrationEventMutationResult = NonNullable<Awaited<ReturnType<typeof reprocessErpIntegrationEvent>>>
+
+    export type ReprocessErpIntegrationEventMutationError = ErrorType<unknown>
+    export type ReprocessErpIntegrationEventMutationVariables = {eventId: string}
+
+    /**
+ * @summary Reprocess a failed ERP request
+ */
+export const useReprocessErpIntegrationEvent = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reprocessErpIntegrationEvent>>, TError,ReprocessErpIntegrationEventMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof reprocessErpIntegrationEvent>>,
+        TError,
+        ReprocessErpIntegrationEventMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReprocessErpIntegrationEventMutationOptions(options), queryClient);
     }
 
