@@ -166,7 +166,8 @@ test.describe("Despacho individual", () => {
     await expectError(await central.post(`/deliveries/${d.id}/dispatch`, { mode: "group" }), 409);
   });
 
-  test("Aceite marca o motoboy como BUSY; um segundo aceite para o mesmo motoboy falha", async () => {
+  // Motoboy em entrega pode aceitar outra (cada uma separada; o app sugere a ordem).
+  test("Aceite marca o motoboy como BUSY; um segundo aceite para o mesmo motoboy também vale", async () => {
     const central = await Api.as("central");
     await setCourierStatus("e2e-courier-1", "AVAILABLE");
     const d1 = await createDelivery(central);
@@ -177,7 +178,8 @@ test.describe("Despacho individual", () => {
     const [c] = await query("select status from couriers where id='e2e-courier-1'");
     expect(c.status).toBe("BUSY");
     const second = await setStatus(central, d2.id, "ACCEPTED");
-    expect(second.status(), await describe(second)).toBe(409);
+    expect(second.status(), await describe(second)).toBe(200);
+    expect((await json(second)).courierId).toBe("e2e-courier-1");
   });
 });
 

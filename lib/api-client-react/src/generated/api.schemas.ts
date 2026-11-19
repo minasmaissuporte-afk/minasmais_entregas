@@ -1089,6 +1089,10 @@ export interface CourierDeliveryRoute {
   routeGeometry: RouteCoordinate[] | null;
 }
 
+export interface CourierPlan {
+  plan: CourierDeliveryRoute | null;
+}
+
 export type CourierRoutePreviewStopKind = typeof CourierRoutePreviewStopKind[keyof typeof CourierRoutePreviewStopKind];
 
 

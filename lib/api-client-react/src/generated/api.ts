@@ -41,6 +41,7 @@ import type {
   CourierEarnings,
   CourierLocation,
   CourierLocationInput,
+  CourierPlan,
   CourierRoutePreview,
   CourierUnableToDeliverInput,
   CourierUnableToDeliverResult,
@@ -3693,6 +3694,107 @@ export const useDeleteAccessUser = <TError = ErrorType<void>,
       > => {
       return useMutation(getDeleteAccessUserMutationOptions(options), queryClient);
     }
+
+export const getGetCourierPlanUrl = () => {
+
+
+
+
+  return `/api/courier/plan`
+}
+
+/**
+ * @summary Suggested order (Google) for the courier's active individual deliveries
+ */
+export const getCourierPlan = async ( options?: Parameters<typeof customFetch>[1]): Promise<CourierPlan> => {
+
+  return customFetch<CourierPlan>(getGetCourierPlanUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCourierPlanQueryKey = () => {
+    return [
+    `/api/courier/plan`
+    ] as const;
+    }
+
+
+export const getGetCourierPlanQueryOptions = <TData = Awaited<ReturnType<typeof getCourierPlan>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierPlan>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCourierPlanQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCourierPlan>>> = ({ signal }) => getCourierPlan({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCourierPlan>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCourierPlanQueryResult = NonNullable<Awaited<ReturnType<typeof getCourierPlan>>>
+export type GetCourierPlanQueryError = ErrorType<unknown>
+
+
+export function useGetCourierPlan<TData = Awaited<ReturnType<typeof getCourierPlan>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierPlan>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCourierPlan>>,
+          TError,
+          Awaited<ReturnType<typeof getCourierPlan>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCourierPlan<TData = Awaited<ReturnType<typeof getCourierPlan>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierPlan>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCourierPlan>>,
+          TError,
+          Awaited<ReturnType<typeof getCourierPlan>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCourierPlan<TData = Awaited<ReturnType<typeof getCourierPlan>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierPlan>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Suggested order (Google) for the courier's active individual deliveries
+ */
+
+export function useGetCourierPlan<TData = Awaited<ReturnType<typeof getCourierPlan>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCourierPlan>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCourierPlanQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetCourierEarningsUrl = (params?: GetCourierEarningsParams,) => {
   const normalizedParams = new URLSearchParams();

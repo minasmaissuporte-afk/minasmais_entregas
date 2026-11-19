@@ -1278,6 +1278,70 @@ export const DeleteAccessUserResponse = zod.void()
 
 
 /**
+ * @summary Suggested order (Google) for the courier's active individual deliveries
+ */
+export const getCourierPlanResponsePlanOneRouteGeometryItemLatitudeMin = -90;
+export const getCourierPlanResponsePlanOneRouteGeometryItemLatitudeMax = 90;
+
+export const getCourierPlanResponsePlanOneRouteGeometryItemLongitudeMin = -180;
+export const getCourierPlanResponsePlanOneRouteGeometryItemLongitudeMax = 180;
+
+
+
+export const GetCourierPlanResponse = zod.object({
+  "plan": zod.union([zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['OFFERED', 'ACCEPTED', 'COMPLETED', 'CANCELLED']),
+  "courierId": zod.string().nullable(),
+  "deliveryCount": zod.number().int(),
+  "amountToReceive": zod.number(),
+  "distanceKm": zod.number().nullable(),
+  "estimatedMinutes": zod.number().int().nullable(),
+  "lockedAt": zod.coerce.date().nullable(),
+  "deliveries": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "customerPhone": zod.string().nullable(),
+  "requiresPrescription": zod.boolean().optional(),
+  "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
+  "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
+  "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "destination": zod.string(),
+  "notes": zod.string().nullable(),
+  "storeName": zod.string(),
+  "storeAddress": zod.string(),
+  "storeCity": zod.string(),
+  "storeLatitude": zod.number().nullable(),
+  "storeLongitude": zod.number().nullable(),
+  "customerLatitude": zod.number().nullable(),
+  "customerLongitude": zod.number().nullable(),
+  "deliveryAmount": zod.number(),
+  "status": zod.string()
+})),
+  "stops": zod.array(zod.object({
+  "id": zod.string(),
+  "sequence": zod.number().int(),
+  "deliveryId": zod.string(),
+  "kind": zod.enum(['pickup', 'delivery']),
+  "address": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "status": zod.enum(['PENDING', 'DONE', 'CANCELLED']),
+  "code": zod.string(),
+  "customerName": zod.string(),
+  "storeName": zod.string(),
+  "deliveryAmount": zod.number()
+})),
+  "routeGeometry": zod.array(zod.object({
+  "latitude": zod.number().min(getCourierPlanResponsePlanOneRouteGeometryItemLatitudeMin).max(getCourierPlanResponsePlanOneRouteGeometryItemLatitudeMax),
+  "longitude": zod.number().min(getCourierPlanResponsePlanOneRouteGeometryItemLongitudeMin).max(getCourierPlanResponsePlanOneRouteGeometryItemLongitudeMax)
+})).nullable()
+}),zod.null()])
+})
+
+
+/**
  * @summary Get completed deliveries and payable total for a period
  */
 export const GetCourierEarningsQueryParams = zod.object({

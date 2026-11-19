@@ -57,7 +57,6 @@ import {
   storesTable,
 } from "@workspace/db";
 import { courierCity, notifyCityCouriers, offerToCity, openOfferFor, sameCity } from "../lib/deliveryOffers";
-import { acceptIntoCourierRoute } from "./courier-routes";
 import {
   requireAuthentication,
   requireRole,
@@ -2421,32 +2420,6 @@ router.patch(
       }
     }
 
-    // Motoboy já em entrega aceitando outra: junta numa rota e o Google recalcula a ordem.
-    if (body.data.status === "ACCEPTED" && profile.role === "COURIER" && profile.courierId) {
-      const [me] = await db
-        .select({ status: couriersTable.status })
-        .from(couriersTable)
-        .where(eq(couriersTable.id, profile.courierId))
-        .limit(1);
-      if (me?.status === "BUSY") {
-        const stacked = await acceptIntoCourierRoute(profile.courierId, params.data.deliveryId);
-        if ("error" in stacked) {
-          const messages: Record<string, string> = {
-            taken: "Outro motoboy aceitou esta entrega primeiro.",
-            other_city: "Esta entrega é de uma filial de outra cidade.",
-            too_many: "Sua rota já tem 10 entregas. Termine algumas antes de aceitar mais.",
-            changed: "Sua rota mudou agora há pouco. Atualize e tente de novo.",
-            planning: "Não foi possível recalcular a rota agora. Tente de novo.",
-          };
-          res.status(409).json({ error: stacked.message ?? messages[stacked.error] });
-          return;
-        }
-        const stackedView = await deliveryView(params.data.deliveryId);
-        res.json(UpdateDeliveryStatusResponse.parse(stackedView ? hideAmountForCourier(profile, stackedView) : stackedView));
-        return;
-      }
-    }
-
     const result = await db.transaction(async (tx) => {
       const [delivery] = await tx
         .select()
@@ -2535,13 +2508,14 @@ router.patch(
           )
           .limit(1);
         if (!linkedCourier) return { error: "no_courier" as const };
+        // Já em entrega pode aceitar outra: cada entrega segue separada e o mapa sugere a ordem.
         const [updatedCourier] = await tx
           .update(couriersTable)
           .set({ status: "BUSY" })
           .where(
             and(
               eq(couriersTable.id, courierId),
-                eq(couriersTable.status, "AVAILABLE"),
+              inArray(couriersTable.status, ["AVAILABLE", "BUSY"]),
             ),
           )
           .returning();
@@ -2592,19 +2566,30 @@ router.patch(
           );
       }
       if (["COMPLETED", "CANCELLED"].includes(nextStatus) && courierId) {
+        // Continua ocupado enquanto tiver outra entrega em andamento.
+        const [otherActive] = await tx
+          .select({ code: deliveriesTable.code })
+          .from(deliveriesTable)
+          .where(
+            and(
+              eq(deliveriesTable.courierId, courierId),
+              inArray(deliveriesTable.status, ["ACCEPTED", "TO_STORE", "AT_STORE", "IN_TRANSIT"]),
+              sql`${deliveriesTable.id} <> ${delivery.id}`,
+            ),
+          )
+          .limit(1);
         await tx
           .update(couriersTable)
-          .set({
-            status: "AVAILABLE",
-            currentDeliveryCode: null,
-            currentLatitude: null,
-            currentLongitude: null,
-          })
+          .set(
+            otherActive
+              ? { status: "BUSY", currentDeliveryCode: otherActive.code }
+              : { status: "AVAILABLE", currentDeliveryCode: null, currentLatitude: null, currentLongitude: null },
+          )
           .where(eq(couriersTable.id, courierId));
       } else if (nextStatus === "ACCEPTED" && courierId) {
         await tx
           .update(couriersTable)
-          .set({ currentDeliveryCode: delivery.code })
+          .set({ currentDeliveryCode: sql`coalesce(${couriersTable.currentDeliveryCode}, ${delivery.code})` })
           .where(eq(couriersTable.id, courierId));
       }
 

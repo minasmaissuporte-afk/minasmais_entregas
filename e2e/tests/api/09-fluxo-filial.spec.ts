@@ -200,7 +200,7 @@ test.describe("Fluxo da filial: despacho automático por cidade", () => {
     expect(await json(await manager.post("/reports/store-accounting/pay", { courierId: "e2e-courier-1" }))).toEqual({ paidDeliveries: 0, amount: 0 });
   });
 
-  test("Motoboy em entrega aceita outra: as duas viram uma rota recalculada", async () => {
+  test("Motoboy em entrega aceita outra: entregas separadas e ordem sugerida", async () => {
     const manager = await Api.as("manager");
     const courier = await Api.as("courier");
     await courierOnline(courier);
@@ -212,21 +212,21 @@ test.describe("Fluxo da filial: despacho automático por cidade", () => {
     expect(accepted.status(), await describe(accepted)).toBe(200);
     expect((await json(accepted)).courierId).toBe("e2e-courier-1");
 
+    // Nada de rota juntada: cada entrega segue com os próprios botões.
     const routes = await json(await courier.get("/courier/routes"));
-    const route = routes.find((item: { status: string }) => item.status === "ACCEPTED");
-    expect(route, "rota ativa do motoboy").toBeTruthy();
-    expect(route.deliveries.map((item: { id: string }) => item.id).sort()).toEqual([first.id, second.id].sort());
-    // A primeira já foi retirada: só falta entregar. A segunda tem retirada e entrega.
-    const pending = route.stops.filter((stop: { status: string }) => stop.status === "PENDING");
-    expect(pending.filter((stop: { deliveryId: string }) => stop.deliveryId === first.id).map((stop: { kind: string }) => stop.kind)).toEqual(["delivery"]);
-    expect(pending.filter((stop: { deliveryId: string }) => stop.deliveryId === second.id).map((stop: { kind: string }) => stop.kind)).toEqual(["pickup", "delivery"]);
+    expect(routes.filter((item: { status: string }) => item.status === "ACCEPTED")).toHaveLength(0);
+    const plan = (await json(await courier.get("/courier/plan"))).plan;
+    expect(plan, "ordem sugerida").toBeTruthy();
+    expect(plan.stops.filter((stop: { deliveryId: string }) => stop.deliveryId === first.id).map((stop: { kind: string }) => stop.kind)).toEqual(["delivery"]);
+    expect(plan.stops.filter((stop: { deliveryId: string }) => stop.deliveryId === second.id).map((stop: { kind: string }) => stop.kind)).toEqual(["pickup", "delivery"]);
 
-    // Terceira entrega entra na mesma rota.
-    const third = await createDelivery(manager);
-    expect((await setStatus(courier, third.id, "ACCEPTED")).status()).toBe(200);
-    const after = (await json(await courier.get("/courier/routes"))).find((item: { status: string }) => item.status === "ACCEPTED");
-    expect(after.id).toBe(route.id);
-    expect(after.deliveries).toHaveLength(3);
+    // A segunda pode ser retirada antes de concluir a primeira.
+    expect((await setStatus(courier, second.id, "IN_TRANSIT")).status()).toBe(200);
+    // Concluir uma (Central, sem foto) não deixa o motoboy disponível: ainda tem a outra.
+    await setStatus(await Api.as("central"), first.id, "COMPLETED");
+    const [c] = await query("select status from couriers where id = 'e2e-courier-1'");
+    expect(c.status).toBe("BUSY");
+    expect((await json(await courier.get("/courier/plan"))).plan).toBeNull();
   });
 
   test("Convite de motoboy exige a cidade", async () => {
