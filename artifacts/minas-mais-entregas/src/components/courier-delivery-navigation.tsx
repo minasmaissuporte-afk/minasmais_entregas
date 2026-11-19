@@ -16,12 +16,15 @@ import {
 import LiveMap, { type MapMarker } from "@/components/live-map";
 import CourierUnableToDeliverAction from "@/components/courier-unable-to-deliver-action";
 import useCourierMapPanel from "@/hooks/use-courier-map-panel";
+import { paymentLabel } from "@/lib/payment";
 
 export default function CourierDeliveryNavigation({
   deliveryId,
   delivery,
   resizeVersion,
+  storeMarkers = [],
 }: {
+  storeMarkers?: MapMarker[];
   deliveryId: string;
   delivery: Delivery;
   resizeVersion: number;
@@ -56,8 +59,9 @@ export default function CourierDeliveryNavigation({
           kind: "stop",
           sequence: 1,
         },
+        ...storeMarkers,
       ]
-    : [];
+    : storeMarkers;
   const mapsUrl = data
     ? `https://www.google.com/maps/dir/?api=1&origin=${data.currentPosition.latitude},${data.currentPosition.longitude}&destination=${data.targetPosition.latitude},${data.targetPosition.longitude}&travelmode=driving`
     : null;
@@ -109,7 +113,8 @@ export default function CourierDeliveryNavigation({
           <>
             <div className="courier-route-map-screen__stop-heading">
               <div className="courier-route-map-screen__eyebrow">{data.targetLabel} · {delivery.code}</div>
-              <h2 className="courier-route-map-screen__customer">{delivery.customerName}</h2>
+              {/* Indo para a loja: mostra a filial (o destino do botão); depois, o cliente. */}
+              <h2 className="courier-route-map-screen__customer">{delivery.status === "IN_TRANSIT" ? delivery.customerName : delivery.storeName}</h2>
               <p className="courier-route-map-screen__address">
                 <MapPin size={16} aria-hidden="true" />
                 <span>{data.targetAddress}</span>
@@ -125,7 +130,9 @@ export default function CourierDeliveryNavigation({
               {data.durationSeconds != null && (
                 <span><Clock3 size={16} aria-hidden="true" />{Math.ceil(data.durationSeconds / 60)} min</span>
               )}
-              <span><Banknote size={16} aria-hidden="true" />{delivery.deliveryAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+              {delivery.status === "IN_TRANSIT" && paymentLabel(delivery) && (
+                <span><Banknote size={16} aria-hidden="true" />{paymentLabel(delivery)}</span>
+              )}
             </div>
             <div className="courier-route-map-screen__actions">
               {mapsUrl && (

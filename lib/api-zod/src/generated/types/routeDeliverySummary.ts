@@ -28,6 +28,18 @@ export interface RouteDeliverySummary {
      * @nullable
      */
   bringCardMachine?: boolean | null;
+  /**
+     * Valor total dos produtos (R$)
+     * @nullable
+     */
+  productsAmount?: number | null;
+  /**
+     * Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)
+     * @nullable
+     */
+  amountToCharge?: number | null;
+  /** Cliente já pagou produtos e entrega */
+  prepaid?: boolean;
   destination: string;
   /** @nullable */
   notes: string | null;

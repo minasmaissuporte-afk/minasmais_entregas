@@ -26,6 +26,8 @@ export type MapMarker = MapCoordinate & {
   onDrag?: (coordinate: MapCoordinate) => void;
   /** Ordem de sobreposição: maior fica por cima (ex.: motoboy online acima do offline). */
   zIndex?: number;
+  /** false: aparece, mas não entra no enquadramento automático (ex.: filial sem entrega). */
+  fit?: boolean;
 };
 
 type MarkerEntry = {
@@ -464,7 +466,8 @@ export default function LiveGoogleMap({
             );
             syncMarkers(map, libraries, currentMarkers, markerEntries);
             syncExtraRoutes(map, libraries, extraLinesRef.current, currentDataRef.current.extraRoutes);
-            const markerCoordinates = currentMarkers.map(toLatLng);
+            const fitMarkers = currentMarkers.filter((marker) => marker.fit !== false);
+            const markerCoordinates = (fitMarkers.length ? fitMarkers : currentMarkers).map(toLatLng);
             const fitCoordinates = markerCoordinates.length
               ? [...markerCoordinates, ...lineCoordinates]
               : lineCoordinates;

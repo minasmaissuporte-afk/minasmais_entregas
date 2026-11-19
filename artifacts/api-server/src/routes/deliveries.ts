@@ -986,7 +986,7 @@ async function deliveryView(deliveryId: string) {
     .limit(1);
 
   if (!row) return null;
-  const { deliveryAmountCents, evidencePath, changeForCents, ...deliveryData } = row.delivery;
+  const { deliveryAmountCents, evidencePath, changeForCents, productsAmountCents, ...deliveryData } = row.delivery;
 
   const events = await db
     .select()
@@ -1008,6 +1008,9 @@ async function deliveryView(deliveryId: string) {
     ...deliveryData,
     routeId: currentRoute?.id ?? null,
     changeFor: changeForCents == null ? null : changeForCents / 100,
+    productsAmount: productsAmountCents == null ? null : productsAmountCents / 100,
+    // Total a cobrar do cliente: produtos + taxa de entrega da filial.
+    amountToCharge: productsAmountCents == null ? null : (productsAmountCents + deliveryAmountCents) / 100,
     deliveryAmount: deliveryAmountCents / 100,
     evidenceAvailable: Boolean(evidencePath),
     storeName: row.storeName,
@@ -1742,11 +1745,15 @@ router.post(
     return;
   }
 
-  const paymentMethod = body.data.paymentMethod ?? null;
-  if (!paymentMethod) {
-    res.status(400).json({ error: "Escolha a forma de pagamento: cartão, Pix ou dinheiro." });
+  // Já pago: o motoboy não cobra nada, então a forma de pagamento não importa.
+  const prepaid = body.data.prepaid === true;
+  const paymentMethod = prepaid ? null : body.data.paymentMethod ?? null;
+  if (!prepaid && !paymentMethod) {
+    res.status(400).json({ error: "Escolha a forma de pagamento: cartão, Pix ou dinheiro (ou marque \"Já está pago\")." });
     return;
   }
+  const productsAmountCents =
+    body.data.productsAmount != null && body.data.productsAmount > 0 ? Math.round(body.data.productsAmount * 100) : null;
   const changeForCents =
     paymentMethod === "CASH" && body.data.changeFor != null && body.data.changeFor > 0
       ? Math.round(body.data.changeFor * 100)
@@ -1796,6 +1803,8 @@ router.post(
       paymentMethod,
       changeForCents,
       bringCardMachine,
+      productsAmountCents,
+      prepaid,
       storeId,
       status: "REQUESTED",
       priority: body.data.priority,
@@ -1942,6 +1951,17 @@ router.patch(
           ? Math.round(input.changeFor * 100)
           : null;
       changes.bringCardMachine = input.paymentMethod === "CARD" ? input.bringCardMachine ?? true : null;
+    }
+    if (input.productsAmount !== undefined) {
+      changes.productsAmountCents = input.productsAmount != null && input.productsAmount > 0 ? Math.round(input.productsAmount * 100) : null;
+    }
+    if (input.prepaid !== undefined) {
+      changes.prepaid = input.prepaid;
+      if (input.prepaid) {
+        changes.paymentMethod = null;
+        changes.changeForCents = null;
+        changes.bringCardMachine = null;
+      }
     }
     if (addressChanged) {
       if (destination !== undefined) changes.destination = destination;

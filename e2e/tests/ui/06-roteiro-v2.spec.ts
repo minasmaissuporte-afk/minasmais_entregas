@@ -145,7 +145,7 @@ test.describe("3. Gerente: nova entrega e lista", () => {
     note("sem pagamento", err ?? "(nenhuma mensagem sobre pagamento)");
     await expect(dialog, "registrou sem forma de pagamento").toBeVisible();
     // Dinheiro troco 100 + receita
-    await dialog.getByTestId("radio-payment-cash").check({ force: true });
+    await dialog.getByText("Dinheiro", { exact: true }).click();
     await dialog.getByTestId("input-change-for").fill("100");
     const rx = dialog.getByText("Medicamento com receita").first();
     await rx.click();
@@ -179,7 +179,7 @@ test.describe("3. Gerente: nova entrega e lista", () => {
     await edit.click();
     const dialog = page.getByRole("dialog", { name: "Editar entrega" });
     await expect(dialog).toBeVisible();
-    await dialog.getByTestId("radio-payment-cash").check({ force: true });
+    await dialog.getByText("Dinheiro", { exact: true }).click();
     await dialog.getByTestId("input-change-for").fill("50");
     await shot(page, "03-editar-entrega");
     await dialog.getByTestId("button-save-delivery").click();

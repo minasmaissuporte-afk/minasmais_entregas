@@ -40,7 +40,7 @@ const endpoints: { method: "get" | "post" | "put" | "patch" | "delete"; path: st
   { method: "patch", path: `/deliveries/${X}/status`, roles: ALL },
   { method: "post", path: `/deliveries/${X}/evidence/upload-url`, roles: ["COURIER"] },
   { method: "get", path: `/deliveries/${X}/evidence`, roles: ALL },
-  { method: "get", path: "/stores", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"] },
+  { method: "get", path: "/stores", roles: ["ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"] },
   { method: "post", path: "/stores", roles: ["ADMIN"] },
   { method: "put", path: `/stores/${X}`, roles: ["ADMIN"] },
   { method: "delete", path: `/stores/${X}`, roles: ["ADMIN"] },

@@ -111,9 +111,30 @@ function storeValues(input: ReturnType<typeof CreateStoreBody.parse>) {
 
 router.get(
   "/stores",
-  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF"),
+  requireRole("ADMIN", "CENTRAL", "STORE_MANAGER", "STORE_STAFF", "COURIER"),
   async (_req, res): Promise<void> => {
     const profile = res.locals.appUser as AppUserProfile;
+    // Motoboy: filiais ativas da cidade dele (para o mapa), sem contatos internos nem tarifas.
+    if (profile.role === "COURIER") {
+      const [courier] = profile.courierId
+        ? await db.select({ city: couriersTable.city }).from(couriersTable).where(eq(couriersTable.id, profile.courierId)).limit(1)
+        : [];
+      const city = courier?.city?.trim().toLocaleLowerCase("pt-BR");
+      const stores = (await storeRecords())
+        .filter((store) => store.active && (!city || store.city.trim().toLocaleLowerCase("pt-BR") === city))
+        .map((store) => ({
+          ...store,
+          phone: null,
+          managerName: null,
+          managerPhone: null,
+          assistantManagerName: null,
+          assistantManagerPhone: null,
+          deliveryCount: 0,
+          deliveryFee: 0,
+        }));
+      res.json(ListStoresResponse.parse(stores));
+      return;
+    }
     if (
       (profile.role === "STORE_MANAGER" || profile.role === "STORE_STAFF") &&
       !profile.storeId

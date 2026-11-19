@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth";
 import { supportWhatsAppUrl } from "@/lib/support";
 import { paymentLabel } from "@/lib/payment";
 import DeliveryProgress from "@/components/delivery-progress";
+import { storeMarkers as buildStoreMarkers } from "@/lib/store-markers";
 import RequeueButton, { REQUEUE_STATUSES } from "@/components/requeue-button";
 
 /** Entrega esperando um motoboy aceitar (pode entrar numa rota agrupada ou ser cancelada pela loja). */
@@ -129,17 +130,10 @@ export default function StorePortal({
   const firstWithStore = activeDeliveries.find((delivery) => delivery.storeLatitude != null && delivery.storeLongitude != null);
   const placeMarkers: MapMarker[] = [
     ...(firstWithStore
-      ? [{
-          id: `store-${firstWithStore.storeId}`,
-          latitude: firstWithStore.storeLatitude!,
-          longitude: firstWithStore.storeLongitude!,
-          title: firstWithStore.storeName,
-          detail: firstWithStore.storeAddress ?? firstWithStore.storeName,
-          kind: "store" as const,
-          color: "#ffffff",
-          textColor: "#b91e2c",
-          zIndex: 4,
-        }]
+      ? buildStoreMarkers(
+          [{ id: firstWithStore.storeId, name: firstWithStore.storeName, latitude: firstWithStore.storeLatitude, longitude: firstWithStore.storeLongitude }],
+          new Set([firstWithStore.storeId]),
+        )
       : []),
     ...activeDeliveries
       .filter((delivery) => delivery.customerLatitude != null && delivery.customerLongitude != null)

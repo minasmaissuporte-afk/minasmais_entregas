@@ -392,6 +392,9 @@ export const ListDeliveriesResponseItem = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -443,6 +446,9 @@ export const createDeliveryBodyCustomerLongitudeMax = 180;
 export const createDeliveryBodyChangeForMin = 0;
 export const createDeliveryBodyChangeForMax = 100000;
 
+export const createDeliveryBodyProductsAmountMin = 0;
+export const createDeliveryBodyProductsAmountMax = 1000000;
+
 export const createDeliveryBodyDeliveryAmountMin = 0;
 
 
@@ -461,6 +467,8 @@ export const CreateDeliveryBody = zod.object({
   "paymentMethod": zod.enum(['CARD', 'PIX', 'CASH']).optional(),
   "changeFor": zod.number().min(createDeliveryBodyChangeForMin).max(createDeliveryBodyChangeForMax).nullish(),
   "bringCardMachine": zod.boolean().nullish(),
+  "productsAmount": zod.number().min(createDeliveryBodyProductsAmountMin).max(createDeliveryBodyProductsAmountMax).nullish(),
+  "prepaid": zod.boolean().optional(),
   "deliveryAmount": zod.number().min(createDeliveryBodyDeliveryAmountMin).optional().describe('Deprecated; server uses the selected branch\'s configured fee')
 })
 
@@ -479,6 +487,9 @@ export const CreateDeliveryResponse = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -534,6 +545,9 @@ export const GetDeliveryResponse = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -588,6 +602,9 @@ export const updateDeliveryBodyCustomerLongitudeMax = 180;
 export const updateDeliveryBodyChangeForMin = 0;
 export const updateDeliveryBodyChangeForMax = 100000;
 
+export const updateDeliveryBodyProductsAmountMin = 0;
+export const updateDeliveryBodyProductsAmountMax = 1000000;
+
 
 
 export const UpdateDeliveryBody = zod.object({
@@ -602,7 +619,9 @@ export const UpdateDeliveryBody = zod.object({
   "requiresPrescription": zod.boolean().optional(),
   "paymentMethod": zod.enum(['CARD', 'PIX', 'CASH']).optional(),
   "changeFor": zod.number().min(updateDeliveryBodyChangeForMin).max(updateDeliveryBodyChangeForMax).nullish(),
-  "bringCardMachine": zod.boolean().nullish()
+  "bringCardMachine": zod.boolean().nullish(),
+  "productsAmount": zod.number().min(updateDeliveryBodyProductsAmountMin).max(updateDeliveryBodyProductsAmountMax).nullish(),
+  "prepaid": zod.boolean().optional()
 })
 
 export const updateDeliveryResponseDeliveryAmountMin = 0;
@@ -620,6 +639,9 @@ export const UpdateDeliveryResponse = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -690,6 +712,9 @@ export const DispatchDeliveryResponse = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -756,6 +781,9 @@ export const UpdateDeliveryStatusResponse = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "orderNumber": zod.string().optional(),
   "notes": zod.string().nullish(),
@@ -1307,6 +1335,9 @@ export const GetCourierPlanResponse = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "notes": zod.string().nullable(),
   "storeName": zod.string(),
@@ -1427,6 +1458,9 @@ export const CreateDeliveryRouteResponse = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "notes": zod.string().nullable(),
   "storeName": zod.string(),
@@ -1489,6 +1523,9 @@ export const ListCourierRoutesResponseItem = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "notes": zod.string().nullable(),
   "storeName": zod.string(),
@@ -1717,6 +1754,9 @@ export const AcceptCourierRouteResponse = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "notes": zod.string().nullable(),
   "storeName": zod.string(),
@@ -1799,6 +1839,9 @@ export const CompleteCourierRouteStopResponse = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "notes": zod.string().nullable(),
   "storeName": zod.string(),
@@ -1866,6 +1909,9 @@ export const RecordCourierStopArrivalResponse = zod.object({
   "paymentMethod": zod.string().nullish().describe('Forma de pagamento do cliente: CARD, PIX ou CASH'),
   "changeFor": zod.number().nullish().describe('Dinheiro: troco para quanto (valor com que o cliente vai pagar)'),
   "bringCardMachine": zod.boolean().nullish().describe('Cartão: levar a maquininha'),
+  "productsAmount": zod.number().nullish().describe('Valor total dos produtos (R$)'),
+  "amountToCharge": zod.number().nullish().describe('Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)'),
+  "prepaid": zod.boolean().optional().describe('Cliente já pagou produtos e entrega'),
   "destination": zod.string(),
   "notes": zod.string().nullable(),
   "storeName": zod.string(),

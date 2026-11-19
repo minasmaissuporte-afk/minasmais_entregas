@@ -23,7 +23,10 @@ export default function CourierRouteMapTab({
   currentPosition,
   activeDelivery,
   resizeVersion,
+  storeMarkers = [],
 }: {
+  /** Filiais da cidade: vermelhas com entrega, cinzas sem. */
+  storeMarkers?: MapMarker[];
   route: CourierDeliveryRoute;
   currentPosition: MapCoordinate | null;
   activeDelivery: CourierDeliveryRoute["deliveries"][number] | null;
@@ -50,6 +53,7 @@ export default function CourierRouteMapTab({
           kind: "current" as const,
         }]
       : []),
+    ...storeMarkers,
   ];
   const nextStop = route.stops.find((stop) => stop.status === "PENDING");
   const nextDelivery = nextStop

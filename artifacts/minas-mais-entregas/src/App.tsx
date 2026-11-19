@@ -206,7 +206,7 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
   useModalBehavior(requestClose);
   const submit = (e: FormEvent) => {
     e.preventDefault(); setError('');
-    if (!payment.paymentMethod) { setError('Escolha a forma de pagamento: cartão, Pix ou dinheiro.'); return; }
+    if (!payment.prepaid && !payment.paymentMethod) { setError('Escolha a forma de pagamento: cartão, Pix ou dinheiro (ou marque "Já está pago").'); return; }
     create.mutate({ data: { ...form, ...paymentPayload(payment), requiresPrescription, customerLatitude: customerCoordinates.latitude, customerLongitude: customerCoordinates.longitude, priority: form.priority as 'normal' | 'urgent' } }, {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: getListDeliveriesQueryKey() });
@@ -247,7 +247,7 @@ function DeliveryModal({ onClose }: { onClose: () => void }) {
         <Field label="Tarifa da filial (R$)"><input type="text" readOnly value={selectedStore ? selectedStore.deliveryFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Selecione uma filial'} aria-label="Tarifa definida pela filial" data-testid="text-delivery-fee"/></Field>
         {storesQuery.isLoading && <p className="text-xs text-muted-foreground">Carregando unidades disponíveis…</p>}
         {storesQuery.isError && <p className="text-xs text-destructive">Não foi possível carregar as unidades. Reabra o formulário para tentar novamente.</p>}
-        <PaymentFields idPrefix="new-delivery" value={payment} onChange={setPayment} />
+        <PaymentFields idPrefix="new-delivery" value={payment} onChange={setPayment} deliveryFee={selectedStore?.deliveryFee} />
         <Field label="Observações"><textarea rows={2} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Referências úteis para a entrega" data-testid="input-notes"/></Field>
         <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-lg border border-border bg-[#faf9f7] px-3 py-3"><input type="checkbox" className="mt-0.5 !h-5 !min-h-0 !w-5 shrink-0 !p-0 accent-[#b91e2c]" checked={requiresPrescription} onChange={e => setRequiresPrescription(e.target.checked)} data-testid="checkbox-requires-prescription"/><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-[#2b2e33]">Medicamento com receita</span><span className="mt-0.5 block text-xs text-muted-foreground">O motoboy precisa pegar a receita com o cliente e confirmar no app antes de concluir.</span></span></label>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -284,6 +284,8 @@ function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery;
     paymentMethod: (delivery.paymentMethod as PaymentFormValue['paymentMethod']) ?? '',
     changeFor: delivery.changeFor ? String(delivery.changeFor).replace('.', ',') : '',
     bringCardMachine: delivery.bringCardMachine !== false,
+    productsAmount: delivery.productsAmount ? String(delivery.productsAmount).replace('.', ',') : '',
+    prepaid: delivery.prepaid === true,
   };
   const [payment, setPayment] = useState<PaymentFormValue>(initialPayment);
   const paymentChanged = JSON.stringify(paymentPayload(payment)) !== JSON.stringify(paymentPayload(initialPayment));
@@ -356,7 +358,7 @@ function EditDeliveryModal({ delivery, onClose, onSaved }: { delivery: Delivery;
         <div>
           <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-lg border border-border bg-[#faf9f7] px-3 py-3"><input type="checkbox" className="mt-0.5 !h-5 !min-h-0 !w-5 shrink-0 !p-0 accent-[#b91e2c]" checked={requiresPrescription} onChange={e => setRequiresPrescription(e.target.checked)} data-testid="checkbox-edit-requires-prescription"/><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-[#2b2e33]">Medicamento com receita</span><span className="mt-0.5 block text-xs text-muted-foreground">O motoboy precisa pegar a receita com o cliente e confirmar no app antes de concluir.</span></span></label>
         </div>
-        <PaymentFields idPrefix="edit-delivery" value={payment} onChange={setPayment} />
+        <PaymentFields idPrefix="edit-delivery" value={payment} onChange={setPayment} deliveryFee={delivery.deliveryAmount} />
         <Field label="Observações"><textarea rows={2} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Referências úteis para a entrega" data-testid="input-edit-notes"/></Field>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}
         </div>
