@@ -16,10 +16,13 @@ const ERROR_RETENTION_DAYS = 14;
 const STATS_RETENTION_DAYS = 30;
 
 /** Rota "padrão" (com :parâmetros) para agrupar: /api/deliveries/:deliveryId. */
-export function routePattern(req: Request) {
+export function routePattern(req: Request, status: number) {
   const route = (req as Request & { route?: { path?: unknown } }).route;
   if (route && typeof route.path === "string") return `${req.baseUrl}${route.path}`;
-  return "(rota não encontrada)";
+  // Alguns routers exigem login antes de escolher a rota: sem sessão, a requisição para ali.
+  if (status === 401) return "(sem login · recusada antes da rota)";
+  if (status === 404) return "(rota não encontrada)";
+  return "(recusada antes da rota)";
 }
 
 function statusClass(status: number) {
@@ -40,7 +43,7 @@ function errorMessage(res: Response): string | null {
 
 async function record(req: Request, res: Response, durationMs: number) {
   const status = res.statusCode;
-  const route = routePattern(req);
+  const route = routePattern(req, status);
   const bucket = new Date();
   bucket.setUTCMinutes(0, 0, 0);
   await db
