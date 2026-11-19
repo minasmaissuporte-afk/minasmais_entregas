@@ -104,7 +104,8 @@ const steps = [
   { icon: Bike, title: "Central encaminha ao motoboy", detail: "Segue o fluxo normal do aplicativo" },
 ];
 
-export default function ErpIntegration() {
+/** `embedded`: dentro do Painel técnico (o título da página é do painel; aqui vira subtítulo). */
+export default function ErpIntegration({ embedded = false }: { embedded?: boolean }) {
   const qc = useQueryClient();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const live = { refetchInterval: 15_000, refetchOnWindowFocus: true };
@@ -125,8 +126,14 @@ export default function ErpIntegration() {
     <div className="soft-enter" data-testid="erp-integration-page">
       <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <div className="eyebrow">ADMINISTRAÇÃO</div>
-          <h1 className="mt-2 text-[28px] font-bold tracking-[-.045em] sm:text-[34px]">Integração ERP</h1>
+          {embedded ? (
+            <h2 className="text-[22px] font-bold tracking-[-.03em]">Integração ERP</h2>
+          ) : (
+            <>
+              <div className="eyebrow">ADMINISTRAÇÃO</div>
+              <h1 className="mt-2 text-[28px] font-bold tracking-[-.045em] sm:text-[34px]">Integração ERP</h1>
+            </>
+          )}
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             As vendas marcadas para entrega no ERP chegam sozinhas na central da filial, sem digitar nada.
           </p>

@@ -2189,3 +2189,139 @@ export const ReprocessErpIntegrationEventResponse = zod.object({
 })
 
 
+/**
+ * @summary Technical overview (deploy, services, counts) for administrators
+ */
+export const GetDevOverviewResponse = zod.object({
+  "environment": zod.string(),
+  "region": zod.string().nullable(),
+  "commitSha": zod.string().nullable(),
+  "commitRef": zod.string().nullable(),
+  "commitMessage": zod.string().nullable(),
+  "repoUrl": zod.string().nullable(),
+  "deploymentUrl": zod.string().nullable(),
+  "nodeVersion": zod.string(),
+  "instanceStartedAt": zod.coerce.date(),
+  "serverTime": zod.coerce.date(),
+  "timezone": zod.string(),
+  "databaseOk": zod.boolean(),
+  "databaseLatencyMs": zod.number().nullable(),
+  "services": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "configured": zod.boolean(),
+  "detail": zod.string()
+})),
+  "counts": zod.object({
+  "deliveriesTotal": zod.number().int(),
+  "deliveriesToday": zod.number().int(),
+  "deliveriesActive": zod.number().int(),
+  "deliveriesFromErp": zod.number().int(),
+  "couriersTotal": zod.number().int(),
+  "couriersOnline": zod.number().int(),
+  "stores": zod.number().int(),
+  "users": zod.number().int(),
+  "pendingUsers": zod.number().int(),
+  "pushSubscriptions": zod.number().int(),
+  "nativeTokens": zod.number().int(),
+  "erpCredentialsActive": zod.number().int()
+}),
+  "last24h": zod.object({
+  "requests": zod.number().int(),
+  "errors4xx": zod.number().int(),
+  "errors5xx": zod.number().int(),
+  "avgMs": zod.number().nullable(),
+  "maxMs": zod.number().nullable()
+})
+})
+
+
+/**
+ * @summary API request metrics by hour and route
+ */
+export const getDevRequestStatsQueryHoursMax = 720;
+
+
+
+export const GetDevRequestStatsQueryParams = zod.object({
+  "hours": zod.coerce.number().int().min(1).max(getDevRequestStatsQueryHoursMax).optional()
+})
+
+export const GetDevRequestStatsResponse = zod.object({
+  "hours": zod.number().int(),
+  "from": zod.coerce.date(),
+  "to": zod.coerce.date(),
+  "totals": zod.object({
+  "requests": zod.number().int(),
+  "errors4xx": zod.number().int(),
+  "errors5xx": zod.number().int(),
+  "avgMs": zod.number().nullable(),
+  "maxMs": zod.number().nullable()
+}),
+  "hourly": zod.array(zod.object({
+  "hour": zod.coerce.date(),
+  "requests": zod.number().int(),
+  "errors": zod.number().int()
+})),
+  "routes": zod.array(zod.object({
+  "method": zod.string(),
+  "route": zod.string(),
+  "requests": zod.number().int(),
+  "errors4xx": zod.number().int(),
+  "errors5xx": zod.number().int(),
+  "avgMs": zod.number(),
+  "maxMs": zod.number()
+}))
+})
+
+
+/**
+ * @summary Latest API errors
+ */
+export const listDevApiErrorsQueryLimitMax = 300;
+
+
+
+export const ListDevApiErrorsQueryParams = zod.object({
+  "status": zod.enum(['ALL', '4XX', '5XX']).optional(),
+  "q": zod.coerce.string().optional(),
+  "limit": zod.coerce.number().int().min(1).max(listDevApiErrorsQueryLimitMax).optional()
+})
+
+export const ListDevApiErrorsResponseItem = zod.object({
+  "id": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "method": zod.string(),
+  "route": zod.string(),
+  "path": zod.string(),
+  "status": zod.number().int(),
+  "durationMs": zod.number(),
+  "message": zod.string().nullable(),
+  "requestId": zod.string().nullable(),
+  "role": zod.string().nullable()
+})
+export const ListDevApiErrorsResponse = zod.array(ListDevApiErrorsResponseItem)
+
+
+/**
+ * @summary Database version, size, pool and tables
+ */
+export const GetDevDatabaseInfoResponse = zod.object({
+  "ok": zod.boolean(),
+  "version": zod.string().nullable(),
+  "sizeBytes": zod.number().nullable(),
+  "latencyMs": zod.number().nullable(),
+  "pool": zod.object({
+  "total": zod.number().int(),
+  "idle": zod.number().int(),
+  "waiting": zod.number().int(),
+  "max": zod.number().int()
+}),
+  "tables": zod.array(zod.object({
+  "name": zod.string(),
+  "rows": zod.number().int(),
+  "sizeBytes": zod.number()
+}))
+})
+
+

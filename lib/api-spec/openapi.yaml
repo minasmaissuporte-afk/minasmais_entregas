@@ -24,6 +24,8 @@ tags:
     description: Grouped courier routes and optimized stops
   - name: erp
     description: ERP integration administration
+  - name: dev
+    description: Technical panel for administrators
 paths:
   /healthz:
     get:
@@ -1253,8 +1255,211 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErpIntegrationEvent"
+  /admin/dev/overview:
+    get:
+      operationId: getDevOverview
+      tags: [dev]
+      summary: Technical overview (deploy, services, counts) for administrators
+      responses:
+        "200":
+          description: Overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevOverview"
+  /admin/dev/requests:
+    get:
+      operationId: getDevRequestStats
+      tags: [dev]
+      summary: API request metrics by hour and route
+      parameters:
+        - in: query
+          name: hours
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 720
+      responses:
+        "200":
+          description: Request metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevRequestStats"
+  /admin/dev/errors:
+    get:
+      operationId: listDevApiErrors
+      tags: [dev]
+      summary: Latest API errors
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [ALL, "4XX", "5XX"]
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 300
+      responses:
+        "200":
+          description: Errors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DevApiError"
+  /admin/dev/database:
+    get:
+      operationId: getDevDatabaseInfo
+      tags: [dev]
+      summary: Database version, size, pool and tables
+      responses:
+        "200":
+          description: Database info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevDatabaseInfo"
 components:
   schemas:
+    DevService:
+      type: object
+      required: [key, label, configured, detail]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        configured: { type: boolean }
+        detail: { type: string }
+    DevOverview:
+      type: object
+      required: [environment, region, commitSha, commitRef, commitMessage, repoUrl, deploymentUrl, nodeVersion, instanceStartedAt, serverTime, timezone, databaseOk, databaseLatencyMs, services, counts, last24h]
+      properties:
+        environment: { type: string }
+        region: { type: ["string", "null"] }
+        commitSha: { type: ["string", "null"] }
+        commitRef: { type: ["string", "null"] }
+        commitMessage: { type: ["string", "null"] }
+        repoUrl: { type: ["string", "null"] }
+        deploymentUrl: { type: ["string", "null"] }
+        nodeVersion: { type: string }
+        instanceStartedAt: { type: string, format: date-time }
+        serverTime: { type: string, format: date-time }
+        timezone: { type: string }
+        databaseOk: { type: boolean }
+        databaseLatencyMs: { type: ["number", "null"] }
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/DevService"
+        counts:
+          type: object
+          required: [deliveriesTotal, deliveriesToday, deliveriesActive, deliveriesFromErp, couriersTotal, couriersOnline, stores, users, pendingUsers, pushSubscriptions, nativeTokens, erpCredentialsActive]
+          properties:
+            deliveriesTotal: { type: integer }
+            deliveriesToday: { type: integer }
+            deliveriesActive: { type: integer }
+            deliveriesFromErp: { type: integer }
+            couriersTotal: { type: integer }
+            couriersOnline: { type: integer }
+            stores: { type: integer }
+            users: { type: integer }
+            pendingUsers: { type: integer }
+            pushSubscriptions: { type: integer }
+            nativeTokens: { type: integer }
+            erpCredentialsActive: { type: integer }
+        last24h:
+          $ref: "#/components/schemas/DevRequestTotals"
+    DevRequestTotals:
+      type: object
+      required: [requests, errors4xx, errors5xx, avgMs, maxMs]
+      properties:
+        requests: { type: integer }
+        errors4xx: { type: integer }
+        errors5xx: { type: integer }
+        avgMs: { type: ["number", "null"] }
+        maxMs: { type: ["number", "null"] }
+    DevRequestStats:
+      type: object
+      required: [hours, from, to, totals, hourly, routes]
+      properties:
+        hours: { type: integer }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        totals:
+          $ref: "#/components/schemas/DevRequestTotals"
+        hourly:
+          type: array
+          items:
+            type: object
+            required: [hour, requests, errors]
+            properties:
+              hour: { type: string, format: date-time }
+              requests: { type: integer }
+              errors: { type: integer }
+        routes:
+          type: array
+          items:
+            type: object
+            required: [method, route, requests, errors4xx, errors5xx, avgMs, maxMs]
+            properties:
+              method: { type: string }
+              route: { type: string }
+              requests: { type: integer }
+              errors4xx: { type: integer }
+              errors5xx: { type: integer }
+              avgMs: { type: number }
+              maxMs: { type: number }
+    DevApiError:
+      type: object
+      required: [id, createdAt, method, route, path, status, durationMs, message, requestId, role]
+      properties:
+        id: { type: string }
+        createdAt: { type: string, format: date-time }
+        method: { type: string }
+        route: { type: string }
+        path: { type: string }
+        status: { type: integer }
+        durationMs: { type: number }
+        message: { type: ["string", "null"] }
+        requestId: { type: ["string", "null"] }
+        role: { type: ["string", "null"] }
+    DevDatabaseInfo:
+      type: object
+      required: [ok, version, sizeBytes, latencyMs, pool, tables]
+      properties:
+        ok: { type: boolean }
+        version: { type: ["string", "null"] }
+        sizeBytes: { type: ["number", "null"] }
+        latencyMs: { type: ["number", "null"] }
+        pool:
+          type: object
+          required: [total, idle, waiting, max]
+          properties:
+            total: { type: integer }
+            idle: { type: integer }
+            waiting: { type: integer }
+            max: { type: integer }
+        tables:
+          type: array
+          items:
+            type: object
+            required: [name, rows, sizeBytes]
+            properties:
+              name: { type: string }
+              rows: { type: integer }
+              sizeBytes: { type: number }
     ErpIntegrationSummary:
       type: object
       required: [operational, databaseOk, baseUrl, docsUrl, openApiUrl, activeCredentials, storesMapped, storesActive, last24h, lastReceivedAt, lastFailureAt]

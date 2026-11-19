@@ -54,7 +54,7 @@ import RequeueButton, { REQUEUE_STATUSES } from '@/components/requeue-button';
 import CourierAccessPage from '@/pages/courier-access';
 import StorePortal from '@/pages/store-portal';
 import StoreManagement from '@/pages/store-management';
-import ErpIntegration from '@/pages/erp-integration';
+import DevPanel from '@/pages/dev-panel';
 import Reports from '@/pages/reports';
 import EvidencePhotoAction from '@/components/evidence-photo-action';
 import EvidencePhotoViewer from '@/components/evidence-photo-viewer';
@@ -1307,7 +1307,8 @@ function AppRoutes() {
             <Route path="/deliveries/:deliveryId" component={() => <CentralRoute><DeliveryDetail/></CentralRoute>}/>
             <Route path="/access" component={() => <CentralRoute adminOnly><AccessManagement/></CentralRoute>}/>
             <Route path="/filiais" component={() => <CentralRoute adminOnly><StoreManagement/></CentralRoute>}/>
-            <Route path="/integracao-erp" component={() => <CentralRoute adminOnly><ErpIntegration/></CentralRoute>}/>
+            <Route path="/painel-tecnico" component={() => <CentralRoute adminOnly><DevPanel/></CentralRoute>}/>
+            <Route path="/integracao-erp">{() => <Redirect to="/painel-tecnico?aba=erp" />}</Route>
             <Route path="/reports" component={ReportsRoute}/>
             <Route path="/sign-in/*?" component={SignInPage}/>
             <Route path="/sign-up/*?" component={SignUpPage}/>

@@ -117,7 +117,7 @@ export function erpOpenApiDocument(serverUrl: string) {
         "do `codigoFilial`, aparece no painel da central e é oferecida aos motoboys da cidade (quem aceitar primeiro leva).",
         "",
         "**Autenticação:** token da integração no cabeçalho `Authorization: Bearer <token>` (ou `X-API-Key: <token>`).",
-        "O token é gerado pelo administrador em *Integração ERP* e aparece uma única vez. Nunca coloque o token em URL.",
+        "O token é gerado pelo administrador em *Painel técnico → Integração ERP* e aparece uma única vez. Nunca coloque o token em URL.",
         "",
         "**Idempotência:** a venda é identificada pelo `idVenda`. Reenviar a mesma venda não cria outra entrega:",
         "a resposta é `200` com `duplicada: true` e os dados da entrega existente (cabeçalho `Idempotent-Replayed: true`).",
@@ -321,7 +321,7 @@ export function erpOpenApiDocument(serverUrl: string) {
     },
     components: {
       securitySchemes: {
-        bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "mmerp_<prefixo>_<segredo>", description: "Token gerado em Integração ERP (painel do administrador)." },
+        bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "mmerp_<prefixo>_<segredo>", description: "Token gerado em Painel técnico → Integração ERP (painel do administrador)." },
         apiKeyHeader: { type: "apiKey", in: "header", name: "X-API-Key", description: "Alternativa ao Authorization: o mesmo token." },
       },
       schemas: {
