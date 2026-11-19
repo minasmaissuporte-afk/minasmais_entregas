@@ -6,6 +6,8 @@ import {
   getListCourierRoutesQueryKey,
   getGetCourierPlanQueryKey,
   useGetCourierPlan,
+  getListStoresQueryKey,
+  useListStores,
   getListDeliveriesQueryKey,
   getGetVapidPublicKeyQueryKey,
   useGetVapidPublicKey,
@@ -27,6 +29,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { supportWhatsAppUrl } from "@/lib/support";
 import { paymentLabel } from "@/lib/payment";
+import { STORE_ACTIVE_STATUSES, storeMarkers } from "@/lib/store-markers";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
@@ -682,6 +685,16 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
     },
   });
   const suggestedPlan = activeIndividualCount >= 2 ? plan.data?.plan ?? null : null;
+  // Filiais da cidade fixas no mapa: vermelha com entrega para ele (ou oferta aberta), cinza sem.
+  const cityStores = useListStores({ query: { queryKey: getListStoresQueryKey(), staleTime: 5 * 60_000 } });
+  const courierStoreMarkers = useMemo(() => {
+    const activeStoreIds = new Set([
+      ...(deliveries.data ?? []).filter((delivery) => STORE_ACTIVE_STATUSES.includes(delivery.status)).map((delivery) => delivery.storeId),
+      ...(routes.data ?? []).filter((route) => ["OFFERED", "ACCEPTED"].includes(route.status))
+        .flatMap((route) => route.deliveries.map((delivery) => (cityStores.data ?? []).find((store) => store.name === delivery.storeName)?.id ?? "")),
+    ]);
+    return storeMarkers(cityStores.data ?? [], activeStoreIds);
+  }, [cityStores.data, deliveries.data, routes.data]);
   const suggestedPlanDelivery = useMemo(() => {
     if (!suggestedPlan) return null;
     const first = suggestedPlan.stops[0];
@@ -1042,9 +1055,27 @@ export default function CourierPortal({ profile }: { profile: AppUser }) {
           </TabsContent>
 
           <TabsContent value="map" forceMount aria-hidden={activeTab !== "map"} data-transitioning={tabTransitioning ? "true" : "false"} className={`courier-tab-panel courier-tab-panel--map fixed inset-0 z-50 m-0 h-[100dvh] overflow-hidden ${skipTabTransition ? "courier-tab-panel--no-transition" : ""}`}>
-            {activeRoute ? <CourierRouteMapTab route={activeRoute} currentPosition={currentPosition} activeDelivery={activeRouteDelivery} resizeVersion={mapResizeVersion} />
-              : suggestedPlan ? <CourierRouteMapTab route={suggestedPlan} currentPosition={currentPosition} activeDelivery={suggestedPlanDelivery} resizeVersion={mapResizeVersion} />
-              : activeIndividualDelivery ? <CourierDeliveryNavigation deliveryId={activeIndividualDelivery.id} delivery={activeIndividualDelivery} resizeVersion={mapResizeVersion} />
+            {activeRoute ? <CourierRouteMapTab route={activeRoute} currentPosition={currentPosition} activeDelivery={activeRouteDelivery} resizeVersion={mapResizeVersion} storeMarkers={courierStoreMarkers} />
+              : suggestedPlan ? <CourierRouteMapTab route={suggestedPlan} currentPosition={currentPosition} activeDelivery={suggestedPlanDelivery} resizeVersion={mapResizeVersion} storeMarkers={courierStoreMarkers} />
+              : activeIndividualDelivery ? <CourierDeliveryNavigation deliveryId={activeIndividualDelivery.id} delivery={activeIndividualDelivery} resizeVersion={mapResizeVersion} storeMarkers={courierStoreMarkers} />
+              : courierStoreMarkers.length ? (
+                <section className="courier-idle-map" aria-label="Mapa com as filiais da sua cidade">
+                  <LiveMap
+                    markers={[
+                      ...courierStoreMarkers,
+                      ...(currentPosition ? [{ id: "current-idle", ...currentPosition, title: "Sua posição atual", detail: "GPS do aparelho", kind: "current" as const }] : []),
+                    ]}
+                    ariaLabel="Filiais da sua cidade e sua posição"
+                    size="full-screen"
+                    showCenterOnMe={false}
+                    resizeKey={mapResizeVersion}
+                  />
+                  <div className="courier-idle-map__card">
+                    <p className="text-sm font-bold">Nenhuma rota ativa no momento</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Filiais da sua cidade: <b className="text-[#d8112b]">vermelha</b> tem entrega, <b className="text-[#5f6670]">cinza</b> está sem entrega.</p>
+                  </div>
+                </section>
+              )
                 : <section className="grid h-full place-items-center p-6 text-center"><div><MapIcon className="mx-auto text-muted-foreground" size={24} /><h2 className="mt-3 text-base font-bold">Nenhuma rota ativa no momento</h2><p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">Quando você aceitar uma rota ou entrega, o mapa com o destino aparecerá aqui.</p>{(routes.data ?? []).some((route) => route.status === "OFFERED") && <p className="mt-2 text-xs text-muted-foreground">Há uma rota aguardando aceite. Acesse Início para aceitar e calcular o trajeto.</p>}<button type="button" className="button-primary mt-4 min-h-12" onClick={() => changeActiveTab("deliveries")}><PackageCheck size={15} /> Ver início</button></div></section>}
           </TabsContent>
         </Tabs>
@@ -1087,9 +1118,9 @@ function courierActionErrorText(fallback: string) {
 function PaymentBadge({ delivery }: { delivery: Delivery }) {
   const text = paymentLabel(delivery);
   if (!text) return null;
-  const Icon = delivery.paymentMethod === "CARD" ? CreditCard : delivery.paymentMethod === "PIX" ? QrCode : Banknote;
+  const Icon = delivery.prepaid ? CheckCircle2 : delivery.paymentMethod === "CARD" ? CreditCard : delivery.paymentMethod === "PIX" ? QrCode : Banknote;
   return (
-    <p className="courier-payment-badge" data-testid={`payment-${delivery.id}`}>
+    <p className={`courier-payment-badge ${delivery.prepaid ? "courier-payment-badge--paid" : ""}`} data-testid={`payment-${delivery.id}`}>
       <Icon size={16} aria-hidden="true" />
       <span>{text}</span>
     </p>

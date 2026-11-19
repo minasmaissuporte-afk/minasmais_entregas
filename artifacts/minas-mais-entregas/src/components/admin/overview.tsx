@@ -30,6 +30,7 @@ import {
   Store as StoreIcon,
 } from "lucide-react";
 import LiveMap, { type MapMarker } from "@/components/live-map";
+import { STORE_ACTIVE_STATUSES, storeMarkers as buildStoreMarkers } from "@/lib/store-markers";
 import { statusNames } from "@/components/delivery-status";
 import {
   ActionButton,
@@ -378,20 +379,11 @@ export function OperationMap({
         zIndex: state === "busy" ? 6 : state === "available" ? 5 : 1,
       };
     });
-  const storeMarkers: MapMarker[] = stores
-    .filter((store) => store.active && store.latitude != null && store.longitude != null)
-    .map((store) => ({
-      id: `store-${store.id}`,
-      latitude: store.latitude!,
-      longitude: store.longitude!,
-      title: `Filial ${store.name}`,
-      detail: `${store.city}${store.stateCode ? ` · ${store.stateCode}` : ""}`,
-      kind: "store",
-      color: "#ffffff",
-      textColor: "#b91e2c",
-      // Filial fixa: sempre visível por cima dos marcadores de cliente.
-      zIndex: 4,
-    }));
+  // Filial vermelha com entrega em andamento ou na fila; cinza sem entrega.
+  const storeMarkers: MapMarker[] = buildStoreMarkers(
+    stores,
+    new Set(deliveries.filter((delivery) => STORE_ACTIVE_STATUSES.includes(delivery.status)).map((delivery) => delivery.storeId)),
+  );
   // Desenho fixo do trajeto de cada motoboy em entrega (ou só do motoboy filtrado).
   const visibleRoutes = layers.route
     ? routes.filter((route) => !filters.courierId || route.courierId === filters.courierId)

@@ -42,6 +42,13 @@ export interface DeliveryInput {
   /** @nullable */
   bringCardMachine?: boolean | null;
   /**
+     * @minimum 0
+     * @maximum 1000000
+     * @nullable
+     */
+  productsAmount?: number | null;
+  prepaid?: boolean;
+  /**
      * Deprecated; server uses the selected branch's configured fee
      * @minimum 0
      */

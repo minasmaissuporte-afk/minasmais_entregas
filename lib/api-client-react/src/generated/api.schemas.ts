@@ -48,6 +48,18 @@ export interface Delivery {
      * @nullable
      */
   bringCardMachine?: boolean | null;
+  /**
+     * Valor total dos produtos (R$)
+     * @nullable
+     */
+  productsAmount?: number | null;
+  /**
+     * Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)
+     * @nullable
+     */
+  amountToCharge?: number | null;
+  /** Cliente já pagou produtos e entrega */
+  prepaid?: boolean;
   destination: string;
   orderNumber?: string;
   /** @nullable */
@@ -137,6 +149,13 @@ export interface DeliveryInput {
   /** @nullable */
   bringCardMachine?: boolean | null;
   /**
+     * @minimum 0
+     * @maximum 1000000
+     * @nullable
+     */
+  productsAmount?: number | null;
+  prepaid?: boolean;
+  /**
      * Deprecated; server uses the selected branch's configured fee
      * @minimum 0
      */
@@ -194,6 +213,13 @@ export interface DeliveryUpdateInput {
   changeFor?: number | null;
   /** @nullable */
   bringCardMachine?: boolean | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000
+     * @nullable
+     */
+  productsAmount?: number | null;
+  prepaid?: boolean;
 }
 
 export type DispatchInputMode = typeof DispatchInputMode[keyof typeof DispatchInputMode];
@@ -1010,6 +1036,18 @@ export interface RouteDeliverySummary {
      * @nullable
      */
   bringCardMachine?: boolean | null;
+  /**
+     * Valor total dos produtos (R$)
+     * @nullable
+     */
+  productsAmount?: number | null;
+  /**
+     * Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)
+     * @nullable
+     */
+  amountToCharge?: number | null;
+  /** Cliente já pagou produtos e entrega */
+  prepaid?: boolean;
   destination: string;
   /** @nullable */
   notes: string | null;

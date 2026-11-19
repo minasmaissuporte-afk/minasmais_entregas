@@ -229,6 +229,22 @@ test.describe("Fluxo da filial: despacho automático por cidade", () => {
     expect((await json(await courier.get("/courier/plan"))).plan).toBeNull();
   });
 
+  test("Valor dos produtos: motoboy vê o total a cobrar (produtos + entrega) ou 'já pago'", async () => {
+    const manager = await Api.as("manager");
+    const courier = await Api.as("courier");
+    await courierOnline(courier);
+    const fee = stores.a.feeCents / 100;
+    const d = await createDelivery(manager, { paymentMethod: "CASH", changeFor: 100, productsAmount: 50 });
+    expect(d).toMatchObject({ productsAmount: 50, amountToCharge: 50 + fee, prepaid: false });
+    const seen = (await json(await courier.get("/deliveries"))).find((item: { id: string }) => item.id === d.id);
+    expect(seen).toMatchObject({ amountToCharge: 50 + fee, deliveryAmount: 0 });
+
+    // Já pago: dispensa a forma de pagamento.
+    const paid = await manager.post("/deliveries", { ...deliveryInput({ productsAmount: 30, prepaid: true }), paymentMethod: undefined });
+    expect(paid.status(), await describe(paid)).toBe(201);
+    expect(await json(paid)).toMatchObject({ prepaid: true, paymentMethod: null, productsAmount: 30 });
+  });
+
   test("Convite de motoboy exige a cidade", async () => {
     await expectError(
       await (await Api.as("admin")).post("/access/invites", {

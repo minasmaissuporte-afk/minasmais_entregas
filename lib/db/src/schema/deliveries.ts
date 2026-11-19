@@ -102,6 +102,9 @@ export const deliveriesTable = pgTable(
     paymentMethod: text("payment_method"),
     changeForCents: integer("change_for_cents"),
     bringCardMachine: boolean("bring_card_machine"),
+    // Valor total dos produtos (o motoboy cobra produtos + entrega) e se o cliente já pagou.
+    productsAmountCents: integer("products_amount_cents"),
+    prepaid: boolean("prepaid").notNull().default(false),
     // Contabilidade da filial: quando o valor da entrega foi pago ao motoboy (e por quem).
     courierPaidAt: timestamp("courier_paid_at", { withTimezone: true }),
     courierPaidBy: text("courier_paid_by"),

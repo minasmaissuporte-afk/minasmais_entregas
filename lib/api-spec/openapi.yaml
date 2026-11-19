@@ -1124,6 +1124,9 @@ components:
         paymentMethod: { type: ["string", "null"], description: "Forma de pagamento do cliente: CARD, PIX ou CASH" }
         changeFor: { type: ["number", "null"], description: "Dinheiro: troco para quanto (valor com que o cliente vai pagar)" }
         bringCardMachine: { type: ["boolean", "null"], description: "Cartão: levar a maquininha" }
+        productsAmount: { type: ["number", "null"], description: "Valor total dos produtos (R$)" }
+        amountToCharge: { type: ["number", "null"], description: "Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)" }
+        prepaid: { type: boolean, description: "Cliente já pagou produtos e entrega" }
         destination: { type: string }
         orderNumber: { type: string }
         notes: { type: ["string", "null"] }
@@ -1177,6 +1180,8 @@ components:
         paymentMethod: { type: string, enum: [CARD, PIX, CASH] }
         changeFor: { type: ["number", "null"], minimum: 0, maximum: 100000 }
         bringCardMachine: { type: ["boolean", "null"] }
+        productsAmount: { type: ["number", "null"], minimum: 0, maximum: 1000000 }
+        prepaid: { type: boolean }
         deliveryAmount: { type: number, minimum: 0, description: Deprecated; server uses the selected branch's configured fee }
     DeliveryUpdateInput:
       type: object
@@ -1193,6 +1198,8 @@ components:
         paymentMethod: { type: string, enum: [CARD, PIX, CASH] }
         changeFor: { type: ["number", "null"], minimum: 0, maximum: 100000 }
         bringCardMachine: { type: ["boolean", "null"] }
+        productsAmount: { type: ["number", "null"], minimum: 0, maximum: 1000000 }
+        prepaid: { type: boolean }
     DispatchInput:
       type: object
       required: [mode]
@@ -1750,6 +1757,9 @@ components:
         paymentMethod: { type: ["string", "null"], description: "Forma de pagamento do cliente: CARD, PIX ou CASH" }
         changeFor: { type: ["number", "null"], description: "Dinheiro: troco para quanto (valor com que o cliente vai pagar)" }
         bringCardMachine: { type: ["boolean", "null"], description: "Cartão: levar a maquininha" }
+        productsAmount: { type: ["number", "null"], description: "Valor total dos produtos (R$)" }
+        amountToCharge: { type: ["number", "null"], description: "Total a cobrar do cliente: produtos + entrega (null sem valor dos produtos)" }
+        prepaid: { type: boolean, description: "Cliente já pagou produtos e entrega" }
         destination: { type: string }
         notes: { type: ["string", "null"] }
         storeName: { type: string }

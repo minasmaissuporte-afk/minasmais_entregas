@@ -42,4 +42,11 @@ export interface DeliveryUpdateInput {
   changeFor?: number | null;
   /** @nullable */
   bringCardMachine?: boolean | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000
+     * @nullable
+     */
+  productsAmount?: number | null;
+  prepaid?: boolean;
 }
