@@ -1976,6 +1976,9 @@ textarea { resize:vertical; }
 .courier-pwa .courier-keep-open-note { margin-top: 12px; color: #868a90; font-size: 11px; text-align: center; }
 .courier-pwa .courier-active-delivery {
   display: grid;
+  /* minmax(0, 1fr): texto longo (ex.: nome do arquivo da foto) não alarga o cartão além da tela. */
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 0;
   margin-top: 0;
   border: 0;
