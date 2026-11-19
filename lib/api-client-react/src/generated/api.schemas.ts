@@ -5,6 +5,130 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface DevService {
+  key: string;
+  label: string;
+  configured: boolean;
+  detail: string;
+}
+
+export type DevOverviewCounts = {
+  deliveriesTotal: number;
+  deliveriesToday: number;
+  deliveriesActive: number;
+  deliveriesFromErp: number;
+  couriersTotal: number;
+  couriersOnline: number;
+  stores: number;
+  users: number;
+  pendingUsers: number;
+  pushSubscriptions: number;
+  nativeTokens: number;
+  erpCredentialsActive: number;
+};
+
+export interface DevRequestTotals {
+  requests: number;
+  errors4xx: number;
+  errors5xx: number;
+  /** @nullable */
+  avgMs: number | null;
+  /** @nullable */
+  maxMs: number | null;
+}
+
+export interface DevOverview {
+  environment: string;
+  /** @nullable */
+  region: string | null;
+  /** @nullable */
+  commitSha: string | null;
+  /** @nullable */
+  commitRef: string | null;
+  /** @nullable */
+  commitMessage: string | null;
+  /** @nullable */
+  repoUrl: string | null;
+  /** @nullable */
+  deploymentUrl: string | null;
+  nodeVersion: string;
+  instanceStartedAt: string;
+  serverTime: string;
+  timezone: string;
+  databaseOk: boolean;
+  /** @nullable */
+  databaseLatencyMs: number | null;
+  services: DevService[];
+  counts: DevOverviewCounts;
+  last24h: DevRequestTotals;
+}
+
+export type DevRequestStatsHourlyItem = {
+  hour: string;
+  requests: number;
+  errors: number;
+};
+
+export type DevRequestStatsRoutesItem = {
+  method: string;
+  route: string;
+  requests: number;
+  errors4xx: number;
+  errors5xx: number;
+  avgMs: number;
+  maxMs: number;
+};
+
+export interface DevRequestStats {
+  hours: number;
+  from: string;
+  to: string;
+  totals: DevRequestTotals;
+  hourly: DevRequestStatsHourlyItem[];
+  routes: DevRequestStatsRoutesItem[];
+}
+
+export interface DevApiError {
+  id: string;
+  createdAt: string;
+  method: string;
+  route: string;
+  path: string;
+  status: number;
+  durationMs: number;
+  /** @nullable */
+  message: string | null;
+  /** @nullable */
+  requestId: string | null;
+  /** @nullable */
+  role: string | null;
+}
+
+export type DevDatabaseInfoPool = {
+  total: number;
+  idle: number;
+  waiting: number;
+  max: number;
+};
+
+export type DevDatabaseInfoTablesItem = {
+  name: string;
+  rows: number;
+  sizeBytes: number;
+};
+
+export interface DevDatabaseInfo {
+  ok: boolean;
+  /** @nullable */
+  version: string | null;
+  /** @nullable */
+  sizeBytes: number | null;
+  /** @nullable */
+  latencyMs: number | null;
+  pool: DevDatabaseInfoPool;
+  tables: DevDatabaseInfoTablesItem[];
+}
+
 export type ErpIntegrationSummaryLast24h = {
   received: number;
   created: number;
@@ -1351,5 +1475,32 @@ export const ListErpIntegrationEventsOutcome = {
   DUPLICATE: 'DUPLICATE',
   UPDATED: 'UPDATED',
   CANCELLED: 'CANCELLED',
+} as const;
+
+export type GetDevRequestStatsParams = {
+/**
+ * @minimum 1
+ * @maximum 720
+ */
+hours?: number;
+};
+
+export type ListDevApiErrorsParams = {
+status?: ListDevApiErrorsStatus;
+q?: string;
+/**
+ * @minimum 1
+ * @maximum 300
+ */
+limit?: number;
+};
+
+export type ListDevApiErrorsStatus = typeof ListDevApiErrorsStatus[keyof typeof ListDevApiErrorsStatus];
+
+
+export const ListDevApiErrorsStatus = {
+  ALL: 'ALL',
+  '4XX': '4XX',
+  '5XX': '5XX',
 } as const;
 

@@ -59,6 +59,10 @@ import type {
   DeliveryUpdateInput,
   DemoDataCleanupInput,
   DemoDataCleanupSummary,
+  DevApiError,
+  DevDatabaseInfo,
+  DevOverview,
+  DevRequestStats,
   DispatchInput,
   ErpCredential,
   ErpCredentialCreated,
@@ -70,10 +74,12 @@ import type {
   GetAddressDetailsParams,
   GetCourierEarningsParams,
   GetDeliveryAnalyticsParams,
+  GetDevRequestStatsParams,
   GetStoreAccountingParams,
   HealthStatus,
   ListCouriersParams,
   ListDeliveriesParams,
+  ListDevApiErrorsParams,
   ListErpIntegrationEventsParams,
   NativePushTokenInput,
   PayCourierInput,
@@ -5870,4 +5876,422 @@ export const useReprocessErpIntegrationEvent = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getReprocessErpIntegrationEventMutationOptions(options), queryClient);
     }
+
+export const getGetDevOverviewUrl = () => {
+
+
+
+
+  return `/api/admin/dev/overview`
+}
+
+/**
+ * @summary Technical overview (deploy, services, counts) for administrators
+ */
+export const getDevOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<DevOverview> => {
+
+  return customFetch<DevOverview>(getGetDevOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDevOverviewQueryKey = () => {
+    return [
+    `/api/admin/dev/overview`
+    ] as const;
+    }
+
+
+export const getGetDevOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getDevOverview>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevOverview>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDevOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDevOverview>>> = ({ signal }) => getDevOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDevOverview>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetDevOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getDevOverview>>>
+export type GetDevOverviewQueryError = ErrorType<unknown>
+
+
+export function useGetDevOverview<TData = Awaited<ReturnType<typeof getDevOverview>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevOverview>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getDevOverview>>,
+          TError,
+          Awaited<ReturnType<typeof getDevOverview>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetDevOverview<TData = Awaited<ReturnType<typeof getDevOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevOverview>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getDevOverview>>,
+          TError,
+          Awaited<ReturnType<typeof getDevOverview>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetDevOverview<TData = Awaited<ReturnType<typeof getDevOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevOverview>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Technical overview (deploy, services, counts) for administrators
+ */
+
+export function useGetDevOverview<TData = Awaited<ReturnType<typeof getDevOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevOverview>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetDevOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetDevRequestStatsUrl = (params?: GetDevRequestStatsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/dev/requests?${stringifiedParams}` : `/api/admin/dev/requests`
+}
+
+/**
+ * @summary API request metrics by hour and route
+ */
+export const getDevRequestStats = async (params?: GetDevRequestStatsParams, options?: Parameters<typeof customFetch>[1]): Promise<DevRequestStats> => {
+
+  return customFetch<DevRequestStats>(getGetDevRequestStatsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDevRequestStatsQueryKey = (params?: GetDevRequestStatsParams,) => {
+    return [
+    `/api/admin/dev/requests`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetDevRequestStatsQueryOptions = <TData = Awaited<ReturnType<typeof getDevRequestStats>>, TError = ErrorType<unknown>>(params?: GetDevRequestStatsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevRequestStats>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDevRequestStatsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDevRequestStats>>> = ({ signal }) => getDevRequestStats(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDevRequestStats>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetDevRequestStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getDevRequestStats>>>
+export type GetDevRequestStatsQueryError = ErrorType<unknown>
+
+
+export function useGetDevRequestStats<TData = Awaited<ReturnType<typeof getDevRequestStats>>, TError = ErrorType<unknown>>(
+ params: undefined |  GetDevRequestStatsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevRequestStats>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getDevRequestStats>>,
+          TError,
+          Awaited<ReturnType<typeof getDevRequestStats>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetDevRequestStats<TData = Awaited<ReturnType<typeof getDevRequestStats>>, TError = ErrorType<unknown>>(
+ params?: GetDevRequestStatsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevRequestStats>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getDevRequestStats>>,
+          TError,
+          Awaited<ReturnType<typeof getDevRequestStats>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetDevRequestStats<TData = Awaited<ReturnType<typeof getDevRequestStats>>, TError = ErrorType<unknown>>(
+ params?: GetDevRequestStatsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevRequestStats>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary API request metrics by hour and route
+ */
+
+export function useGetDevRequestStats<TData = Awaited<ReturnType<typeof getDevRequestStats>>, TError = ErrorType<unknown>>(
+ params?: GetDevRequestStatsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevRequestStats>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetDevRequestStatsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListDevApiErrorsUrl = (params?: ListDevApiErrorsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/dev/errors?${stringifiedParams}` : `/api/admin/dev/errors`
+}
+
+/**
+ * @summary Latest API errors
+ */
+export const listDevApiErrors = async (params?: ListDevApiErrorsParams, options?: Parameters<typeof customFetch>[1]): Promise<DevApiError[]> => {
+
+  return customFetch<DevApiError[]>(getListDevApiErrorsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDevApiErrorsQueryKey = (params?: ListDevApiErrorsParams,) => {
+    return [
+    `/api/admin/dev/errors`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListDevApiErrorsQueryOptions = <TData = Awaited<ReturnType<typeof listDevApiErrors>>, TError = ErrorType<unknown>>(params?: ListDevApiErrorsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDevApiErrors>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDevApiErrorsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDevApiErrors>>> = ({ signal }) => listDevApiErrors(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDevApiErrors>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListDevApiErrorsQueryResult = NonNullable<Awaited<ReturnType<typeof listDevApiErrors>>>
+export type ListDevApiErrorsQueryError = ErrorType<unknown>
+
+
+export function useListDevApiErrors<TData = Awaited<ReturnType<typeof listDevApiErrors>>, TError = ErrorType<unknown>>(
+ params: undefined |  ListDevApiErrorsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDevApiErrors>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listDevApiErrors>>,
+          TError,
+          Awaited<ReturnType<typeof listDevApiErrors>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListDevApiErrors<TData = Awaited<ReturnType<typeof listDevApiErrors>>, TError = ErrorType<unknown>>(
+ params?: ListDevApiErrorsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDevApiErrors>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listDevApiErrors>>,
+          TError,
+          Awaited<ReturnType<typeof listDevApiErrors>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListDevApiErrors<TData = Awaited<ReturnType<typeof listDevApiErrors>>, TError = ErrorType<unknown>>(
+ params?: ListDevApiErrorsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDevApiErrors>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Latest API errors
+ */
+
+export function useListDevApiErrors<TData = Awaited<ReturnType<typeof listDevApiErrors>>, TError = ErrorType<unknown>>(
+ params?: ListDevApiErrorsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDevApiErrors>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListDevApiErrorsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetDevDatabaseInfoUrl = () => {
+
+
+
+
+  return `/api/admin/dev/database`
+}
+
+/**
+ * @summary Database version, size, pool and tables
+ */
+export const getDevDatabaseInfo = async ( options?: Parameters<typeof customFetch>[1]): Promise<DevDatabaseInfo> => {
+
+  return customFetch<DevDatabaseInfo>(getGetDevDatabaseInfoUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDevDatabaseInfoQueryKey = () => {
+    return [
+    `/api/admin/dev/database`
+    ] as const;
+    }
+
+
+export const getGetDevDatabaseInfoQueryOptions = <TData = Awaited<ReturnType<typeof getDevDatabaseInfo>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevDatabaseInfo>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDevDatabaseInfoQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDevDatabaseInfo>>> = ({ signal }) => getDevDatabaseInfo({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDevDatabaseInfo>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetDevDatabaseInfoQueryResult = NonNullable<Awaited<ReturnType<typeof getDevDatabaseInfo>>>
+export type GetDevDatabaseInfoQueryError = ErrorType<unknown>
+
+
+export function useGetDevDatabaseInfo<TData = Awaited<ReturnType<typeof getDevDatabaseInfo>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevDatabaseInfo>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getDevDatabaseInfo>>,
+          TError,
+          Awaited<ReturnType<typeof getDevDatabaseInfo>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetDevDatabaseInfo<TData = Awaited<ReturnType<typeof getDevDatabaseInfo>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevDatabaseInfo>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getDevDatabaseInfo>>,
+          TError,
+          Awaited<ReturnType<typeof getDevDatabaseInfo>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetDevDatabaseInfo<TData = Awaited<ReturnType<typeof getDevDatabaseInfo>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevDatabaseInfo>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Database version, size, pool and tables
+ */
+
+export function useGetDevDatabaseInfo<TData = Awaited<ReturnType<typeof getDevDatabaseInfo>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getDevDatabaseInfo>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetDevDatabaseInfoQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

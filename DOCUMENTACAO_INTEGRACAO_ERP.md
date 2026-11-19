@@ -22,7 +22,7 @@ Quando uma venda é finalizada no ERP e marcada como pedido para entrega, o ERP 
 
 ## 2. Autenticação
 
-- O administrador do Minas Mais gera um **token de integração** no painel, em **Integração ERP → Credenciais**, e repassa à equipe do ERP por um canal seguro.
+- O administrador do Minas Mais gera um **token de integração** no painel, em **Painel técnico → Integração ERP → Credenciais**, e repassa à equipe do ERP por um canal seguro.
 - O token tem o formato `mmerp_<12 caracteres>_<43 caracteres>`.
 - Envie o token em todas as chamadas, no cabeçalho:
 
@@ -252,8 +252,8 @@ Toda resposta tem o cabeçalho `X-Request-Id`. Informe esse valor ao suporte do 
 ## 7. Homologação (passo a passo)
 
 1. O administrador do Minas Mais:
-   - gera um token em **Integração ERP → Credenciais**, com um nome como "ERP homologação";
-   - cadastra o **código do ERP** de cada filial em **Integração ERP → Códigos das filiais**.
+   - gera um token em **Painel técnico → Integração ERP → Credenciais**, com um nome como "ERP homologação";
+   - cadastra o **código do ERP** de cada filial em **Painel técnico → Integração ERP → Códigos das filiais**.
 2. O ERP chama `GET /health` com o token e confirma que a resposta traz `"credencialValida": true`.
 3. O ERP envia uma venda de teste para uma filial de teste (`POST /entregas`) e confere:
    - a resposta é `201` e traz o `codigoEntrega`;

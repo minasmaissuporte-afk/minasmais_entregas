@@ -19,9 +19,12 @@ test.describe("Painel: Integração ERP", () => {
     const errors = trackErrors(page);
     await loginAs(page, "admin");
     const nav = page.getByRole("navigation", { name: "Navegação principal" });
-    await nav.getByRole("link", { name: /Integração ERP/ }).click();
-    await expect(page).toHaveURL(/\/integracao-erp$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Integração ERP" })).toBeVisible({ timeout: 15_000 });
+    await nav.getByRole("link", { name: /Painel técnico/ }).click();
+    await expect(page).toHaveURL(/\/painel-tecnico$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Painel técnico" })).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("tab-erp").click();
+    await expect(page).toHaveURL(/\/painel-tecnico\?aba=erp$/);
+    await expect(page.getByRole("heading", { level: 2, name: "Integração ERP" })).toBeVisible();
     await expect(page.getByTestId("erp-status-operational")).toBeVisible();
     await expect(page.getByTestId("text-erp-base-url")).toHaveText(/\/api\/v1\/erp$/);
     await expect(page.getByTestId("link-erp-docs")).toHaveAttribute("href", /\/api\/v1\/erp\/docs$/);
@@ -69,8 +72,10 @@ test.describe("Painel: Integração ERP", () => {
 
   test("Celular: tela sem rolagem horizontal", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    // Endereço antigo continua funcionando: abre o Painel técnico na aba do ERP.
     await loginAs(page, "admin", "/integracao-erp");
-    await expect(page.getByRole("heading", { level: 1, name: "Integração ERP" })).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(/\/painel-tecnico\?aba=erp$/);
+    await expect(page.getByRole("heading", { level: 2, name: "Integração ERP" })).toBeVisible({ timeout: 15_000 });
     await expectNoHorizontalScroll(page);
     if (shots) await page.screenshot({ path: `${shots}/erp-mobile.png`, fullPage: true });
   });
@@ -79,8 +84,8 @@ test.describe("Painel: Integração ERP", () => {
     await loginAs(page, "central");
     const nav = page.getByRole("navigation", { name: "Navegação principal" });
     await expect(nav.getByRole("link", { name: /Entregas/ }).first()).toBeVisible({ timeout: 15_000 });
-    await expect(nav.getByRole("link", { name: /Integração ERP/ })).toHaveCount(0);
-    await page.goto("/integracao-erp");
+    await expect(nav.getByRole("link", { name: /Painel técnico/ })).toHaveCount(0);
+    await page.goto("/painel-tecnico");
     await expect(page.getByRole("heading", { name: "Acesso restrito" })).toBeVisible();
   });
 });
