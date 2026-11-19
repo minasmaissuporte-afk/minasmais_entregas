@@ -18,7 +18,7 @@ type Stage = "idle" | "preparing" | "uploading" | "confirming";
  * which is what makes the upload viable on a weak mobile signal.
  * Falls back to the original file if the browser cannot decode it.
  */
-async function compressPhoto(file: File): Promise<Blob> {
+async function compressPhoto(file: File, forceJpeg = false): Promise<Blob> {
   try {
     const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions);
     const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
@@ -28,7 +28,8 @@ async function compressPhoto(file: File): Promise<Blob> {
     canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close();
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.72));
-    return blob && blob.size < file.size ? blob : file;
+    // Formato que o servidor não aceita (ex.: HEIC da galeria, ou foto da câmera sem tipo): sempre vira JPEG.
+    return blob && (forceJpeg || blob.size < file.size) ? blob : file;
   } catch {
     return file;
   }
@@ -93,22 +94,25 @@ export default function EvidencePhotoAction({
   const submit = async () => {
     setError("");
     if (!file) {
-      setError("Anexe ou capture uma foto antes de concluir.");
+      setError("Tire a foto de comprovação antes de concluir.");
       return;
     }
     if (blockedByPrescription) {
       setError("Marque que pegou a receita do cliente antes de concluir.");
       return;
     }
-    if (!acceptedTypes.includes(file.type) || file.size > maxInputBytes) {
-      setError("Use uma foto JPEG, PNG ou WebP.");
+    if (file.size > maxInputBytes) {
+      setError("A foto é grande demais. Tire outra foto.");
       return;
     }
     try {
       let evidencePath = uploadedPath;
       if (!evidencePath) {
         setStage("preparing");
-        const photo = await compressPhoto(file);
+        const photo = await compressPhoto(file, !acceptedTypes.includes(file.type));
+        if (!acceptedTypes.includes(photo.type || file.type)) {
+          throw new Error("Não deu para ler esta foto. Tire a foto pela câmera ou use JPEG ou PNG.");
+        }
         if (photo.size > maxBytes) throw new Error("A foto ficou grande demais para enviar. Tire outra foto, um pouco mais de longe.");
         const contentType = (photo.type || file.type) as "image/jpeg" | "image/png" | "image/webp";
         const upload = await requestUpload.mutateAsync({
@@ -145,11 +149,13 @@ export default function EvidencePhotoAction({
     <div className="space-y-2">
       <label className={`flex min-h-12 items-center justify-center gap-2 rounded-lg border border-dashed border-[#d8c6c3] bg-[#fbf7f5] px-3 py-2 text-xs font-semibold text-[#85434a] transition hover:bg-[#f8efed] ${disabled || submitting || requestUpload.isPending ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
         <Camera size={16} />
-        <span>{file ? "Trocar foto de comprovação" : "Capturar ou anexar foto"}</span>
+        <span>{file ? "Tirar outra foto" : "Tirar foto de comprovação"}</span>
         <input
           className="sr-only"
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          // "image/*" + capture: no app Android (Capacitor) e no navegador do celular abre a câmera direto.
+          // Com uma lista de tipos específicos o Capacitor cai no seletor de arquivos.
+          accept="image/*"
           capture="environment"
           disabled={disabled || submitting || requestUpload.isPending}
           onChange={(event) => {
@@ -157,7 +163,7 @@ export default function EvidencePhotoAction({
             setUploadedPath(null);
             setFile(event.target.files?.[0] ?? null);
           }}
-          aria-label="Capturar ou anexar foto de comprovação"
+          aria-label="Tirar foto de comprovação com a câmera"
           data-testid={`input-evidence-${deliveryId}`}
         />
       </label>
