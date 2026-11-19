@@ -20,6 +20,7 @@ import {
   Menu,
   Package,
   PanelLeft,
+  Plug,
   Search,
   Settings,
   Store,
@@ -106,6 +107,7 @@ export default function AdminShell({ profile, children }: { profile: AppUser; ch
     { href: "/", label: "Entregas", icon: Package, match: (path) => path === "/" || path === "/user-portal" || path === "/entregas" || path.startsWith("/deliveries/"), count: awaitingCount },
     { href: "/motoboys", label: "Motoboys", icon: Bike, match: (path) => path === "/motoboys" },
     ...(isAdmin ? [{ href: "/filiais", label: "Filiais", icon: Store, match: (path: string) => path === "/filiais" }] : []),
+    ...(isAdmin ? [{ href: "/integracao-erp", label: "Integração ERP", icon: Plug, match: (path: string) => path === "/integracao-erp" }] : []),
     { href: "/reports", label: "Relatórios", icon: ChartColumn, match: (path) => path === "/reports" },
   ];
   // "Configurações": profiles and access for admins; own account and password for the central.

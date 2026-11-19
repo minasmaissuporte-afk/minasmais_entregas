@@ -42,6 +42,10 @@ export async function cleanupDatabase() {
     );
     await client.query(`delete from deliveries where id in ${e2eDeliveries}`);
     await client.query(
+      `delete from erp_integration_events where credential_id in (select id from erp_api_credentials where name like 'E2E %')`,
+    );
+    await client.query(`delete from erp_api_credentials where name like 'E2E %'`);
+    await client.query(
       `delete from push_subscriptions where user_id in (select id from app_users where email like 'e2e-%@example.com')`,
     );
     await client.query(

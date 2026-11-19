@@ -40,6 +40,8 @@ export const storesTable = pgTable("stores", {
   latitude: real("latitude"),
   longitude: real("longitude"),
   active: boolean("active").notNull().default(true),
+  // Código da filial no ERP (a venda chega com esse código e cai nesta filial).
+  erpCode: text("erp_code").unique(),
 });
 
 export const couriersTable = pgTable(
@@ -132,8 +134,15 @@ export const deliveriesTable = pgTable(
     lastLocationAt: timestamp("last_location_at", { withTimezone: true }),
     estimatedMinutes: integer("estimated_minutes"),
     distanceKm: real("distance_km"),
+    // Venda recebida pela integração do ERP: origem + ID da venda nunca se repetem.
+    erpSource: text("erp_source"),
+    erpSaleId: text("erp_sale_id"),
+    erpSoldAt: timestamp("erp_sold_at", { withTimezone: true }),
+    // Última versão da venda recebida (base para as atualizações parciais do ERP).
+    erpPayload: jsonb("erp_payload"),
   },
   (table) => [
+    uniqueIndex("deliveries_erp_sale_uidx").on(table.erpSource, table.erpSaleId),
     index("deliveries_status_idx").on(table.status),
     index("deliveries_store_idx").on(table.storeId),
     index("deliveries_created_idx").on(table.createdAt),

@@ -5,6 +5,112 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type ErpIntegrationSummaryLast24h = {
+  received: number;
+  created: number;
+  duplicates: number;
+  updated: number;
+  cancelled: number;
+  failed: number;
+};
+
+export interface ErpIntegrationSummary {
+  operational: boolean;
+  databaseOk: boolean;
+  baseUrl: string;
+  docsUrl: string;
+  openApiUrl: string;
+  activeCredentials: number;
+  storesMapped: number;
+  storesActive: number;
+  last24h: ErpIntegrationSummaryLast24h;
+  /** @nullable */
+  lastReceivedAt: string | null;
+  /** @nullable */
+  lastFailureAt: string | null;
+}
+
+export interface ErpCredential {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  createdAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  lastUsedAt: string | null;
+  /** @nullable */
+  revokedAt: string | null;
+  /** @nullable */
+  revokedBy: string | null;
+}
+
+export interface ErpCredentialInput {
+  /**
+     * @minLength 2
+     * @maxLength 80
+     */
+  name: string;
+}
+
+export interface ErpCredentialCreated {
+  credential: ErpCredential;
+  token: string;
+}
+
+export interface ErpStoreMapping {
+  storeId: string;
+  name: string;
+  city: string;
+  code: string;
+  /** @nullable */
+  erpCode: string | null;
+  active: boolean;
+  deliveryFee: number;
+}
+
+export interface ErpStoreMappingInput {
+  /**
+     * @maxLength 32
+     * @nullable
+     */
+  erpCode: string | null;
+}
+
+export interface ErpIntegrationEvent {
+  id: string;
+  operation: string;
+  /** @nullable */
+  saleId: string | null;
+  /** @nullable */
+  storeCode: string | null;
+  outcome: string;
+  httpStatus: number;
+  /** @nullable */
+  errorCode: string | null;
+  /** @nullable */
+  errorMessage: string | null;
+  /** @nullable */
+  deliveryId: string | null;
+  /** @nullable */
+  deliveryCode: string | null;
+  /** @nullable */
+  credentialName: string | null;
+  /** @nullable */
+  clientIp: string | null;
+  /** @nullable */
+  requestId: string | null;
+  createdAt: string;
+  /** @nullable */
+  reprocessOf: string | null;
+  /** @nullable */
+  reprocessedAt: string | null;
+  /** @nullable */
+  reprocessedBy: string | null;
+  canReprocess: boolean;
+  payload: unknown;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -1223,5 +1329,27 @@ export const GetCourierEarningsPeriod = {
   day: 'day',
   week: 'week',
   month: 'month',
+} as const;
+
+export type ListErpIntegrationEventsParams = {
+outcome?: ListErpIntegrationEventsOutcome;
+q?: string;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
+
+export type ListErpIntegrationEventsOutcome = typeof ListErpIntegrationEventsOutcome[keyof typeof ListErpIntegrationEventsOutcome];
+
+
+export const ListErpIntegrationEventsOutcome = {
+  ALL: 'ALL',
+  FAILED: 'FAILED',
+  CREATED: 'CREATED',
+  DUPLICATE: 'DUPLICATE',
+  UPDATED: 'UPDATED',
+  CANCELLED: 'CANCELLED',
 } as const;
 
